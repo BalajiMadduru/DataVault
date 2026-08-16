@@ -1,0 +1,557 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+class ApiService {
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // ============ AUTH METHODS ============
+  static Future<ApiResponse> login({
+    required String email,
+    required String password,
+    required String mobile,
+    required String username,  // Added username parameter
+    bool keepSignedIn = true,
+  }) async {
+    try {
+      if (kIsWeb) {
+        await _auth.setPersistence(
+          keepSignedIn ? Persistence.LOCAL : Persistence.SESSION,
+        );
+      }
+
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      return _saveDailyRecordAndRespond(credential, email, mobile, username);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+        return _createAccountAndLogin(
+          email: email,
+          password: password,
+          mobile: mobile,
+          username: username,
+        );
+      }
+      print('FIREBASE AUTH ERROR CODE: ${e.code}');
+      print('FIREBASE AUTH ERROR MESSAGE: ${e.message}');
+      return ApiResponse(success: false, message: _mapAuthError(e.code));
+    } catch (e, stackTrace) {
+      print('LOGIN ERROR: $e');
+      print('STACK: $stackTrace');
+      return ApiResponse(
+        success: false,
+        message: 'Something went wrong. Please try again.',
+      );
+    }
+  }
+
+  static Future<ApiResponse> _createAccountAndLogin({
+    required String email,
+    required String password,
+    required String mobile,
+    required String username,
+  }) async {
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      return _saveDailyRecordAndRespond(
+        credential,
+        email,
+        mobile,
+        username,
+        isNewAccount: true,
+      );
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') {
+        return ApiResponse(
+          success: false,
+          message: 'Incorrect email or password',
+        );
+      }
+      return ApiResponse(success: false, message: _mapAuthError(e.code));
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Something went wrong creating your account.',
+      );
+    }
+  }
+
+  static Future<ApiResponse> _saveDailyRecordAndRespond(
+      UserCredential credential,
+      String email,
+      String mobile,
+      String username, {
+        bool isNewAccount = false,
+      }) async {
+    final uid = credential.user!.uid;
+
+    await _db.collection('users').doc(uid).set({
+      'email': email,
+      'mobile': mobile,
+      'username': username,
+      'lastLogin': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    return ApiResponse(
+      success: true,
+      message: isNewAccount ? 'Account created — welcome!' : 'Login successful',
+      data: {'uid': uid},
+    );
+  }
+
+  static Future<void> logout() async {
+    await _auth.signOut();
+  }
+
+  // ============ GET CURRENT USER PROFILE ============
+  static Future<ApiResponse> getCurrentUserProfile() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+
+      final doc = await _db.collection('users').doc(user.uid).get();
+      final data = doc.data() ?? {};
+
+      return ApiResponse(
+        success: true,
+        message: 'Profile fetched',
+        data: {
+          'uid': user.uid,
+          'username': (data['username'] as String?) ?? '',
+          'email': (data['email'] as String?) ?? user.email ?? '',
+          'mobile': (data['mobile'] as String?) ?? '',
+        },
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching profile: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> sendPasswordReset({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      return ApiResponse(
+        success: true,
+        message: 'Password reset link sent to $email',
+      );
+    } on FirebaseAuthException catch (e) {
+      return ApiResponse(success: false, message: _mapAuthError(e.code));
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Something went wrong. Please try again.',
+      );
+    }
+  }
+
+  static String _mapAuthError(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account found for that email';
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Incorrect email or password';
+      case 'invalid-email':
+        return 'That email address looks invalid';
+      case 'user-disabled':
+        return 'This account has been disabled';
+      case 'too-many-requests':
+        return 'Too many attempts. Try again later';
+      default:
+        return 'Login failed. Please try again';
+    }
+  }
+
+  // ============ PURCHASE DATA METHODS ============
+
+  static Future<ApiResponse> savePurchaseEntry(Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        print('❌ No user logged in');
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      print('✅ User logged in: ${user.uid}');
+
+      data['userId'] = user.uid;
+      data['createdAt'] = FieldValue.serverTimestamp();
+      data['type'] = 'purchase';
+
+      print('📦 Saving purchase to Firestore...');
+      final docRef = await _db.collection('purchases').add(data);
+
+      print('✅ Purchase saved with ID: ${docRef.id}');
+
+      return ApiResponse(
+        success: true,
+        message: 'Purchase entry saved successfully',
+        data: {'id': docRef.id},
+      );
+    } catch (e) {
+      print('❌ Error saving purchase: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error saving purchase: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> saveSeedEntry(Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        print('❌ No user logged in');
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      print('✅ User logged in: ${user.uid}');
+
+      data['userId'] = user.uid;
+      data['createdAt'] = FieldValue.serverTimestamp();
+      data['type'] = 'seed';
+
+      print('📦 Saving seed to Firestore...');
+      final docRef = await _db.collection('purchases').add(data);
+
+      print('✅ Seed saved with ID: ${docRef.id}');
+
+      return ApiResponse(
+        success: true,
+        message: 'Seed entry saved successfully',
+        data: {'id': docRef.id},
+      );
+    } catch (e) {
+      print('❌ Error saving seed: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error saving seed: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> findEntry({
+    required String type,
+    required String centre,
+    required int reportNo,
+    required DateTime date,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final normalizedCentre = centre.trim().toLowerCase();
+
+      print('🔎 Looking up $type entry: centre=$centre, reportNo=$reportNo, date=$date');
+
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: type)
+          .where('reportNo', isEqualTo: reportNo)
+          .get();
+
+      Map<String, dynamic>? match;
+      String? matchId;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null &&
+              parsed.year == date.year &&
+              parsed.month == date.month &&
+              parsed.day == date.day) {
+            match = data;
+            matchId = doc.id;
+            break;
+          }
+        }
+      }
+
+      if (match == null) {
+        print('🔎 No matching entry found');
+        return ApiResponse(
+          success: false,
+          message: 'No entry found for that centre, report number & date',
+        );
+      }
+
+      match['id'] = matchId;
+      print('✅ Found entry: $matchId');
+
+      return ApiResponse(
+        success: true,
+        message: 'Entry found',
+        data: {'entry': match},
+      );
+    } catch (e) {
+      print('❌ Error finding entry: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error finding entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getLatestProgressiveArrivals({
+    required String type,
+    required String centre,
+    required DateTime beforeDate,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final normalizedCentre = centre.trim().toLowerCase();
+
+      print('🔍 Fetching latest progressive arrivals for $type at $centre before $beforeDate');
+
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: type)
+          .get();
+
+      Map<String, dynamic>? latestEntry;
+      DateTime? latestDate;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null) {
+            final entryDate = DateTime(parsed.year, parsed.month, parsed.day);
+            final beforeDateOnly = DateTime(beforeDate.year, beforeDate.month, beforeDate.day);
+
+            if (entryDate.isBefore(beforeDateOnly)) {
+              if (latestDate == null || entryDate.isAfter(latestDate)) {
+                latestDate = entryDate;
+                latestEntry = data;
+              }
+            }
+          }
+        }
+      }
+
+      if (latestEntry == null) {
+        print('🔍 No previous entry found for $centre - starting from 0');
+        return ApiResponse(
+          success: true,
+          message: 'No previous entry found',
+          data: {
+            'progArrivalsApmc': 0,
+            'progArrivalsOutside': 0,
+            'farmersProgressive': 0,
+            'mspValueProg': 0,
+            'balesPressedProg': 0,
+          },
+        );
+      }
+
+      final progApmc = (latestEntry['progArrivalsApmc'] as num?)?.toDouble() ?? 0;
+      final progOutside = (latestEntry['progArrivalsOutside'] as num?)?.toDouble() ?? 0;
+      final farmersProg = (latestEntry['farmersProgressive'] as num?)?.toDouble() ?? 0;
+      final mspProg = (latestEntry['mspValueProg'] as num?)?.toDouble() ?? 0;
+      final balesProg = (latestEntry['balesPressedProg'] as num?)?.toDouble() ?? 0;
+
+      print('✅ Found previous entry: progApmc=$progApmc, progOutside=$progOutside');
+
+      return ApiResponse(
+        success: true,
+        message: 'Previous entry found',
+        data: {
+          'progArrivalsApmc': progApmc,
+          'progArrivalsOutside': progOutside,
+          'farmersProgressive': farmersProg,
+          'mspValueProg': mspProg,
+          'balesPressedProg': balesProg,
+        },
+      );
+    } catch (e) {
+      print('❌ Error fetching latest progressive arrivals: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching previous entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getPurchaseEntries() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      print('📊 Fetching purchase entries for user: ${user.uid}');
+
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: 'purchase')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      final entries = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      print('📊 Found ${entries.length} purchase entries');
+
+      return ApiResponse(
+        success: true,
+        message: 'Entries fetched successfully',
+        data: {'entries': entries},
+      );
+    } catch (e) {
+      print('❌ Error fetching purchase entries: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching entries: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getSeedEntries() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      print('📊 Fetching seed entries for user: ${user.uid}');
+
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: 'seed')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      final entries = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      print('📊 Found ${entries.length} seed entries');
+
+      return ApiResponse(
+        success: true,
+        message: 'Entries fetched successfully',
+        data: {'entries': entries},
+      );
+    } catch (e) {
+      print('❌ Error fetching seed entries: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching entries: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> updateEntry(String docId, Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      data['updatedAt'] = FieldValue.serverTimestamp();
+
+      await _db.collection('purchases').doc(docId).update(data);
+
+      return ApiResponse(
+        success: true,
+        message: 'Entry updated successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error updating entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> deleteEntry(String docId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      await _db.collection('purchases').doc(docId).delete();
+
+      return ApiResponse(
+        success: true,
+        message: 'Entry deleted successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error deleting entry: $e',
+      );
+    }
+  }
+}
+
+class ApiResponse {
+  final bool success;
+  final String message;
+  final Map<String, dynamic>? data;
+
+  ApiResponse({required this.success, required this.message, this.data});
+}

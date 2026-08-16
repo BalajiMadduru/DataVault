@@ -1,0 +1,17 @@
+{"flutter":{"platforms":{"android":{"default":{"projectId":"workflow-5ef11","appId":"1:13185636801:android:218b754b7b50b0d7873740","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"workflow-5ef11","appId":"1:13185636801:ios:2f45b76356f3e0da873740","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"macos":{"default":{"projectId":"workflow-5ef11","appId":"1:13185636801:ios:2f45b76356f3e0da873740","uploadDebugSymbols":false,"fileOutput":"macos/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"workflow-5ef11","configurations":{"android":"1:13185636801:android:218b754b7b50b0d7873740","ios":"1:13185636801:ios:2f45b76356f3e0da873740","macos":"1:13185636801:ios:2f45b76356f3e0da873740","web":"1:13185636801:web:96ec14e7ca90caf0873740","windows":"1:13185636801:web:dbc63b9ac202ba82873740"}}}}}}
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
