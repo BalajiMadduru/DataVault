@@ -27,17 +27,34 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.packages
+.flutter-plugins
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
+build/
 /coverage/
+
+# If you're building an application, you may want to check-in your pubspec.lock
+# pubspec.lock
+
+# dotenv environment variables file
+.env*
 
 # Symbolication related
 app.*.symbols
 
 # Obfuscation related
 app.*.map.json
+
+# Avoid committing generated Javascript files
+*.dart.js
+*.info.json
+*.js
+*.js_
+*.js.deps
+*.js.map
 
 # Android Studio will place build artifacts here
 /android/app/debug
