@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,10 +73,19 @@ class _LoginScreenState extends State<LoginScreen> {
   // form has actually finished filling.
   bool _isFillingAccount = false;
 
-  static const _storage = FlutterSecureStorage();
   static const _prefKeyAccounts = 'saved_accounts';
   static const _prefKeyLastActiveEmail = 'last_active_email';
   static String _passwordKeyFor(String email) => 'password_$email';
+
+  // Initialize with Android-specific options for better compatibility
+  static final _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true, // More reliable on newer Android versions
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock,
+    ),
+  );
 
   @override
   void initState() {
@@ -97,17 +106,163 @@ class _LoginScreenState extends State<LoginScreen> {
   // Persistence
   // ---------------------------------------------------------------------
 
+  /// Platform-aware password storage - uses secure storage on mobile,
+  /// falls back to shared_preferences on web where secure storage is unreliable.
+  Future<void> _savePassword(String email, String password) async {
+    try {
+      if (kIsWeb) {
+        // Web: Use shared_preferences (flutter_secure_storage is unreliable on web)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_passwordKeyFor(email), password);
+        debugPrint('✅ Password saved to SharedPreferences for $email');
+      } else {
+        // Mobile: Use secure storage with retry logic
+        bool saved = false;
+        int retryCount = 0;
+
+        while (!saved && retryCount < 3) {
+          try {
+            await _storage.write(key: _passwordKeyFor(email), value: password);
+            saved = true;
+            debugPrint('✅ Password saved to SecureStorage for $email (attempt ${retryCount + 1})');
+          } catch (e) {
+            retryCount++;
+            debugPrint('⚠️ SecureStorage write attempt $retryCount failed: $e');
+            if (retryCount >= 3) {
+              // If secure storage fails after 3 attempts, fallback to shared_preferences
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString(_passwordKeyFor(email), password);
+              debugPrint('🔄 Fallback: Password saved to SharedPreferences for $email');
+              saved = true;
+            }
+            // Wait a bit before retry
+            await Future.delayed(const Duration(milliseconds: 200));
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to save password for $email: $e');
+      rethrow;
+    }
+  }
+
+  /// Platform-aware password retrieval - tries secure storage on mobile,
+  /// falls back to shared_preferences on web.
+  Future<String?> _getPassword(String email) async {
+    try {
+      String? password;
+
+      if (kIsWeb) {
+        // Web: Read from shared_preferences
+        final prefs = await SharedPreferences.getInstance();
+        password = prefs.getString(_passwordKeyFor(email));
+        debugPrint('🔍 Web: Password ${password != null ? "found" : "not found"} for $email');
+      } else {
+        // Mobile: Read from secure storage with retry
+        bool readSuccess = false;
+        int retryCount = 0;
+
+        while (!readSuccess && retryCount < 3) {
+          try {
+            password = await _storage.read(key: _passwordKeyFor(email));
+            readSuccess = true;
+            debugPrint('🔍 Mobile: Password ${password != null ? "found" : "not found"} for $email (attempt ${retryCount + 1})');
+          } catch (e) {
+            retryCount++;
+            debugPrint('⚠️ SecureStorage read attempt $retryCount failed: $e');
+            await Future.delayed(const Duration(milliseconds: 200));
+          }
+        }
+
+        // If still not found, check shared_preferences as fallback
+        if (password == null) {
+          final prefs = await SharedPreferences.getInstance();
+          password = prefs.getString(_passwordKeyFor(email));
+          if (password != null) {
+            debugPrint('🔄 Found password in SharedPreferences fallback for $email');
+            // Migrate back to secure storage if found in fallback
+            try {
+              await _storage.write(key: _passwordKeyFor(email), value: password);
+              await prefs.remove(_passwordKeyFor(email));
+              debugPrint('🔄 Migrated password from SharedPreferences to SecureStorage');
+            } catch (e) {
+              debugPrint('⚠️ Migration failed, keeping in SharedPreferences: $e');
+            }
+          }
+        }
+      }
+
+      return password;
+    } catch (e) {
+      debugPrint('❌ Failed to read password for $email: $e');
+      // If secure storage fails on mobile, try shared_preferences as fallback
+      if (!kIsWeb) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final password = prefs.getString(_passwordKeyFor(email));
+          if (password != null) {
+            debugPrint('🔄 Retrieved password from SharedPreferences fallback for $email');
+            return password;
+          }
+        } catch (fallbackError) {
+          debugPrint('❌ Fallback also failed: $fallbackError');
+        }
+      }
+      return null;
+    }
+  }
+
+  /// Platform-aware password deletion
+  Future<void> _deletePassword(String email) async {
+    try {
+      if (kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_passwordKeyFor(email));
+      } else {
+        // Try secure storage delete with retry
+        bool deleted = false;
+        int retryCount = 0;
+
+        while (!deleted && retryCount < 3) {
+          try {
+            await _storage.delete(key: _passwordKeyFor(email));
+            deleted = true;
+            debugPrint('🗑️ Password deleted from SecureStorage for $email');
+          } catch (e) {
+            retryCount++;
+            debugPrint('⚠️ SecureStorage delete attempt $retryCount failed: $e');
+            await Future.delayed(const Duration(milliseconds: 200));
+          }
+        }
+
+        // Also clean up any fallback entries
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_passwordKeyFor(email));
+        debugPrint('🗑️ Password deleted from SharedPreferences for $email');
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to delete password for $email: $e');
+    }
+  }
+
   Future<void> _loadSavedAccounts() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefKeyAccounts);
 
     List<SavedAccount> accounts = [];
     if (raw != null && raw.isNotEmpty) {
-      final list = jsonDecode(raw) as List<dynamic>;
-      accounts = list
-          .map((e) => SavedAccount.fromJson(e as Map<String, dynamic>))
-          .toList();
-      accounts.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+      try {
+        final list = jsonDecode(raw) as List<dynamic>;
+        accounts = list
+            .map((e) => SavedAccount.fromJson(e as Map<String, dynamic>))
+            .toList();
+        accounts.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+        debugPrint('📚 Loaded ${accounts.length} saved accounts');
+      } catch (e) {
+        debugPrint('❌ Failed to parse saved accounts: $e');
+        // Clear corrupted data
+        await prefs.remove(_prefKeyAccounts);
+      }
     }
 
     if (!mounted) return;
@@ -124,6 +279,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final prefs = await SharedPreferences.getInstance();
     final raw = jsonEncode(_savedAccounts.map((a) => a.toJson()).toList());
     await prefs.setString(_prefKeyAccounts, raw);
+    debugPrint('💾 Saved ${_savedAccounts.length} accounts');
   }
 
   // Adds/updates this account in the switcher list and stores its password
@@ -144,7 +300,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
 
     await _saveAccountsList();
-    await _storage.write(key: _passwordKeyFor(email), value: password);
+    await _savePassword(email, password);
     await prefs.setString(_prefKeyLastActiveEmail, email);
 
     if (mounted) setState(() {});
@@ -154,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _forgetAccount(String email) async {
     _savedAccounts.removeWhere((a) => a.email == email);
     await _saveAccountsList();
-    await _storage.delete(key: _passwordKeyFor(email));
+    await _deletePassword(email);
 
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getString(_prefKeyLastActiveEmail) == email) {
@@ -181,13 +337,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
     String? password;
     bool storageFailed = false;
+
     try {
-      password = await _storage.read(key: _passwordKeyFor(email));
+      password = await _getPassword(email);
+      if (password == null) {
+        storageFailed = true;
+        debugPrint('⚠️ No password found for $email');
+      }
     } catch (e, stackTrace) {
-      // Secure storage read failed (this is far more common on web, where
-      // it falls back to browser storage rather than the OS keychain).
       storageFailed = true;
-      debugPrint('Failed to read stored password for $email: $e');
+      debugPrint('❌ Failed to read stored password for $email: $e');
       debugPrint('$stackTrace');
     }
 
@@ -215,13 +374,130 @@ class _LoginScreenState extends State<LoginScreen> {
     _isProgrammaticFill = false;
 
     if ((password == null || password.isEmpty) && mounted) {
+      // Show a more helpful message with option to re-enter
+      _showPasswordRequiredDialog(email);
+    }
+  }
+
+  // Show dialog asking user to re-enter password
+  Future<void> _showPasswordRequiredDialog(String email) async {
+    final passwordController = TextEditingController();
+    bool isSubmitting = false;
+
+    final shouldRetry = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Password Required'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Please enter your password for $email',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: passwordController,
+                    obscureText: true,
+                    decoration: InputDecoration(
+                      hintText: 'Enter password',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                    ),
+                    onFieldSubmitted: (_) {
+                      if (passwordController.text.isNotEmpty) {
+                        Navigator.of(dialogContext).pop(true);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                    if (passwordController.text.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please enter your password'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                      return;
+                    }
+                    setDialogState(() => isSubmitting = true);
+
+                    // Save the password for future use
+                    try {
+                      await _savePassword(email, passwordController.text);
+                      setDialogState(() => isSubmitting = false);
+                      if (mounted) {
+                        Navigator.of(dialogContext).pop(true);
+                      }
+                    } catch (e) {
+                      setDialogState(() => isSubmitting = false);
+                      if (mounted) {
+                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to save password: $e'),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F172A),
+                  ),
+                  child: isSubmitting
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Text('Save & Continue',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (shouldRetry == true && mounted) {
+      setState(() {
+        _passwordController.text = passwordController.text;
+      });
+      // Auto-submit after saving password
+      _handleLogin();
+    } else if (shouldRetry == false && mounted) {
+      // User cancelled - clear the form
+      _startNewAccount();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            storageFailed
-                ? "Couldn't retrieve your saved password - please enter it again."
-                : 'Please re-enter your password for this account.',
-          ),
+        const SnackBar(
+          content: Text('Please enter your password manually to continue'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -294,6 +570,15 @@ class _LoginScreenState extends State<LoginScreen> {
         // just skip remembering this device and continue to the dashboard.
         debugPrint('Failed to save account locally: $e');
         debugPrint('$stackTrace');
+        // Show warning but continue
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Signed in but failed to save locally'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
 
       TextInput.finishAutofillContext();
