@@ -2314,7 +2314,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
 
   void _showSeedFactoryFormDialog(FactoryData? factoryData) {
     final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
-    final varietyController = TextEditingController(text: factoryData?.variety ?? '');
+    String? selectedVariety = factoryData?.variety;
     final realisableController = TextEditingController(text: factoryData?.progressiveRealisable.toString() ?? '');
     final soldController = TextEditingController(text: factoryData?.progressiveSold.toString() ?? '');
     final unsoldController = TextEditingController(text: factoryData?.dayUnsold.toString() ?? '');
@@ -2324,154 +2324,191 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
 
     final isEditing = factoryData != null;
 
+    // Get the variety list from the parent
+    final List<String> varieties = _varieties;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
-        content: SizedBox(
-          width: 500,
-          child: Form(
-            key: _factoryFormKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildTextField(
-                    controller: nameController,
-                    label: 'Factory Name',
-                    hint: 'e.g., A Yesh Patil Cotton Company',
-                    icon: Icons.factory,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: varietyController,
-                    label: 'Variety',
-                    hint: 'e.g., BB MOD',
-                    icon: Icons.eco,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
+            content: SizedBox(
+              width: 500,
+              child: Form(
+                key: _factoryFormKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: realisableController,
-                          label: 'Progressive Realisable (Total)',
-                          hint: 'e.g., 70',
-                          icon: Icons.trending_up,
-                          keyboardType: TextInputType.number,
-                        ),
+                      _buildTextField(
+                        controller: nameController,
+                        label: 'Factory Name',
+                        hint: 'e.g., A Yesh Patil Cotton Company',
+                        icon: Icons.factory,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: soldController,
-                          label: 'Progressive Sold',
-                          hint: 'e.g., 0',
-                          icon: Icons.sell,
-                          keyboardType: TextInputType.number,
+                      const SizedBox(height: 12),
+
+                      // Variety Dropdown
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedVariety ?? _varieties.first,
+                        decoration: InputDecoration(
+                          labelText: 'Variety',
+                          hintText: 'Select variety',
+                          prefixIcon: const Icon(Icons.eco, color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         ),
+                        items: _varieties.map((String variety) {
+                          return DropdownMenuItem(
+                            value: variety,
+                            child: Text(variety),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedVariety = value;
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please select a variety';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: realisableController,
+                              label: 'Progressive Realisable (Total)',
+                              hint: 'e.g., 70',
+                              icon: Icons.trending_up,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: soldController,
+                              label: 'Progressive Sold',
+                              hint: 'e.g., 0',
+                              icon: Icons.sell,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: unsoldController,
+                              label: 'Day\'s Unsold',
+                              hint: 'e.g., 70',
+                              icon: Icons.inbox,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: kapasController,
+                              label: 'Kapas Form',
+                              hint: 'e.g., 0',
+                              icon: Icons.format_align_left,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildTextField(
+                              controller: readyController,
+                              label: 'Ready Form',
+                              hint: 'e.g., 70',
+                              icon: Icons.check_circle_outline,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildTextField(
+                              controller: baseRateController,
+                              label: 'Base Rate',
+                              hint: 'e.g., 3700',
+                              icon: Icons.currency_rupee,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: unsoldController,
-                          label: 'Day\'s Unsold',
-                          hint: 'e.g., 70',
-                          icon: Icons.inbox,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: kapasController,
-                          label: 'Kapas Form',
-                          hint: 'e.g., 0',
-                          icon: Icons.format_align_left,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: readyController,
-                          label: 'Ready Form',
-                          hint: 'e.g., 70',
-                          icon: Icons.check_circle_outline,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: baseRateController,
-                          label: 'Base Rate',
-                          hint: 'e.g., 3700',
-                          icon: Icons.currency_rupee,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_factoryFormKey.currentState!.validate()) {
-                final progressiveRealisable = int.tryParse(realisableController.text) ?? 0;
-                final progressiveSold = int.tryParse(soldController.text) ?? 0;
-                final dayUnsold = int.tryParse(unsoldController.text) ?? 0;
-                final kapasForm = int.tryParse(kapasController.text) ?? 0;
-                final readyForm = int.tryParse(readyController.text) ?? 0;
-                final total = kapasForm + readyForm;
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (_factoryFormKey.currentState!.validate()) {
+                    final progressiveRealisable = int.tryParse(realisableController.text) ?? 0;
+                    final progressiveSold = int.tryParse(soldController.text) ?? 0;
+                    final dayUnsold = int.tryParse(unsoldController.text) ?? 0;
+                    final kapasForm = int.tryParse(kapasController.text) ?? 0;
+                    final readyForm = int.tryParse(readyController.text) ?? 0;
+                    final total = kapasForm + readyForm;
 
-                final factory = FactoryData(
-                  factoryName: nameController.text,
-                  variety: varietyController.text,
-                  progressiveRealisable: progressiveRealisable,
-                  progressiveSold: progressiveSold,
-                  dayUnsold: dayUnsold,
-                  kapasForm: kapasForm,
-                  readyForm: readyForm,
-                  total: total,
-                  baseRate: int.tryParse(baseRateController.text) ?? 0,
-                );
+                    final factory = FactoryData(
+                      factoryName: nameController.text,
+                      variety: selectedVariety ?? '',
+                      progressiveRealisable: progressiveRealisable,
+                      progressiveSold: progressiveSold,
+                      dayUnsold: dayUnsold,
+                      kapasForm: kapasForm,
+                      readyForm: readyForm,
+                      total: total,
+                      baseRate: int.tryParse(baseRateController.text) ?? 0,
+                    );
 
-                setState(() {
-                  if (isEditing) {
-                    final index = _seedFactories.indexOf(factoryData);
-                    _seedFactories[index] = factory;
-                  } else {
-                    _seedFactories.add(factory);
+                    setState(() {
+                      if (isEditing) {
+                        final index = _seedFactories.indexOf(factoryData);
+                        _seedFactories[index] = factory;
+                      } else {
+                        _seedFactories.add(factory);
+                      }
+                    });
+
+                    Navigator.of(context).pop();
                   }
-                });
-
-                Navigator.of(context).pop();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
-            ),
-            child: Text(isEditing ? 'Update' : 'Save'),
-          ),
-        ],
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
+                ),
+                child: Text(isEditing ? 'Update' : 'Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
