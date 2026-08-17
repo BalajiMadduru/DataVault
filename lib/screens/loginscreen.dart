@@ -58,9 +58,20 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _keepSignedIn = true;
 
+  // Explicit mode toggle. Whether we're signing in or creating a new
+  // account is now always a deliberate user choice - it's never guessed
+  // from a Firebase error code (see apiservice.dart for why that was
+  // causing intermittent login failures).
+  bool _isRegisterMode = false;
+
   List<SavedAccount> _savedAccounts = [];
   String? _selectedAccountEmail;
   bool _isProgrammaticFill = false;
+
+  // True while _fillAccount() is awaiting the password read from secure
+  // storage. Used to block "Sign In" so a fast tap can't fire before the
+  // form has actually finished filling.
+  bool _isFillingAccount = false;
 
   static const _storage = FlutterSecureStorage();
   static const _prefKeyAccounts = 'saved_accounts';
@@ -163,19 +174,58 @@ class _LoginScreenState extends State<LoginScreen> {
   // Fills the form with a saved account's email + password so the user
   // only has to tap "Sign In" to switch.
   Future<void> _fillAccount(String email) async {
-    final password = await _storage.read(key: _passwordKeyFor(email));
-    final account = _savedAccounts.firstWhere((a) => a.email == email);
+    setState(() {
+      _isFillingAccount = true;
+      _selectedAccountEmail = email;
+    });
+
+    String? password;
+    bool storageFailed = false;
+    try {
+      password = await _storage.read(key: _passwordKeyFor(email));
+    } catch (e, stackTrace) {
+      // Secure storage read failed (this is far more common on web, where
+      // it falls back to browser storage rather than the OS keychain).
+      storageFailed = true;
+      debugPrint('Failed to read stored password for $email: $e');
+      debugPrint('$stackTrace');
+    }
+
     if (!mounted) return;
+
+    final account = _savedAccounts.firstWhere(
+          (a) => a.email == email,
+      orElse: () => SavedAccount(
+        email: email,
+        mobile: '',
+        username: '',
+        savedAt: DateTime.now(),
+      ),
+    );
+
     _isProgrammaticFill = true;
     setState(() {
-      _selectedAccountEmail = email;
       _emailController.text = email;
       _passwordController.text = password ?? '';
       _mobileController.text = account.mobile;
       _usernameController.text = account.username;
       _keepSignedIn = true;
+      _isFillingAccount = false;
     });
     _isProgrammaticFill = false;
+
+    if ((password == null || password.isEmpty) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            storageFailed
+                ? "Couldn't retrieve your saved password - please enter it again."
+                : 'Please re-enter your password for this account.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
   }
 
   // Clears the form to start a fresh ("+ Add account") login.
@@ -204,7 +254,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final mobile = _mobileController.text.trim();
     final username = _usernameController.text.trim();
 
-    final result = await ApiService.login(
+    final result = _isRegisterMode
+        ? await ApiService.register(
+      email: email,
+      password: password,
+      mobile: mobile,
+      username: username,
+      keepSignedIn: _keepSignedIn,
+    )
+        : await ApiService.login(
       email: email,
       password: password,
       mobile: mobile,
@@ -414,18 +472,20 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Color(0xFF38BDF8), size: 28),
                       ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'Welcome back',
-                        style: TextStyle(
+                      Text(
+                        _isRegisterMode ? 'Create your account' : 'Welcome back',
+                        style: const TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w700,
                           color: Color(0xFF0F172A),
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'Sign in to continue to Workflo',
-                        style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                      Text(
+                        _isRegisterMode
+                            ? 'Set up a new account for Workflo'
+                            : 'Sign in to continue to Workflo',
+                        style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
                       ),
 
                       if (_savedAccounts.isNotEmpty) ...[
@@ -578,7 +638,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         width: double.infinity,
                         height: 50,
                         child: ElevatedButton(
-                          onPressed: _isLoading ? null : _handleLogin,
+                          onPressed:
+                          (_isLoading || _isFillingAccount) ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF0F172A),
                             shape: RoundedRectangleBorder(
@@ -595,12 +656,30 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Colors.white,
                             ),
                           )
-                              : const Text(
-                            'Sign In',
-                            style: TextStyle(
+                              : Text(
+                            _isRegisterMode ? 'Create account' : 'Sign In',
+                            style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: TextButton(
+                          onPressed: _isLoading
+                              ? null
+                              : () => setState(() => _isRegisterMode = !_isRegisterMode),
+                          child: Text(
+                            _isRegisterMode
+                                ? 'Already have an account? Sign in'
+                                : "New here? Create an account",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF38BDF8),
                             ),
                           ),
                         ),

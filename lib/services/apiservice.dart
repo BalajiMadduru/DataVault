@@ -7,11 +7,12 @@ class ApiService {
   static final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // ============ AUTH METHODS ============
+
   static Future<ApiResponse> login({
     required String email,
     required String password,
     required String mobile,
-    required String username,  // Added username parameter
+    required String username,
     bool keepSignedIn = true,
   }) async {
     try {
@@ -28,20 +29,8 @@ class ApiService {
 
       return _saveDailyRecordAndRespond(credential, email, mobile, username);
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-        return _createAccountAndLogin(
-          email: email,
-          password: password,
-          mobile: mobile,
-          username: username,
-        );
-      }
-      print('FIREBASE AUTH ERROR CODE: ${e.code}');
-      print('FIREBASE AUTH ERROR MESSAGE: ${e.message}');
       return ApiResponse(success: false, message: _mapAuthError(e.code));
-    } catch (e, stackTrace) {
-      print('LOGIN ERROR: $e');
-      print('STACK: $stackTrace');
+    } catch (e) {
       return ApiResponse(
         success: false,
         message: 'Something went wrong. Please try again.',
@@ -49,13 +38,20 @@ class ApiService {
     }
   }
 
-  static Future<ApiResponse> _createAccountAndLogin({
+  static Future<ApiResponse> register({
     required String email,
     required String password,
     required String mobile,
     required String username,
+    bool keepSignedIn = true,
   }) async {
     try {
+      if (kIsWeb) {
+        await _auth.setPersistence(
+          keepSignedIn ? Persistence.LOCAL : Persistence.SESSION,
+        );
+      }
+
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -71,7 +67,7 @@ class ApiService {
       if (e.code == 'email-already-in-use') {
         return ApiResponse(
           success: false,
-          message: 'Incorrect email or password',
+          message: 'An account already exists for that email. Try signing in instead.',
         );
       }
       return ApiResponse(success: false, message: _mapAuthError(e.code));
@@ -110,7 +106,6 @@ class ApiService {
     await _auth.signOut();
   }
 
-  // ============ GET CURRENT USER PROFILE ============
   static Future<ApiResponse> getCurrentUserProfile() async {
     try {
       final user = _auth.currentUser;
@@ -169,8 +164,76 @@ class ApiService {
         return 'This account has been disabled';
       case 'too-many-requests':
         return 'Too many attempts. Try again later';
+      case 'weak-password':
+        return 'Please choose a stronger password';
+      case 'network-request-failed':
+        return 'Network error. Check your connection and try again';
       default:
         return 'Login failed. Please try again';
+    }
+  }
+
+  // ============ GET NEXT REPORT NUMBER ============
+
+  static Future<ApiResponse> getNextReportNo({
+    required String type,
+    required String centre,
+    required DateTime date,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedDate = DateTime(date.year, date.month, date.day);
+
+      // Get all entries for this user, type, and centre
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: type)
+          .get();
+
+      int maxReportNo = 0;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null) {
+            final entryDate = DateTime(parsed.year, parsed.month, parsed.day);
+            if (entryDate.isAtSameMomentAs(normalizedDate)) {
+              final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+              if (reportNo > maxReportNo) {
+                maxReportNo = reportNo;
+              }
+            }
+          }
+        }
+      }
+
+      final nextReportNo = maxReportNo + 1;
+
+      return ApiResponse(
+        success: true,
+        message: 'Next report number generated',
+        data: {'nextReportNo': nextReportNo},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Failed to generate report number: $e',
+      );
     }
   }
 
@@ -180,23 +243,17 @@ class ApiService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        print('❌ No user logged in');
         return ApiResponse(
           success: false,
           message: 'User not logged in',
         );
       }
 
-      print('✅ User logged in: ${user.uid}');
-
       data['userId'] = user.uid;
       data['createdAt'] = FieldValue.serverTimestamp();
       data['type'] = 'purchase';
 
-      print('📦 Saving purchase to Firestore...');
       final docRef = await _db.collection('purchases').add(data);
-
-      print('✅ Purchase saved with ID: ${docRef.id}');
 
       return ApiResponse(
         success: true,
@@ -204,7 +261,6 @@ class ApiService {
         data: {'id': docRef.id},
       );
     } catch (e) {
-      print('❌ Error saving purchase: $e');
       return ApiResponse(
         success: false,
         message: 'Error saving purchase: $e',
@@ -216,23 +272,17 @@ class ApiService {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        print('❌ No user logged in');
         return ApiResponse(
           success: false,
           message: 'User not logged in',
         );
       }
 
-      print('✅ User logged in: ${user.uid}');
-
       data['userId'] = user.uid;
       data['createdAt'] = FieldValue.serverTimestamp();
       data['type'] = 'seed';
 
-      print('📦 Saving seed to Firestore...');
       final docRef = await _db.collection('purchases').add(data);
-
-      print('✅ Seed saved with ID: ${docRef.id}');
 
       return ApiResponse(
         success: true,
@@ -240,7 +290,6 @@ class ApiService {
         data: {'id': docRef.id},
       );
     } catch (e) {
-      print('❌ Error saving seed: $e');
       return ApiResponse(
         success: false,
         message: 'Error saving seed: $e',
@@ -264,8 +313,6 @@ class ApiService {
       }
 
       final normalizedCentre = centre.trim().toLowerCase();
-
-      print('🔎 Looking up $type entry: centre=$centre, reportNo=$reportNo, date=$date');
 
       final querySnapshot = await _db
           .collection('purchases')
@@ -298,7 +345,6 @@ class ApiService {
       }
 
       if (match == null) {
-        print('🔎 No matching entry found');
         return ApiResponse(
           success: false,
           message: 'No entry found for that centre, report number & date',
@@ -306,7 +352,6 @@ class ApiService {
       }
 
       match['id'] = matchId;
-      print('✅ Found entry: $matchId');
 
       return ApiResponse(
         success: true,
@@ -314,7 +359,6 @@ class ApiService {
         data: {'entry': match},
       );
     } catch (e) {
-      print('❌ Error finding entry: $e');
       return ApiResponse(
         success: false,
         message: 'Error finding entry: $e',
@@ -337,8 +381,6 @@ class ApiService {
       }
 
       final normalizedCentre = centre.trim().toLowerCase();
-
-      print('🔍 Fetching latest progressive arrivals for $type at $centre before $beforeDate');
 
       final querySnapshot = await _db
           .collection('purchases')
@@ -373,7 +415,6 @@ class ApiService {
       }
 
       if (latestEntry == null) {
-        print('🔍 No previous entry found for $centre - starting from 0');
         return ApiResponse(
           success: true,
           message: 'No previous entry found',
@@ -393,8 +434,6 @@ class ApiService {
       final mspProg = (latestEntry['mspValueProg'] as num?)?.toDouble() ?? 0;
       final balesProg = (latestEntry['balesPressedProg'] as num?)?.toDouble() ?? 0;
 
-      print('✅ Found previous entry: progApmc=$progApmc, progOutside=$progOutside');
-
       return ApiResponse(
         success: true,
         message: 'Previous entry found',
@@ -407,7 +446,6 @@ class ApiService {
         },
       );
     } catch (e) {
-      print('❌ Error fetching latest progressive arrivals: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching previous entry: $e',
@@ -425,8 +463,6 @@ class ApiService {
         );
       }
 
-      print('📊 Fetching purchase entries for user: ${user.uid}');
-
       final querySnapshot = await _db
           .collection('purchases')
           .where('userId', isEqualTo: user.uid)
@@ -440,15 +476,12 @@ class ApiService {
         return data;
       }).toList();
 
-      print('📊 Found ${entries.length} purchase entries');
-
       return ApiResponse(
         success: true,
         message: 'Entries fetched successfully',
         data: {'entries': entries},
       );
     } catch (e) {
-      print('❌ Error fetching purchase entries: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching entries: $e',
@@ -466,8 +499,6 @@ class ApiService {
         );
       }
 
-      print('📊 Fetching seed entries for user: ${user.uid}');
-
       final querySnapshot = await _db
           .collection('purchases')
           .where('userId', isEqualTo: user.uid)
@@ -481,15 +512,12 @@ class ApiService {
         return data;
       }).toList();
 
-      print('📊 Found ${entries.length} seed entries');
-
       return ApiResponse(
         success: true,
         message: 'Entries fetched successfully',
         data: {'entries': entries},
       );
     } catch (e) {
-      print('❌ Error fetching seed entries: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching entries: $e',

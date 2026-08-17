@@ -3,19 +3,23 @@ import '../enums/report_type.dart';
 
 class PreviewDialog extends StatelessWidget {
   final ReportType type;
+  final Map<String, dynamic>? data;
 
   const PreviewDialog({
     super.key,
     required this.type,
+    this.data,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isPurchase = type == ReportType.dailyPurchase;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
+        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 600),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -25,27 +29,48 @@ class PreviewDialog extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2FE),
+                    color: isPurchase ? const Color(0xFFE0F2FE) : const Color(0xFFD1FAE5),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
-                    Icons.preview_rounded,
-                    color: Color(0xFF0F172A),
+                  child: Icon(
+                    isPurchase ? Icons.shopping_basket_rounded : Icons.eco_rounded,
+                    color: const Color(0xFF0F172A),
                     size: 24,
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  '${type.label} - Preview',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                Expanded(
+                  child: Text(
+                    '${isPurchase ? 'Purchase' : 'Seed'} Report Preview',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
                   ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: const Icon(
+                      Icons.close,
+                      size: 20,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  tooltip: 'Close',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
             const SizedBox(height: 20),
+
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -54,80 +79,13 @@ class PreviewDialog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        type == ReportType.dailyPurchase
-                            ? Icons.shopping_basket_rounded
-                            : Icons.eco_rounded,
-                        size: 48,
-                        color: const Color(0xFF94A3B8),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        type == ReportType.dailyPurchase
-                            ? 'Purchase Report Preview'
-                            : 'Seed Report Preview',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Date: ${DateTime.now().toString().split(' ')[0]}',
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Total Entries: 1',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            Column(
-                              children: [
-                                Text('Total Qtls', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                                Text('109.2', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              ],
-                            ),
-                            Column(
-                              children: [
-                                Text('Bales', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                                Text('22', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              ],
-                            ),
-                            Column(
-                              children: [
-                                Text('Farmers', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                                Text('2', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                child: isPurchase
+                    ? _buildPurchasePreview(data)
+                    : _buildSeedPreview(data),
               ),
             ),
             const SizedBox(height: 16),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -141,13 +99,13 @@ class PreviewDialog extends StatelessWidget {
                     Navigator.of(context).pop();
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Generating PDF...'),
+                        content: Text('Exporting to Excel...'),
                         duration: Duration(seconds: 2),
                       ),
                     );
                   },
-                  icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                  label: const Text('Export PDF'),
+                  icon: const Icon(Icons.download, size: 18),
+                  label: const Text('Export Excel'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
                     shape: RoundedRectangleBorder(
@@ -160,6 +118,392 @@ class PreviewDialog extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPurchasePreview(Map<String, dynamic>? data) {
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0F172A),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+            ),
+            child: const Text(
+              'PURCHASE REPORT',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                letterSpacing: 1,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Company Name
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Centre & Date
+          Row(
+            children: [
+              const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  data?['centre']?.toString().toUpperCase() ?? 'DEVADURGA',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ),
+              const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                data?['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+
+          // Report No
+          Row(
+            children: [
+              const Text('REPORT NO.:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                data?['reportNo']?.toString() ?? '1',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+              const Spacer(),
+              const Text('VARIETY:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(width: 4),
+              Text(
+                data?['variety']?.toString() ?? 'BB MOD',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Data Table
+          _buildPurchaseTable(data),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPurchaseTable(Map<String, dynamic>? data) {
+    final rows = [
+      ['1', "DAY'S ARRIVALS IN QTLS / BALES", 'APMC:', data?['dayArrivalsApmc']?.toString() ?? '0'],
+      ['', '', 'OUTSIDE APMC:', data?['dayArrivalsOutside']?.toString() ?? '0'],
+      ['2', 'PROG. ARRIVALS IN QTLS / BALES', 'APMC:', data?['progArrivalsApmc']?.toString() ?? '0'],
+      ['', '', 'OUTSIDE APMC:', data?['progArrivalsOutside']?.toString() ?? '0'],
+      ['3', 'MOISTURE PERCENTAGE (%)', '', data?['moisture']?.toString() ?? '8-20%'],
+      ['4', 'MARKET RATE (KAPAS RATE IN QTLS)', 'HIGHEST', data?['marketRateHighest']?.toString() ?? '0'],
+      ['', '', 'LOWEST', data?['marketRateLowest']?.toString() ?? '0'],
+      ['', '', 'AVERAGE', data?['marketRateAverage']?.toString() ?? '0'],
+      ['5', 'MARKET OUT TURN', '', '-'],
+      ['6', 'MARKET EXPENSES', '', '-'],
+      ['7', 'MARKET SHORTAGE', '', '-'],
+      ['8', 'MARKET PADTHA', '', '-'],
+      ['9', 'MARKET COTTON SEED RATE (PER QTLS)', 'HIGHEST', data?['marketSeedRateHighest']?.toString() ?? '0'],
+      ['', '', 'LOWEST', data?['marketSeedRateLowest']?.toString() ?? '0'],
+      ['10', 'CCI PURCHASE IN', 'QTLS', data?['cciPurchaseQtls']?.toString() ?? '0'],
+      ['', '', 'BALES', data?['cciPurchaseBales']?.toString() ?? '0'],
+      ['', '', 'Kapas Moisture %', data?['cciKapasMoisture']?.toString() ?? '0'],
+      ['11', 'MSP VALUE (IN LAKHS)', 'DAY WISE', data?['mspValueDay']?.toString() ?? '0'],
+      ['', '', 'PROGRESSIVE', data?['mspValueProg']?.toString() ?? '0'],
+      ['12', 'No. OF FARMERS BENEFITTED', 'DAY WISE', data?['farmersDay']?.toString() ?? '0'],
+      ['', '', 'PROGRESSIVE', data?['farmersProgressive']?.toString() ?? '0'],
+      ['13', 'CCI RATE (KAPAS RATE IN QTLS)', 'HIGHEST', data?['cciRateHighest']?.toString() ?? '0'],
+      ['', '', 'LOWEST', data?['cciRateLowest']?.toString() ?? '0'],
+      ['', '', 'AVERAGE', data?['cciRateAverage']?.toString() ?? '0'],
+      ['14', 'CCI COTTON SEED RATE', '', data?['cciSeedRate']?.toString() ?? '0'],
+      ['15', 'CCI OUT TURN', '', data?['cciOutTurn']?.toString() ?? '0'],
+      ['16', 'CCI SHORTAGE', '', data?['cciShortage']?.toString() ?? '0'],
+      ['17', 'CCI EXPENSES', '', data?['cciExpenses']?.toString() ?? '0'],
+      ['18', "PROCESSING CYCLE DAY'S", '', data?['processingCycle']?.toString() ?? '0'],
+      ['19', 'CCI PADTHA', '', data?['cciPadtha']?.toString() ?? '0'],
+      ['20', 'PROGRESSIVE PURCHASE', 'QTLS', data?['progPurchaseQtls']?.toString() ?? '0'],
+      ['', '', 'BALES', data?['progPurchaseBales']?.toString() ?? '0'],
+      ['21', 'PROGRESSIVE', 'PADTHA', data?['progPadtha']?.toString() ?? '0'],
+      ['', '', 'AVG. RATE', data?['progAvgRate']?.toString() ?? '0'],
+      ['22', 'BALES PRESSED DETAILS', 'TODAYS', data?['balesPressedToday']?.toString() ?? '0'],
+      ['', '', 'PROGRESSIVE', data?['balesPressedProg']?.toString() ?? '0'],
+      ['23', 'TOTAL BALES SHIFTED TO GODOWN', '', data?['totalBalesShifted']?.toString() ?? '0'],
+      ['24', 'SAMPLE SENT TO B.O FOR TESTING', '', data?['sampleSent']?.toString() ?? '-'],
+      ['25', 'HEAP RESULT SENT TO B.O', '', data?['heapResult']?.toString() ?? '-'],
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: rows.map((row) {
+          final isBold = row[0]?.isNotEmpty ?? false;
+          return Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: isBold ? const Color(0xFFF8FAFC) : Colors.white,
+              border: const Border(
+                bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 30,
+                  child: Text(
+                    row[0] ?? '',
+                    style: TextStyle(
+                      fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
+                      fontSize: 10,
+                      color: isBold ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    row[1] ?? '',
+                    style: TextStyle(
+                      fontWeight: isBold ? FontWeight.w600 : FontWeight.normal,
+                      fontSize: 10,
+                      color: isBold ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    row[2] ?? '',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 10,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 60,
+                  child: Text(
+                    row[3] ?? '',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w500,
+                      fontSize: 10,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSeedPreview(Map<String, dynamic>? data) {
+    List<Map<String, dynamic>> factories = [];
+    final factoriesData = data?['seedFactories'] ?? data?['factories'];
+    if (factoriesData is List) {
+      factories = List<Map<String, dynamic>>.from(factoriesData);
+    } else if (factoriesData is Map<String, dynamic>) {
+      factories = [factoriesData];
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+          ),
+          child: const Text(
+            'SEED REPORT',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              letterSpacing: 1,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Centre & Date
+        Row(
+          children: [
+            const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                data?['centre']?.toString().toUpperCase() ?? 'DEVADURGA',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(
+              data?['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+
+        // Report No
+        Row(
+          children: [
+            const Text('REPORT NO.:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(
+              data?['reportNo']?.toString() ?? '1',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        if (factories.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'No factory data available',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+              ),
+            ),
+          )
+        else
+        // Seed Factory Table
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFCBD5E1)),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header Row
+                  Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE2E8F0),
+                      border: Border(
+                        bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(width: 35, child: _buildTableHeader('S.No.')),
+                        SizedBox(width: 160, child: _buildTableHeader('Ginning & pressing factory name')),
+                        SizedBox(width: 70, child: _buildTableHeader('Variety')),
+                        SizedBox(width: 80, child: _buildTableHeader('Progressive Realisable (Total)')),
+                        SizedBox(width: 70, child: _buildTableHeader('Progressive Sold')),
+                        SizedBox(width: 65, child: _buildTableHeader("Day's Unsold")),
+                        SizedBox(width: 60, child: _buildTableHeader('Kapas Form')),
+                        SizedBox(width: 60, child: _buildTableHeader('Ready Form')),
+                        SizedBox(width: 50, child: _buildTableHeader('Total')),
+                        SizedBox(width: 60, child: _buildTableHeader('Base Rate')),
+                      ],
+                    ),
+                  ),
+
+                  // Data Rows
+                  ...factories.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final factory = entry.value;
+                    return Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
+                        border: const Border(
+                          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                      child: Row(
+                        children: [
+                          SizedBox(width: 35, child: Text('${index + 1}', style: const TextStyle(fontSize: 10))),
+                          SizedBox(
+                            width: 160,
+                            child: Text(
+                              factory['factoryName']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 10),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          SizedBox(width: 70, child: Text(factory['variety']?.toString() ?? '', style: const TextStyle(fontSize: 10))),
+                          SizedBox(width: 80, child: Text(factory['progressiveRealisable']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 70, child: Text(factory['progressiveSold']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 65, child: Text(factory['dayUnsold']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 60, child: Text(factory['kapasForm']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 60, child: Text(factory['readyForm']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 50, child: Text(
+                            (factory['total'] ?? (factory['kapasForm'] ?? 0) + (factory['readyForm'] ?? 0)).toString(),
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                            textAlign: TextAlign.right,
+                          )),
+                          SizedBox(width: 60, child: Text(factory['baseRate']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 9,
+        color: Color(0xFF0F172A),
+      ),
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

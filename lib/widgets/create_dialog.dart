@@ -1,11 +1,67 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../enums/report_type.dart';
 import '../services/apiservice.dart';
 
-// Simple factory data model for table view
+void debugLog(String message) {
+  if (kDebugMode) {
+    print(message);
+  }
+}
+
+// Factory data model for seed report
 class FactoryData {
+  String factoryName;
+  String variety;
+  int progressiveRealisable;
+  int progressiveSold;
+  int dayUnsold;
+  int kapasForm;
+  int readyForm;
+  int total;
+  int baseRate;
+
+  FactoryData({
+    required this.factoryName,
+    required this.variety,
+    required this.progressiveRealisable,
+    required this.progressiveSold,
+    required this.dayUnsold,
+    required this.kapasForm,
+    required this.readyForm,
+    required this.total,
+    required this.baseRate,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'factoryName': factoryName,
+    'variety': variety,
+    'progressiveRealisable': progressiveRealisable,
+    'progressiveSold': progressiveSold,
+    'dayUnsold': dayUnsold,
+    'kapasForm': kapasForm,
+    'readyForm': readyForm,
+    'total': total,
+    'baseRate': baseRate,
+  };
+
+  factory FactoryData.fromJson(Map<String, dynamic> json) => FactoryData(
+    factoryName: json['factoryName'] ?? '',
+    variety: json['variety'] ?? '',
+    progressiveRealisable: json['progressiveRealisable'] ?? 0,
+    progressiveSold: json['progressiveSold'] ?? 0,
+    dayUnsold: json['dayUnsold'] ?? 0,
+    kapasForm: json['kapasForm'] ?? 0,
+    readyForm: json['readyForm'] ?? 0,
+    total: json['total'] ?? 0,
+    baseRate: json['baseRate'] ?? 0,
+  );
+}
+
+// Simple factory data model for purchase table view
+class PurchaseFactoryData {
   String factoryName;
   int heapNo;
   double heapQty;
@@ -15,7 +71,7 @@ class FactoryData {
   int readySeedUnsold;
   int baseRate;
 
-  FactoryData({
+  PurchaseFactoryData({
     required this.factoryName,
     required this.heapNo,
     required this.heapQty,
@@ -37,7 +93,7 @@ class FactoryData {
     'baseRate': baseRate,
   };
 
-  factory FactoryData.fromJson(Map<String, dynamic> json) => FactoryData(
+  factory PurchaseFactoryData.fromJson(Map<String, dynamic> json) => PurchaseFactoryData(
     factoryName: json['factoryName'] ?? '',
     heapNo: json['heapNo'] ?? 0,
     heapQty: (json['heapQty'] ?? 0).toDouble(),
@@ -84,12 +140,13 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
   final _reportNoController = TextEditingController();
   final _moistureController = TextEditingController();
 
-  // ============ FARMERS BENEFITTED ============
+  // ============ PURCHASE FIELDS ============
+  // Farmers Benefitted
   final _farmersDayController = TextEditingController();
   final _farmersProgressiveController = TextEditingController();
   double _previousFarmersProg = 0;
 
-  // ============ ARRIVALS ============
+  // Arrivals
   final _dayArrivalsApmcController = TextEditingController();
   final _dayArrivalsOutsideController = TextEditingController();
   final _progArrivalsApmcController = TextEditingController();
@@ -97,29 +154,29 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
   double _previousProgApmc = 0;
   double _previousProgOutside = 0;
 
-  // ============ MARKET RATES ============
+  // Market Rates
   final _marketRateHighestController = TextEditingController();
   final _marketRateLowestController = TextEditingController();
   final _marketRateAverageController = TextEditingController();
   final _marketSeedRateHighestController = TextEditingController();
   final _marketSeedRateLowestController = TextEditingController();
 
-  // ============ CCI PURCHASE ============
+  // CCI Purchase
   final _cciPurchaseQtlsController = TextEditingController();
   final _cciPurchaseBalesController = TextEditingController();
   final _cciKapasMoistureController = TextEditingController();
 
-  // ============ MSP VALUE ============
+  // MSP Value
   final _mspValueDayController = TextEditingController();
   final _mspValueProgController = TextEditingController();
   double _previousMspProg = 0;
 
-  // ============ CCI RATES ============
+  // CCI Rates
   final _cciRateHighestController = TextEditingController();
   final _cciRateLowestController = TextEditingController();
   final _cciRateAverageController = TextEditingController();
 
-  // ============ CCI DETAILS ============
+  // CCI Details
   final _cciSeedRateController = TextEditingController();
   final _cciOutTurnController = TextEditingController();
   final _cciShortageController = TextEditingController();
@@ -127,25 +184,27 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
   final _processingCycleController = TextEditingController();
   final _cciPadthaController = TextEditingController();
 
-  // ============ PROGRESSIVE ============
+  // Progressive Purchase
   final _progPurchaseQtlsController = TextEditingController();
   final _progPurchaseBalesController = TextEditingController();
   final _progPadthaController = TextEditingController();
   final _progAvgRateController = TextEditingController();
 
-  // ============ BALES PRESSED ============
+  // Bales Pressed
   final _balesPressedTodayController = TextEditingController();
   final _balesPressedProgController = TextEditingController();
   double _previousBalesProg = 0;
-
   final _totalBalesShiftedController = TextEditingController();
 
-  // ============ OTHER ============
+  // Other
   final _sampleSentController = TextEditingController();
   final _heapResultController = TextEditingController();
 
-  // ============ FACTORY DETAILS ============
-  List<FactoryData> _factories = [];
+  // Purchase Factory Details
+  List<PurchaseFactoryData> _purchaseFactories = [];
+
+  // ============ SEED FIELDS ============
+  List<FactoryData> _seedFactories = [];
 
   DateTime _selectedDate = DateTime.now();
   String? _selectedVariety;
@@ -170,6 +229,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
 
   bool _isLoadingPreviousProgressive = false;
   String _debugMessage = '';
+  bool _isLoadingReportNo = false;
 
   @override
   void initState() {
@@ -181,22 +241,23 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       _entryFound = true;
     } else if (!widget.isModify) {
       _entryFound = true;
-      _factories = [];
+      _purchaseFactories = [];
+      _seedFactories = [];
 
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _loadDefaultCentre();
 
         if (_selectedCentre != null && _selectedCentre!.isNotEmpty) {
-          await _fetchPreviousProgressive();
-        } else {
-          setState(() {
-            _isLoadingPreviousProgressive = false;
-          });
+          final isPurchase = widget.type == ReportType.dailyPurchase;
+          if (isPurchase) {
+            await _fetchPreviousProgressive();
+          }
+          await _autoGenerateReportNo();
         }
       });
     }
 
-    // Auto-accumulation listeners for day fields
+    // Auto-accumulation listeners for day fields (Purchase only)
     if (!widget.isModify) {
       _dayArrivalsApmcController.addListener(_recalculateProgApmc);
       _dayArrivalsOutsideController.addListener(_recalculateProgOutside);
@@ -205,7 +266,6 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       _balesPressedTodayController.addListener(_recalculateBalesProg);
     }
 
-    // Request focus for keyboard events
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_dialogFocusNode);
     });
@@ -294,14 +354,14 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
     _sampleSentController.text = data['sampleSent'] ?? '';
     _heapResultController.text = data['heapResult'] ?? '';
 
-    // Load factories
+    // Load purchase factories
     if (data['factories'] is List && (data['factories'] as List).isNotEmpty) {
-      _factories = (data['factories'] as List)
-          .map((f) => FactoryData.fromJson(Map<String, dynamic>.from(f as Map)))
+      _purchaseFactories = (data['factories'] as List)
+          .map((f) => PurchaseFactoryData.fromJson(Map<String, dynamic>.from(f as Map)))
           .toList();
     } else {
-      _factories = [
-        FactoryData(
+      _purchaseFactories = [
+        PurchaseFactoryData(
           factoryName: data['factoryName'] ?? '',
           heapNo: data['heapNo'] ?? 0,
           heapQty: (data['heapQty'] ?? 0).toDouble(),
@@ -314,6 +374,13 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       ];
     }
 
+    // Load seed factories
+    if (data['seedFactories'] is List) {
+      _seedFactories = (data['seedFactories'] as List)
+          .map((f) => FactoryData.fromJson(Map<String, dynamic>.from(f as Map)))
+          .toList();
+    }
+
     if (data['variety'] != null) {
       _selectedVariety = data['variety'];
     }
@@ -323,7 +390,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
   }
 
   // ---------------------------------------------------------------------
-  // Progressive auto-accumulation methods
+  // Progressive auto-accumulation methods (Purchase only)
   // ---------------------------------------------------------------------
 
   static const _prefKeyLastCentre = 'last_used_centre';
@@ -352,18 +419,63 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
     return value.toStringAsFixed(2);
   }
 
+  // ---------------------------------------------------------------------
+  // Auto-generate Report Number
+  // ---------------------------------------------------------------------
+
+  Future<void> _autoGenerateReportNo() async {
+    if (widget.isModify) return;
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
+
+    setState(() {
+      _isLoadingReportNo = true;
+    });
+
+    final isPurchase = widget.type == ReportType.dailyPurchase;
+    final normalizedDate = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
+
+    try {
+      final response = await ApiService.getNextReportNo(
+        type: isPurchase ? 'purchase' : 'seed',
+        centre: _selectedCentre!,
+        date: normalizedDate,
+      );
+
+      if (!mounted) return;
+
+      if (response.success && response.data != null) {
+        final nextReportNo = response.data!['nextReportNo'] as int?;
+        if (nextReportNo != null) {
+          setState(() {
+            _reportNoController.text = nextReportNo.toString();
+          });
+        }
+      }
+    } catch (e) {
+      debugLog('❌ Error generating report number: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingReportNo = false;
+        });
+      }
+    }
+  }
+
   void _recalculateProgApmc() {
     final dayValue = double.tryParse(_dayArrivalsApmcController.text) ?? 0;
     final total = _previousProgApmc + dayValue;
     _progArrivalsApmcController.text = _formatNumber(total);
-    print('📊 Recalculated Prog APMC: $_previousProgApmc + $dayValue = $total');
   }
 
   void _recalculateProgOutside() {
     final dayValue = double.tryParse(_dayArrivalsOutsideController.text) ?? 0;
     final total = _previousProgOutside + dayValue;
     _progArrivalsOutsideController.text = _formatNumber(total);
-    print('📊 Recalculated Prog Outside: $_previousProgOutside + $dayValue = $total');
   }
 
   void _recalculateFarmersProg() {
@@ -394,7 +506,6 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       return;
     }
 
-    print('🔍 Fetching progressive values for centre: $_selectedCentre');
     setState(() {
       _isLoadingPreviousProgressive = true;
       _debugMessage = 'Fetching data...';
@@ -407,18 +518,12 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       _selectedDate.day,
     );
 
-    print('📅 Looking for entries before: $normalizedDate');
-
     try {
       final response = await ApiService.getLatestProgressiveArrivals(
         type: isPurchase ? 'purchase' : 'seed',
         centre: _selectedCentre!,
         beforeDate: normalizedDate,
       );
-
-      print('📥 Response success: ${response.success}');
-      print('📥 Response message: ${response.message}');
-      print('📥 Response data: ${response.data}');
 
       if (!mounted) return;
 
@@ -433,7 +538,6 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
           _previousBalesProg = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
 
           _debugMessage = '✅ Loaded: APMC=$_previousProgApmc, Outside=$_previousProgOutside';
-          print('✅ Values loaded: progApmc=$_previousProgApmc, progOutside=$_previousProgOutside');
         } else {
           _previousProgApmc = 0;
           _previousProgOutside = 0;
@@ -441,11 +545,9 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
           _previousMspProg = 0;
           _previousBalesProg = 0;
           _debugMessage = '⚠️ No previous values found, starting from 0';
-          print('⚠️ No previous values found, starting from 0');
         }
       });
 
-      // Recalculate all progressive fields after state update
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _recalculateProgApmc();
         _recalculateProgOutside();
@@ -454,7 +556,6 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
         _recalculateBalesProg();
       });
     } catch (e) {
-      print('❌ Error fetching: $e');
       setState(() {
         _isLoadingPreviousProgressive = false;
         _debugMessage = '❌ Error: $e';
@@ -490,201 +591,6 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       _scrollController.offset + 50,
       duration: const Duration(milliseconds: 100),
       curve: Curves.easeOut,
-    );
-  }
-
-  // ---------------------------------------------------------------------
-  // Factory management methods
-  // ---------------------------------------------------------------------
-
-  void _openAddFactoryDialog() {
-    _showFactoryFormDialog(null);
-  }
-
-  void _openEditFactoryDialog(int index) {
-    _showFactoryFormDialog(_factories[index]);
-  }
-
-  void _showFactoryFormDialog(FactoryData? factoryData) {
-    final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
-    final heapNoController = TextEditingController(text: factoryData?.heapNo.toString() ?? '');
-    final heapQtyController = TextEditingController(text: factoryData?.heapQty.toString() ?? '');
-    final farmersController = TextEditingController(text: factoryData?.seedFarmers.toString() ?? '');
-    final realisableController = TextEditingController(text: factoryData?.seedRealisable.toString() ?? '');
-    final soldController = TextEditingController(text: factoryData?.readySeedSold.toString() ?? '');
-    final unsoldController = TextEditingController(text: factoryData?.readySeedUnsold.toString() ?? '');
-    final baseRateController = TextEditingController(text: factoryData?.baseRate.toString() ?? '');
-
-    final isEditing = factoryData != null;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
-        content: SizedBox(
-          width: 400,
-          child: Form(
-            key: _factoryFormKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildTextField(
-                    controller: nameController,
-                    label: 'Factory Name',
-                    hint: 'e.g., A Yesh Patil Cotton Company',
-                    icon: Icons.factory,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: heapNoController,
-                          label: 'Heap No.',
-                          hint: 'e.g., 101',
-                          icon: Icons.numbers,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: heapQtyController,
-                          label: 'Heap Qty',
-                          hint: 'Quintals',
-                          icon: Icons.scale,
-                          keyboardType: TextInputType.numberWithOptions(decimal: true),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: farmersController,
-                          label: 'Farmers Benefitted',
-                          hint: 'e.g., 2',
-                          icon: Icons.people,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: realisableController,
-                          label: 'Realisable',
-                          hint: 'e.g., 70',
-                          icon: Icons.attach_money,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildTextField(
-                          controller: soldController,
-                          label: 'Ready Seed Sold',
-                          hint: 'e.g., 0',
-                          icon: Icons.sell,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildTextField(
-                          controller: unsoldController,
-                          label: 'Ready Seed Unsold',
-                          hint: 'e.g., 0',
-                          icon: Icons.inbox,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTextField(
-                    controller: baseRateController,
-                    label: 'Base Rate',
-                    hint: 'e.g., 3700',
-                    icon: Icons.currency_rupee,
-                    keyboardType: TextInputType.number,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (_factoryFormKey.currentState!.validate()) {
-                final factory = FactoryData(
-                  factoryName: nameController.text,
-                  heapNo: int.tryParse(heapNoController.text) ?? 0,
-                  heapQty: double.tryParse(heapQtyController.text) ?? 0,
-                  seedFarmers: int.tryParse(farmersController.text) ?? 0,
-                  seedRealisable: int.tryParse(realisableController.text) ?? 0,
-                  readySeedSold: int.tryParse(soldController.text) ?? 0,
-                  readySeedUnsold: int.tryParse(unsoldController.text) ?? 0,
-                  baseRate: int.tryParse(baseRateController.text) ?? 0,
-                );
-
-                setState(() {
-                  if (isEditing) {
-                    final index = _factories.indexOf(factoryData);
-                    _factories[index] = factory;
-                  } else {
-                    _factories.add(factory);
-                  }
-                });
-
-                Navigator.of(context).pop();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
-            ),
-            child: Text(isEditing ? 'Update' : 'Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _deleteFactory(int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Factory'),
-        content: const Text('Are you sure you want to delete this factory?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _factories.removeAt(index);
-              });
-              Navigator.of(context).pop();
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
   }
 
@@ -768,7 +674,11 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       setState(() {
         _selectedDate = picked;
       });
-      await _fetchPreviousProgressive();
+      final isPurchase = widget.type == ReportType.dailyPurchase;
+      if (isPurchase) {
+        await _fetchPreviousProgressive();
+      }
+      await _autoGenerateReportNo();
     }
   }
 
@@ -842,52 +752,66 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       setState(() => _isSubmitting = true);
 
       final isPurchase = widget.type == ReportType.dailyPurchase;
-      final Map<String, dynamic> data = {
-        'reportType': widget.type.label,
-        'date': _selectedDate.toIso8601String(),
-        'variety': _selectedVariety ?? '',
-        'centre': _selectedCentre ?? '',
-        'reportNo': int.tryParse(_reportNoController.text) ?? 0,
-        'moisture': _moistureController.text,
-        'farmersDay': int.tryParse(_farmersDayController.text) ?? 0,
-        'farmersProgressive': int.tryParse(_farmersProgressiveController.text) ?? 0,
-        'dayArrivalsApmc': double.tryParse(_dayArrivalsApmcController.text) ?? 0,
-        'dayArrivalsOutside': double.tryParse(_dayArrivalsOutsideController.text) ?? 0,
-        'progArrivalsApmc': double.tryParse(_progArrivalsApmcController.text) ?? 0,
-        'progArrivalsOutside': double.tryParse(_progArrivalsOutsideController.text) ?? 0,
-        'marketRateHighest': double.tryParse(_marketRateHighestController.text) ?? 0,
-        'marketRateLowest': double.tryParse(_marketRateLowestController.text) ?? 0,
-        'marketRateAverage': double.tryParse(_marketRateAverageController.text) ?? 0,
-        'marketSeedRateHighest': double.tryParse(_marketSeedRateHighestController.text) ?? 0,
-        'marketSeedRateLowest': double.tryParse(_marketSeedRateLowestController.text) ?? 0,
-        'cciPurchaseQtls': double.tryParse(_cciPurchaseQtlsController.text) ?? 0,
-        'cciPurchaseBales': int.tryParse(_cciPurchaseBalesController.text) ?? 0,
-        'cciKapasMoisture': int.tryParse(_cciKapasMoistureController.text) ?? 0,
-        'mspValueDay': double.tryParse(_mspValueDayController.text) ?? 0,
-        'mspValueProg': double.tryParse(_mspValueProgController.text) ?? 0,
-        'cciRateHighest': double.tryParse(_cciRateHighestController.text) ?? 0,
-        'cciRateLowest': double.tryParse(_cciRateLowestController.text) ?? 0,
-        'cciRateAverage': double.tryParse(_cciRateAverageController.text) ?? 0,
-        'cciSeedRate': int.tryParse(_cciSeedRateController.text) ?? 0,
-        'cciOutTurn': double.tryParse(_cciOutTurnController.text) ?? 0,
-        'cciShortage': double.tryParse(_cciShortageController.text) ?? 0,
-        'cciExpenses': int.tryParse(_cciExpensesController.text) ?? 0,
-        'processingCycle': int.tryParse(_processingCycleController.text) ?? 0,
-        'cciPadtha': int.tryParse(_cciPadthaController.text) ?? 0,
-        'progPurchaseQtls': double.tryParse(_progPurchaseQtlsController.text) ?? 0,
-        'progPurchaseBales': int.tryParse(_progPurchaseBalesController.text) ?? 0,
-        'progPadtha': int.tryParse(_progPadthaController.text) ?? 0,
-        'progAvgRate': int.tryParse(_progAvgRateController.text) ?? 0,
-        'balesPressedToday': int.tryParse(_balesPressedTodayController.text) ?? 0,
-        'balesPressedProg': int.tryParse(_balesPressedProgController.text) ?? 0,
-        'totalBalesShifted': int.tryParse(_totalBalesShiftedController.text) ?? 0,
-        'sampleSent': _sampleSentController.text,
-        'heapResult': _heapResultController.text,
-        'factories': _factories.map((f) => f.toJson()).toList(),
-      };
 
-      if (_factories.isNotEmpty) {
-        data.addAll(_factories.first.toJson());
+      Map<String, dynamic> data;
+
+      if (isPurchase) {
+        data = {
+          'reportType': widget.type.label,
+          'date': _selectedDate.toIso8601String(),
+          'variety': _selectedVariety ?? '',
+          'centre': _selectedCentre ?? '',
+          'reportNo': int.tryParse(_reportNoController.text) ?? 0,
+          'moisture': _moistureController.text,
+          'farmersDay': int.tryParse(_farmersDayController.text) ?? 0,
+          'farmersProgressive': int.tryParse(_farmersProgressiveController.text) ?? 0,
+          'dayArrivalsApmc': double.tryParse(_dayArrivalsApmcController.text) ?? 0,
+          'dayArrivalsOutside': double.tryParse(_dayArrivalsOutsideController.text) ?? 0,
+          'progArrivalsApmc': double.tryParse(_progArrivalsApmcController.text) ?? 0,
+          'progArrivalsOutside': double.tryParse(_progArrivalsOutsideController.text) ?? 0,
+          'marketRateHighest': double.tryParse(_marketRateHighestController.text) ?? 0,
+          'marketRateLowest': double.tryParse(_marketRateLowestController.text) ?? 0,
+          'marketRateAverage': double.tryParse(_marketRateAverageController.text) ?? 0,
+          'marketSeedRateHighest': double.tryParse(_marketSeedRateHighestController.text) ?? 0,
+          'marketSeedRateLowest': double.tryParse(_marketSeedRateLowestController.text) ?? 0,
+          'cciPurchaseQtls': double.tryParse(_cciPurchaseQtlsController.text) ?? 0,
+          'cciPurchaseBales': int.tryParse(_cciPurchaseBalesController.text) ?? 0,
+          'cciKapasMoisture': int.tryParse(_cciKapasMoistureController.text) ?? 0,
+          'mspValueDay': double.tryParse(_mspValueDayController.text) ?? 0,
+          'mspValueProg': double.tryParse(_mspValueProgController.text) ?? 0,
+          'cciRateHighest': double.tryParse(_cciRateHighestController.text) ?? 0,
+          'cciRateLowest': double.tryParse(_cciRateLowestController.text) ?? 0,
+          'cciRateAverage': double.tryParse(_cciRateAverageController.text) ?? 0,
+          'cciSeedRate': int.tryParse(_cciSeedRateController.text) ?? 0,
+          'cciOutTurn': double.tryParse(_cciOutTurnController.text) ?? 0,
+          'cciShortage': double.tryParse(_cciShortageController.text) ?? 0,
+          'cciExpenses': int.tryParse(_cciExpensesController.text) ?? 0,
+          'processingCycle': int.tryParse(_processingCycleController.text) ?? 0,
+          'cciPadtha': int.tryParse(_cciPadthaController.text) ?? 0,
+          'progPurchaseQtls': double.tryParse(_progPurchaseQtlsController.text) ?? 0,
+          'progPurchaseBales': int.tryParse(_progPurchaseBalesController.text) ?? 0,
+          'progPadtha': int.tryParse(_progPadthaController.text) ?? 0,
+          'progAvgRate': int.tryParse(_progAvgRateController.text) ?? 0,
+          'balesPressedToday': int.tryParse(_balesPressedTodayController.text) ?? 0,
+          'balesPressedProg': int.tryParse(_balesPressedProgController.text) ?? 0,
+          'totalBalesShifted': int.tryParse(_totalBalesShiftedController.text) ?? 0,
+          'sampleSent': _sampleSentController.text,
+          'heapResult': _heapResultController.text,
+          'factories': _purchaseFactories.map((f) => f.toJson()).toList(),
+        };
+
+        if (_purchaseFactories.isNotEmpty) {
+          data.addAll(_purchaseFactories.first.toJson());
+        }
+      } else {
+        // Seed data
+        data = {
+          'reportType': widget.type.label,
+          'date': _selectedDate.toIso8601String(),
+          'centre': _selectedCentre ?? '',
+          'reportNo': int.tryParse(_reportNoController.text) ?? 0,
+          'seedFactories': _seedFactories.map((f) => f.toJson()).toList(),
+        };
       }
 
       final ApiResponse response;
@@ -929,7 +853,11 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
       return _buildLookupDialog(context, isPurchase);
     }
 
-    return _buildFullFormDialog(context, isPurchase);
+    if (isPurchase) {
+      return _buildPurchaseFormDialog(context);
+    } else {
+      return _buildSeedFormDialog(context);
+    }
   }
 
   Widget _buildCloseButton() {
@@ -1006,8 +934,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                     const SizedBox(height: 8),
                     const Text(
                       'Enter the Centre, Report No. and Date of the entry you '
-                          'want to modify. The rest of the details will appear once '
-                          'we find a match.',
+                          'want to modify.',
                       style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
                     ),
                     const SizedBox(height: 20),
@@ -1137,7 +1064,11 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
     );
   }
 
-  Widget _buildFullFormDialog(BuildContext context, bool isPurchase) {
+  // ========================================================================
+  // PURCHASE FORM DIALOG (Complete)
+  // ========================================================================
+
+  Widget _buildPurchaseFormDialog(BuildContext context) {
     final title = widget.isModify ? 'Modify' : 'Add';
 
     return Dialog(
@@ -1173,19 +1104,19 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: isPurchase ? const Color(0xFFE0F2FE) : const Color(0xFFD1FAE5),
+                            color: const Color(0xFFE0F2FE),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Icon(
-                            isPurchase ? Icons.shopping_basket_rounded : Icons.eco_rounded,
-                            color: const Color(0xFF0F172A),
+                          child: const Icon(
+                            Icons.shopping_basket_rounded,
+                            color: Color(0xFF0F172A),
                             size: 24,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            '$title ${isPurchase ? 'Purchase' : 'Seed'} Entry',
+                            '$title Purchase Entry',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w700,
@@ -1225,10 +1156,22 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                     _buildTextField(
                       controller: _reportNoController,
                       label: 'Report No.',
-                      hint: 'e.g., 1',
+                      hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
                       icon: Icons.numbers,
                       keyboardType: TextInputType.number,
-                      readOnly: widget.isModify,
+                      readOnly: widget.isModify || _isLoadingReportNo,
+                      suffixIcon: _isLoadingReportNo
+                          ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                          : null,
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter report number';
@@ -1264,7 +1207,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                     const SizedBox(height: 12),
 
                     DropdownButtonFormField<String>(
-                      value: _selectedVariety,
+                      initialValue: _selectedVariety,
                       decoration: InputDecoration(
                         labelText: 'Variety',
                         hintText: 'Select variety',
@@ -1800,10 +1743,10 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                     _buildSectionHeaderWithAction(
                       'Factory Details',
                       actionLabel: 'Add Factory',
-                      onAction: _openAddFactoryDialog,
+                      onAction: _openAddPurchaseFactoryDialog,
                     ),
                     const SizedBox(height: 12),
-                    _buildFactoryListView(),
+                    _buildPurchaseFactoryListView(),
                     const SizedBox(height: 16),
 
                     Row(
@@ -1862,11 +1805,202 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
   }
 
   // ========================================================================
-  // REUSABLE WIDGETS
+  // PURCHASE FACTORY METHODS
   // ========================================================================
 
-  Widget _buildFactoryListView() {
-    if (_factories.isEmpty) {
+  void _openAddPurchaseFactoryDialog() {
+    _showPurchaseFactoryFormDialog(null);
+  }
+
+  void _openEditPurchaseFactoryDialog(int index) {
+    _showPurchaseFactoryFormDialog(_purchaseFactories[index]);
+  }
+
+  void _showPurchaseFactoryFormDialog(PurchaseFactoryData? factoryData) {
+    final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
+    final heapNoController = TextEditingController(text: factoryData?.heapNo.toString() ?? '');
+    final heapQtyController = TextEditingController(text: factoryData?.heapQty.toString() ?? '');
+    final farmersController = TextEditingController(text: factoryData?.seedFarmers.toString() ?? '');
+    final realisableController = TextEditingController(text: factoryData?.seedRealisable.toString() ?? '');
+    final soldController = TextEditingController(text: factoryData?.readySeedSold.toString() ?? '');
+    final unsoldController = TextEditingController(text: factoryData?.readySeedUnsold.toString() ?? '');
+    final baseRateController = TextEditingController(text: factoryData?.baseRate.toString() ?? '');
+
+    final isEditing = factoryData != null;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
+        content: SizedBox(
+          width: 400,
+          child: Form(
+            key: _factoryFormKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildTextField(
+                    controller: nameController,
+                    label: 'Factory Name',
+                    hint: 'e.g., A Yesh Patil Cotton Company',
+                    icon: Icons.factory,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: heapNoController,
+                          label: 'Heap No.',
+                          hint: 'e.g., 101',
+                          icon: Icons.numbers,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: heapQtyController,
+                          label: 'Heap Qty',
+                          hint: 'Quintals',
+                          icon: Icons.scale,
+                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: farmersController,
+                          label: 'Farmers Benefitted',
+                          hint: 'e.g., 2',
+                          icon: Icons.people,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: realisableController,
+                          label: 'Realisable',
+                          hint: 'e.g., 70',
+                          icon: Icons.attach_money,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: soldController,
+                          label: 'Ready Seed Sold',
+                          hint: 'e.g., 0',
+                          icon: Icons.sell,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: unsoldController,
+                          label: 'Ready Seed Unsold',
+                          hint: 'e.g., 0',
+                          icon: Icons.inbox,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: baseRateController,
+                    label: 'Base Rate',
+                    hint: 'e.g., 3700',
+                    icon: Icons.currency_rupee,
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_factoryFormKey.currentState!.validate()) {
+                final factory = PurchaseFactoryData(
+                  factoryName: nameController.text,
+                  heapNo: int.tryParse(heapNoController.text) ?? 0,
+                  heapQty: double.tryParse(heapQtyController.text) ?? 0,
+                  seedFarmers: int.tryParse(farmersController.text) ?? 0,
+                  seedRealisable: int.tryParse(realisableController.text) ?? 0,
+                  readySeedSold: int.tryParse(soldController.text) ?? 0,
+                  readySeedUnsold: int.tryParse(unsoldController.text) ?? 0,
+                  baseRate: int.tryParse(baseRateController.text) ?? 0,
+                );
+
+                setState(() {
+                  if (isEditing) {
+                    final index = _purchaseFactories.indexOf(factoryData);
+                    _purchaseFactories[index] = factory;
+                  } else {
+                    _purchaseFactories.add(factory);
+                  }
+                });
+
+                Navigator.of(context).pop();
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
+            ),
+            child: Text(isEditing ? 'Update' : 'Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deletePurchaseFactory(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Factory'),
+        content: const Text('Are you sure you want to delete this factory?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _purchaseFactories.removeAt(index);
+              });
+              Navigator.of(context).pop();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPurchaseFactoryListView() {
+    if (_purchaseFactories.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -1915,7 +2049,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
             DataColumn(label: Text('Base Rate', style: TextStyle(fontWeight: FontWeight.bold))),
             DataColumn(label: Text('', style: TextStyle(fontWeight: FontWeight.bold))),
           ],
-          rows: _factories.asMap().entries.map((entry) {
+          rows: _purchaseFactories.asMap().entries.map((entry) {
             final index = entry.key;
             final factory = entry.value;
             return DataRow(
@@ -1934,7 +2068,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        onPressed: () => _openEditFactoryDialog(index),
+                        onPressed: () => _openEditPurchaseFactoryDialog(index),
                         icon: const Icon(Icons.edit, size: 18, color: Color(0xFFF59E0B)),
                         tooltip: 'Edit',
                         padding: EdgeInsets.zero,
@@ -1942,7 +2076,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () => _deleteFactory(index),
+                        onPressed: () => _deletePurchaseFactory(index),
                         icon: const Icon(Icons.delete, size: 18, color: Colors.red),
                         tooltip: 'Delete',
                         padding: EdgeInsets.zero,
@@ -1959,9 +2093,524 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
     );
   }
 
+  // ========================================================================
+  // SEED FORM DIALOG
+  // ========================================================================
+
+  Widget _buildSeedFormDialog(BuildContext context) {
+    final title = widget.isModify ? 'Modify' : 'Add';
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Focus(
+        focusNode: _dialogFocusNode,
+        autofocus: true,
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.escape): () {
+              Navigator.of(context).pop();
+            },
+          },
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            constraints: const BoxConstraints(maxWidth: 900, maxHeight: 800),
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1FAE5),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.eco_rounded,
+                            color: Color(0xFF0F172A),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '$title Seed Report',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                        ),
+                        _buildCloseButton(),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    if (widget.isModify)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildSectionHeader('Header Information'),
+                            TextButton.icon(
+                              onPressed: _isSubmitting ? null : _resetLookup,
+                              icon: const Icon(Icons.search, size: 16),
+                              label: const Text('Change entry'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      _buildSectionHeader('Header Information'),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildCentreDropdown(readOnly: widget.isModify),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildTextField(
+                            controller: _reportNoController,
+                            label: 'Report No.',
+                            hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
+                            icon: Icons.numbers,
+                            keyboardType: TextInputType.number,
+                            readOnly: widget.isModify || _isLoadingReportNo,
+                            suffixIcon: _isLoadingReportNo
+                                ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                                : null,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter report number';
+                              }
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+
+                    InkWell(
+                      onTap: widget.isModify ? null : () => _selectDate(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Date: ${_formatDate(_selectedDate)}',
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_drop_down),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    _buildSectionHeaderWithAction(
+                      'Ginning & Pressing Factory Details',
+                      actionLabel: 'Add Factory',
+                      onAction: _openAddSeedFactoryDialog,
+                    ),
+                    const SizedBox(height: 12),
+                    _buildSeedFactoryTable(),
+                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _isSubmitting ? null : _submitForm,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0F172A),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isSubmitting
+                                ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                                : Text(
+                              widget.isModify ? 'Update' : 'Submit',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ========================================================================
+  // SEED FACTORY METHODS
+  // ========================================================================
+
+  void _openAddSeedFactoryDialog() {
+    _showSeedFactoryFormDialog(null);
+  }
+
+  void _openEditSeedFactoryDialog(int index) {
+    _showSeedFactoryFormDialog(_seedFactories[index]);
+  }
+
+  void _showSeedFactoryFormDialog(FactoryData? factoryData) {
+    final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
+    final varietyController = TextEditingController(text: factoryData?.variety ?? '');
+    final realisableController = TextEditingController(text: factoryData?.progressiveRealisable.toString() ?? '');
+    final soldController = TextEditingController(text: factoryData?.progressiveSold.toString() ?? '');
+    final unsoldController = TextEditingController(text: factoryData?.dayUnsold.toString() ?? '');
+    final kapasController = TextEditingController(text: factoryData?.kapasForm.toString() ?? '');
+    final readyController = TextEditingController(text: factoryData?.readyForm.toString() ?? '');
+    final baseRateController = TextEditingController(text: factoryData?.baseRate.toString() ?? '');
+
+    final isEditing = factoryData != null;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
+        content: SizedBox(
+          width: 500,
+          child: Form(
+            key: _factoryFormKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildTextField(
+                    controller: nameController,
+                    label: 'Factory Name',
+                    hint: 'e.g., A Yesh Patil Cotton Company',
+                    icon: Icons.factory,
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTextField(
+                    controller: varietyController,
+                    label: 'Variety',
+                    hint: 'e.g., BB MOD',
+                    icon: Icons.eco,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: realisableController,
+                          label: 'Progressive Realisable (Total)',
+                          hint: 'e.g., 70',
+                          icon: Icons.trending_up,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: soldController,
+                          label: 'Progressive Sold',
+                          hint: 'e.g., 0',
+                          icon: Icons.sell,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: unsoldController,
+                          label: 'Day\'s Unsold',
+                          hint: 'e.g., 70',
+                          icon: Icons.inbox,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: kapasController,
+                          label: 'Kapas Form',
+                          hint: 'e.g., 0',
+                          icon: Icons.format_align_left,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTextField(
+                          controller: readyController,
+                          label: 'Ready Form',
+                          hint: 'e.g., 70',
+                          icon: Icons.check_circle_outline,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildTextField(
+                          controller: baseRateController,
+                          label: 'Base Rate',
+                          hint: 'e.g., 3700',
+                          icon: Icons.currency_rupee,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_factoryFormKey.currentState!.validate()) {
+                final progressiveRealisable = int.tryParse(realisableController.text) ?? 0;
+                final progressiveSold = int.tryParse(soldController.text) ?? 0;
+                final dayUnsold = int.tryParse(unsoldController.text) ?? 0;
+                final kapasForm = int.tryParse(kapasController.text) ?? 0;
+                final readyForm = int.tryParse(readyController.text) ?? 0;
+                final total = kapasForm + readyForm;
+
+                final factory = FactoryData(
+                  factoryName: nameController.text,
+                  variety: varietyController.text,
+                  progressiveRealisable: progressiveRealisable,
+                  progressiveSold: progressiveSold,
+                  dayUnsold: dayUnsold,
+                  kapasForm: kapasForm,
+                  readyForm: readyForm,
+                  total: total,
+                  baseRate: int.tryParse(baseRateController.text) ?? 0,
+                );
+
+                setState(() {
+                  if (isEditing) {
+                    final index = _seedFactories.indexOf(factoryData);
+                    _seedFactories[index] = factory;
+                  } else {
+                    _seedFactories.add(factory);
+                  }
+                });
+
+                Navigator.of(context).pop();
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
+            ),
+            child: Text(isEditing ? 'Update' : 'Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSeedFactory(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Factory'),
+        content: const Text('Are you sure you want to delete this factory?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _seedFactories.removeAt(index);
+              });
+              Navigator.of(context).pop();
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeedFactoryTable() {
+    if (_seedFactories.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE2E8F0), style: BorderStyle.solid),
+          borderRadius: BorderRadius.circular(12),
+          color: const Color(0xFFF8FAFC),
+        ),
+        child: const Center(
+          child: Column(
+            children: [
+              Icon(Icons.factory_outlined, size: 40, color: Color(0xFF94A3B8)),
+              SizedBox(height: 8),
+              Text(
+                'No factories added yet',
+                style: TextStyle(color: Color(0xFF64748B)),
+              ),
+              Text(
+                'Click "Add Factory" to add one',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          columnSpacing: 12,
+          headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+          columns: const [
+            DataColumn(label: Text('S.No.', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Ginning & pressing factory name', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Variety', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Progressive Realisable (Total)', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Progressive Sold', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Day\'s Unsold', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Kapas Form', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Ready Form', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Total', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('Base Rate', style: TextStyle(fontWeight: FontWeight.bold))),
+            DataColumn(label: Text('', style: TextStyle(fontWeight: FontWeight.bold))),
+          ],
+          rows: _seedFactories.asMap().entries.map((entry) {
+            final index = entry.key;
+            final factory = entry.value;
+            return DataRow(
+              cells: [
+                DataCell(Text('${index + 1}')),
+                DataCell(SizedBox(
+                  width: 200,
+                  child: Text(
+                    factory.factoryName,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )),
+                DataCell(Text(factory.variety)),
+                DataCell(Text(factory.progressiveRealisable.toString())),
+                DataCell(Text(factory.progressiveSold.toString())),
+                DataCell(Text(factory.dayUnsold.toString())),
+                DataCell(Text(factory.kapasForm.toString())),
+                DataCell(Text(factory.readyForm.toString())),
+                DataCell(Text(factory.total.toString())),
+                DataCell(Text(factory.baseRate.toString())),
+                DataCell(
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () => _openEditSeedFactoryDialog(index),
+                        icon: const Icon(Icons.edit, size: 18, color: Color(0xFFF59E0B)),
+                        tooltip: 'Edit',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        onPressed: () => _deleteSeedFactory(index),
+                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                        tooltip: 'Delete',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // ========================================================================
+  // REUSABLE WIDGETS
+  // ========================================================================
+
   Widget _buildCentreDropdown({bool readOnly = false}) {
     return DropdownButtonFormField<String>(
-      value: _selectedCentre,
+      initialValue: _selectedCentre,
       decoration: InputDecoration(
         labelText: 'Centre',
         hintText: 'Select centre',
@@ -1987,6 +2636,7 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
           : (value) {
         setState(() {
           _selectedCentre = value;
+          // Reset progressive values when centre changes
           _previousProgApmc = 0;
           _previousProgOutside = 0;
           _previousFarmersProg = 0;
@@ -1994,7 +2644,6 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
           _previousBalesProg = 0;
           _debugMessage = '';
 
-          // Clear progressive fields when changing centre
           _progArrivalsApmcController.text = '';
           _progArrivalsOutsideController.text = '';
           _farmersProgressiveController.text = '';
@@ -2003,7 +2652,11 @@ class _CreateEntryDialogState extends State<CreateEntryDialog> {
         });
         if (value != null) {
           _rememberCentre(value);
-          _fetchPreviousProgressive();
+          final isPurchase = widget.type == ReportType.dailyPurchase;
+          if (isPurchase) {
+            _fetchPreviousProgressive();
+          }
+          _autoGenerateReportNo();
         }
       },
       validator: (value) {

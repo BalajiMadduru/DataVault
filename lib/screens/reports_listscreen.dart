@@ -163,7 +163,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     }
   }
 
-  Future<void> _exportToExcel() async {
+  // ========================================================================
+  // EXPORT METHODS
+  // ========================================================================
+
+  Future<void> _exportPurchaseReports() async {
     if (_filteredReports.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -496,6 +500,157 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     }
   }
 
+  Future<void> _exportSeedReports() async {
+    if (_filteredReports.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No reports to export'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    int successCount = 0;
+    int failCount = 0;
+
+    for (final report in _filteredReports) {
+      try {
+        var excel = excel_lib.Excel.createExcel();
+        var sheet = excel['Sheet1'];
+
+        void addRow(List<dynamic> cells) {
+          sheet.appendRow(cells);
+        }
+
+        // Get factories data
+        List<Map<String, dynamic>> factories = [];
+        final factoriesData = report['seedFactories'] ?? report['factories'];
+        if (factoriesData is List) {
+          factories = List<Map<String, dynamic>>.from(factoriesData);
+        } else if (factoriesData is Map<String, dynamic>) {
+          factories = [factoriesData];
+        }
+
+        if (factories.isEmpty) {
+          failCount++;
+          continue;
+        }
+
+        // Company Name
+        addRow(['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
+        addRow([]);
+
+        // Centre and Date
+        String centre = report['centre']?.toString()?.toUpperCase() ?? 'DEVADURGA';
+        String date = report['date']?.toString().split('T').first ?? '';
+        String formattedDate = date.replaceAll('-', '.');
+        addRow(['CENTRE:', centre, '', 'DATE:', formattedDate]);
+        addRow(['REPORT NO.:', report['reportNo']?.toString() ?? '1']);
+        addRow([]);
+
+        // Table Header
+        addRow([
+          'S.No.',
+          'Ginning & pressing factory name',
+          'Variety',
+          'Progressive Realisable (Total)',
+          'Progressive Sold',
+          "Day's Unsold",
+          'Kapas Form',
+          'Ready Form',
+          'Total',
+          'Base Rate'
+        ]);
+
+        // Data Rows
+        for (int i = 0; i < factories.length; i++) {
+          final factory = factories[i];
+          final progressiveRealisable = factory['progressiveRealisable'] ?? 0;
+          final progressiveSold = factory['progressiveSold'] ?? 0;
+          final dayUnsold = factory['dayUnsold'] ?? 0;
+          final kapasForm = factory['kapasForm'] ?? 0;
+          final readyForm = factory['readyForm'] ?? 0;
+          final total = factory['total'] ?? (kapasForm + readyForm);
+
+          addRow([
+            (i + 1).toString(),
+            factory['factoryName']?.toString() ?? '',
+            factory['variety']?.toString() ?? '',
+            progressiveRealisable.toString(),
+            progressiveSold.toString(),
+            dayUnsold.toString(),
+            kapasForm.toString(),
+            readyForm.toString(),
+            total.toString(),
+            factory['baseRate']?.toString() ?? '0',
+          ]);
+        }
+
+        addRow([]);
+        addRow(['Date:', formattedDate]);
+
+        final fileBytes = excel.save();
+        if (fileBytes != null) {
+          String fileName = 'Seed_Report_$formattedDate.xlsx';
+          String? savePath;
+          if (Platform.isAndroid || Platform.isIOS) {
+            final directory = await getExternalStorageDirectory();
+            if (directory != null) {
+              savePath = '${directory.path}/$fileName';
+            }
+          } else {
+            final directory = await getApplicationDocumentsDirectory();
+            savePath = '${directory.path}/$fileName';
+          }
+
+          if (savePath != null) {
+            final file = File(savePath);
+            await file.writeAsBytes(fileBytes);
+            successCount++;
+          }
+        }
+      } catch (e) {
+        failCount++;
+      }
+    }
+
+    if (mounted) {
+      String message = '✅ Exported $successCount seed report(s)';
+      if (failCount > 0) {
+        message += ', $failCount failed';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: failCount > 0 ? Colors.orange : Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  Future<void> _exportToExcel() async {
+    if (_filteredReports.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No reports to export'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final isPurchase = widget.reportType == 'purchase';
+
+    if (isPurchase) {
+      await _exportPurchaseReports();
+    } else {
+      await _exportSeedReports();
+    }
+  }
+
   void _viewReport(Map<String, dynamic> report) {
     final isPurchase = widget.reportType == 'purchase';
 
@@ -558,229 +713,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               // Excel-style table
               Expanded(
                 child: SingleChildScrollView(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Company Name
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF8FAFC),
-                            border: Border(
-                              bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                            ),
-                          ),
-                          child: Text(
-                            'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-
-                        // Centre & Date
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            border: Border(
-                              bottom: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                                  ),
-                                ),
-                                padding: const EdgeInsets.only(right: 8),
-                                child: const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  (report['centre'] ?? 'DEVADURGA').toString().toUpperCase(),
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              Container(
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                                  ),
-                                ),
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                child: const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                report['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // Report No & Variety
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFF8FAFC),
-                            border: Border(
-                              bottom: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                                  ),
-                                ),
-                                padding: const EdgeInsets.only(right: 8),
-                                child: const Text('DAILY MARKET/ PURCHASE REPORT NO.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                              ),
-                              const Spacer(),
-                              Text(
-                                report['reportNo']?.toString() ?? '1',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // SL NO | PARTICULARS | VARIETY
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFE2E8F0),
-                            border: Border(
-                              top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                              bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                decoration: const BoxDecoration(
-                                  border: Border(
-                                    right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                                  ),
-                                ),
-                                child: const Text(
-                                  'SL NO',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 11,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Container(
-                                  decoration: const BoxDecoration(
-                                    border: Border(
-                                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                                    ),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: const Text(
-                                    'PARTICULARS',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 11,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const Spacer(),
-                              const Text(
-                                'VARIETY:',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                child: Text(
-                                  report['variety']?.toString() ?? 'BB MOD',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 11,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // Data rows
-                        _buildReportRow('1', "DAY'S ARRIVALS IN QTLS / BALES", 'APMC:', report['dayArrivalsApmc']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'OUTSIDE APMC:', report['dayArrivalsOutside']?.toString() ?? '0'),
-                        _buildReportRow('2', 'PROG. ARRIVALS IN QTLS / BALES', 'APMC:', report['progArrivalsApmc']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'OUTSIDE APMC:', report['progArrivalsOutside']?.toString() ?? '0'),
-                        _buildReportRow('3', 'MOISTURE PERCENTAGE (%)', '', report['moisture']?.toString() ?? '8-20%'),
-                        _buildReportRow('4', 'MARKET RATE (KAPAS RATE IN QTLS)', 'HIGHEST', report['marketRateHighest']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'LOWEST', report['marketRateLowest']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'AVERAGE', report['marketRateAverage']?.toString() ?? '0'),
-                        _buildReportRow('5', 'MARKET OUT TURN', '', '-'),
-                        _buildReportRow('6', 'MARKET EXPENSES', '', '-'),
-                        _buildReportRow('7', 'MARKET SHORTAGE', '', '-'),
-                        _buildReportRow('8', 'MARKET PADTHA', '', '-'),
-                        _buildReportRow('9', 'MARKET COTTON SEED RATE (PER QTLS)', 'HIGHEST', report['marketSeedRateHighest']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'LOWEST', report['marketSeedRateLowest']?.toString() ?? '0'),
-                        _buildReportRow('10', 'CCI PURCHASE IN', 'QTLS', report['cciPurchaseQtls']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'BALES', report['cciPurchaseBales']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'Kapas Mositure %', report['cciKapasMoisture']?.toString() ?? '0'),
-                        _buildReportRow('11', 'MSP VALUE (IN LAKHS)', 'DAY WISE', report['mspValueDay']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'PROGRESSIVE', report['mspValueProg']?.toString() ?? '0'),
-                        _buildReportRow('12', 'No. OF FARMERS BENEFITTED', 'DAY WISE', report['farmersDay']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'PROGRESSIVE', report['farmersProgressive']?.toString() ?? '0'),
-                        _buildReportRow('13', 'CCI RATE (KAPAS RATE IN QTLS)', 'HIGHEST', report['cciRateHighest']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'LOWEST', report['cciRateLowest']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'AVERAGE', report['cciRateAverage']?.toString() ?? '0'),
-                        _buildReportRow('14', 'CCI COTTON SEED RATE', '', report['cciSeedRate']?.toString() ?? '0'),
-                        _buildReportRow('15', 'CCI OUT TURN', '', report['cciOutTurn']?.toString() ?? '0'),
-                        _buildReportRow('16', 'CCI SHORTAGE', '', report['cciShortage']?.toString() ?? '0'),
-                        _buildReportRow('17', 'CCI EXPENSES', '', report['cciExpenses']?.toString() ?? '0'),
-                        _buildReportRow('18', "PROCESSING CYCLE DAY'S", '', report['processingCycle']?.toString() ?? '0'),
-                        _buildReportRow('19', 'CCI PADTHA', '', report['cciPadtha']?.toString() ?? '0'),
-                        _buildReportRow('20', 'PROGRESSIVE PURCHASE', 'QTLS', report['progPurchaseQtls']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'BALES', report['progPurchaseBales']?.toString() ?? '0'),
-                        _buildReportRow('21', 'PROGRESSIVE', 'PADTHA', report['progPadtha']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'AVG. RATE', report['progAvgRate']?.toString() ?? '0'),
-                        _buildReportRow('22', 'BALES PRESSED DETAILS', 'TODAYS', report['balesPressedToday']?.toString() ?? '0'),
-                        _buildReportRow('', '', 'PROGRESSIVE', report['balesPressedProg']?.toString() ?? '0'),
-                        _buildReportRow('23', 'TOTAL BALES SHIFTED TO GODOWN', '', report['totalBalesShifted']?.toString() ?? '0'),
-                        _buildReportRow('24', 'SAMPLE SENT TO B.O FOR TESTING', '', report['sampleSent']?.toString() ?? '-'),
-                        _buildReportRow('25', 'HEAP RESULT SENT TO B.O', '', report['heapResult']?.toString() ?? '-'),
-
-                        // Factory details section
-                        _buildFactoryDetails(report),
-                      ],
-                    ),
-                  ),
+                  child: isPurchase
+                      ? _buildPurchaseReportView(report)
+                      : _buildSeedReportView(report),
                 ),
               ),
 
@@ -815,6 +750,419 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPurchaseReportView(Map<String, dynamic> report) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Company Name
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+              ),
+            ),
+            child: Text(
+              'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+
+          // Centre & Date
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+                    ),
+                  ),
+                  padding: const EdgeInsets.only(right: 8),
+                  child: const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    (report['centre'] ?? 'DEVADURGA').toString().toUpperCase(),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  report['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+
+          // Report No & Variety
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+                    ),
+                  ),
+                  padding: const EdgeInsets.only(right: 8),
+                  child: const Text('DAILY MARKET/ PURCHASE REPORT NO.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                ),
+                const Spacer(),
+                Text(
+                  report['reportNo']?.toString() ?? '1',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+
+          // SL NO | PARTICULARS | VARIETY
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFE2E8F0),
+              border: Border(
+                top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+                    ),
+                  ),
+                  child: const Text(
+                    'SL NO',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: const Text(
+                      'PARTICULARS',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                const Text(
+                  'VARIETY:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    report['variety']?.toString() ?? 'BB MOD',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Data rows
+          _buildReportRow('1', "DAY'S ARRIVALS IN QTLS / BALES", 'APMC:', report['dayArrivalsApmc']?.toString() ?? '0'),
+          _buildReportRow('', '', 'OUTSIDE APMC:', report['dayArrivalsOutside']?.toString() ?? '0'),
+          _buildReportRow('2', 'PROG. ARRIVALS IN QTLS / BALES', 'APMC:', report['progArrivalsApmc']?.toString() ?? '0'),
+          _buildReportRow('', '', 'OUTSIDE APMC:', report['progArrivalsOutside']?.toString() ?? '0'),
+          _buildReportRow('3', 'MOISTURE PERCENTAGE (%)', '', report['moisture']?.toString() ?? '8-20%'),
+          _buildReportRow('4', 'MARKET RATE (KAPAS RATE IN QTLS)', 'HIGHEST', report['marketRateHighest']?.toString() ?? '0'),
+          _buildReportRow('', '', 'LOWEST', report['marketRateLowest']?.toString() ?? '0'),
+          _buildReportRow('', '', 'AVERAGE', report['marketRateAverage']?.toString() ?? '0'),
+          _buildReportRow('5', 'MARKET OUT TURN', '', '-'),
+          _buildReportRow('6', 'MARKET EXPENSES', '', '-'),
+          _buildReportRow('7', 'MARKET SHORTAGE', '', '-'),
+          _buildReportRow('8', 'MARKET PADTHA', '', '-'),
+          _buildReportRow('9', 'MARKET COTTON SEED RATE (PER QTLS)', 'HIGHEST', report['marketSeedRateHighest']?.toString() ?? '0'),
+          _buildReportRow('', '', 'LOWEST', report['marketSeedRateLowest']?.toString() ?? '0'),
+          _buildReportRow('10', 'CCI PURCHASE IN', 'QTLS', report['cciPurchaseQtls']?.toString() ?? '0'),
+          _buildReportRow('', '', 'BALES', report['cciPurchaseBales']?.toString() ?? '0'),
+          _buildReportRow('', '', 'Kapas Mositure %', report['cciKapasMoisture']?.toString() ?? '0'),
+          _buildReportRow('11', 'MSP VALUE (IN LAKHS)', 'DAY WISE', report['mspValueDay']?.toString() ?? '0'),
+          _buildReportRow('', '', 'PROGRESSIVE', report['mspValueProg']?.toString() ?? '0'),
+          _buildReportRow('12', 'No. OF FARMERS BENEFITTED', 'DAY WISE', report['farmersDay']?.toString() ?? '0'),
+          _buildReportRow('', '', 'PROGRESSIVE', report['farmersProgressive']?.toString() ?? '0'),
+          _buildReportRow('13', 'CCI RATE (KAPAS RATE IN QTLS)', 'HIGHEST', report['cciRateHighest']?.toString() ?? '0'),
+          _buildReportRow('', '', 'LOWEST', report['cciRateLowest']?.toString() ?? '0'),
+          _buildReportRow('', '', 'AVERAGE', report['cciRateAverage']?.toString() ?? '0'),
+          _buildReportRow('14', 'CCI COTTON SEED RATE', '', report['cciSeedRate']?.toString() ?? '0'),
+          _buildReportRow('15', 'CCI OUT TURN', '', report['cciOutTurn']?.toString() ?? '0'),
+          _buildReportRow('16', 'CCI SHORTAGE', '', report['cciShortage']?.toString() ?? '0'),
+          _buildReportRow('17', 'CCI EXPENSES', '', report['cciExpenses']?.toString() ?? '0'),
+          _buildReportRow('18', "PROCESSING CYCLE DAY'S", '', report['processingCycle']?.toString() ?? '0'),
+          _buildReportRow('19', 'CCI PADTHA', '', report['cciPadtha']?.toString() ?? '0'),
+          _buildReportRow('20', 'PROGRESSIVE PURCHASE', 'QTLS', report['progPurchaseQtls']?.toString() ?? '0'),
+          _buildReportRow('', '', 'BALES', report['progPurchaseBales']?.toString() ?? '0'),
+          _buildReportRow('21', 'PROGRESSIVE', 'PADTHA', report['progPadtha']?.toString() ?? '0'),
+          _buildReportRow('', '', 'AVG. RATE', report['progAvgRate']?.toString() ?? '0'),
+          _buildReportRow('22', 'BALES PRESSED DETAILS', 'TODAYS', report['balesPressedToday']?.toString() ?? '0'),
+          _buildReportRow('', '', 'PROGRESSIVE', report['balesPressedProg']?.toString() ?? '0'),
+          _buildReportRow('23', 'TOTAL BALES SHIFTED TO GODOWN', '', report['totalBalesShifted']?.toString() ?? '0'),
+          _buildReportRow('24', 'SAMPLE SENT TO B.O FOR TESTING', '', report['sampleSent']?.toString() ?? '-'),
+          _buildReportRow('25', 'HEAP RESULT SENT TO B.O', '', report['heapResult']?.toString() ?? '-'),
+
+          _buildFactoryDetails(report),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSeedReportView(Map<String, dynamic> report) {
+    List<Map<String, dynamic>> factories = [];
+    final factoriesData = report['seedFactories'] ?? report['factories'];
+    if (factoriesData is List) {
+      factories = List<Map<String, dynamic>>.from(factoriesData);
+    } else if (factoriesData is Map<String, dynamic>) {
+      factories = [factoriesData];
+    }
+
+    if (factories.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Text(
+            'No factory data available',
+            style: TextStyle(color: Color(0xFF64748B)),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFF0F172A),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(4)),
+            ),
+            child: const Text(
+              'SEED REPORT',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+                letterSpacing: 1,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+          // Centre & Date
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    (report['centre'] ?? 'DEVADURGA').toString().toUpperCase(),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ),
+                const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                const SizedBox(width: 4),
+                Text(
+                  report['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+
+          // Report No
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
+            decoration: const BoxDecoration(
+              color: Color(0xFFF8FAFC),
+              border: Border(
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Text('REPORT NO.:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                const SizedBox(width: 4),
+                Text(
+                  report['reportNo']?.toString() ?? '1',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+
+          // Table Header
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE2E8F0),
+              border: Border(
+                top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+            child: Row(
+              children: [
+                SizedBox(width: 35, child: _buildTableHeader('S.No.')),
+                SizedBox(width: 160, child: _buildTableHeader('Ginning & pressing factory name')),
+                SizedBox(width: 70, child: _buildTableHeader('Variety')),
+                SizedBox(width: 80, child: _buildTableHeader('Progressive Realisable (Total)')),
+                SizedBox(width: 70, child: _buildTableHeader('Progressive Sold')),
+                SizedBox(width: 65, child: _buildTableHeader("Day's Unsold")),
+                SizedBox(width: 60, child: _buildTableHeader('Kapas Form')),
+                SizedBox(width: 60, child: _buildTableHeader('Ready Form')),
+                SizedBox(width: 50, child: _buildTableHeader('Total')),
+                SizedBox(width: 60, child: _buildTableHeader('Base Rate')),
+              ],
+            ),
+          ),
+
+          // Data Rows
+          ...factories.asMap().entries.map((entry) {
+            final index = entry.key;
+            final factory = entry.value;
+            final total = factory['total'] ??
+                (factory['kapasForm'] ?? 0) + (factory['readyForm'] ?? 0);
+            return Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
+                border: const Border(
+                  bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+              child: Row(
+                children: [
+                  SizedBox(width: 35, child: Text('${index + 1}', style: const TextStyle(fontSize: 10))),
+                  SizedBox(
+                    width: 160,
+                    child: Text(
+                      factory['factoryName']?.toString() ?? '',
+                      style: const TextStyle(fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SizedBox(width: 70, child: Text(factory['variety']?.toString() ?? '', style: const TextStyle(fontSize: 10))),
+                  SizedBox(width: 80, child: Text(factory['progressiveRealisable']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                  SizedBox(width: 70, child: Text(factory['progressiveSold']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                  SizedBox(width: 65, child: Text(factory['dayUnsold']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                  SizedBox(width: 60, child: Text(factory['kapasForm']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                  SizedBox(width: 60, child: Text(factory['readyForm']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                  SizedBox(width: 50, child: Text(
+                    total.toString(),
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.right,
+                  )),
+                  SizedBox(width: 60, child: Text(factory['baseRate']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 9,
+        color: Color(0xFF0F172A),
+      ),
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -905,7 +1253,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   Widget _buildFactoryDetails(Map<String, dynamic> report) {
     final factoriesData = report['factories'];
 
-    // Handle both List and Map
     List factories = [];
     if (factoriesData is List) {
       factories = factoriesData;
@@ -934,7 +1281,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           ),
         ),
       ),
-      // Header row with grid
       Container(
         width: double.infinity,
         decoration: const BoxDecoration(
@@ -1232,7 +1578,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       );
     }
 
-    // Add bottom border
     children.add(
       Container(
         height: 1,
@@ -1244,14 +1589,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       mainAxisSize: MainAxisSize.min,
       children: children,
     );
-  }
-
-  String _formatLabel(String key) {
-    String result = key.replaceAllMapped(
-      RegExp(r'([A-Z])'),
-          (match) => ' ${match.group(0)}',
-    );
-    return result.trim().toUpperCase();
   }
 
   @override
