@@ -23,7 +23,7 @@ class _CreateEntryScreenState extends State<CreateEntryScreen> {
 
   bool _isSaving = false;
 
-  bool get _isSeed => widget.type == ReportType.seedPurchase;
+  bool get _isSeed => widget.type == ReportType.dailySeed;
 
   @override
   void initState() {

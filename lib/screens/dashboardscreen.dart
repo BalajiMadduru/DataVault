@@ -7,7 +7,7 @@ import '../services/apiservice.dart';
 import 'loginscreen.dart';
 import '../enums/report_type.dart';
 import '../widgets/drawer_widget.dart';
-import '../widgets/create_dialog.dart';
+import '../widgets/create_entry_dialog_base.dart'; // ADD THIS LINE
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -201,7 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => const CreateEntryDialog(
-        type: ReportType.seedPurchase,
+        type: ReportType.dailySeed,
         isModify: false,
       ),
     );
@@ -223,7 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => const CreateEntryDialog(
-        type: ReportType.seedPurchase,
+        type: ReportType.dailySeed,
         isModify: true,
       ),
     );
