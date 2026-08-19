@@ -8,6 +8,7 @@ import 'loginscreen.dart';
 import '../enums/report_type.dart';
 import '../widgets/drawer_widget.dart';
 import '../widgets/create_entry_dialog_base.dart'; // ADD THIS LINE
+import 'proforma_list_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -27,6 +28,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _email = '';
   String _mobile = '';
   bool _isProfileLoading = true;
+
+  void _handleViewProforma() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ProformaListScreen(),
+      ),
+    );
+  }
+
 
   Future<void> _loadUserProfile() async {
     final result = await ApiService.getCurrentUserProfile();
@@ -338,6 +349,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onModifySeed: _handleModifySeed,
         onViewPurchaseReports: _handleViewPurchaseReports,
         onViewSeedReports: _handleViewSeedReports,
+        onViewProforma: _handleViewProforma, // Add this line
       ),
       body: Column(
         children: [

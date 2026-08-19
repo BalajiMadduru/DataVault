@@ -178,7 +178,7 @@ class ApiService {
   static Future<ApiResponse> getNextReportNo({
     required String type,
     required String centre,
-    required DateTime date,
+    DateTime? date,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -190,9 +190,7 @@ class ApiService {
       }
 
       final normalizedCentre = centre.trim().toLowerCase();
-      final normalizedDate = DateTime(date.year, date.month, date.day);
 
-      // Get all entries for this user, type, and centre
       final querySnapshot = await _db
           .collection('purchases')
           .where('userId', isEqualTo: user.uid)
@@ -207,18 +205,9 @@ class ApiService {
         final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
-        final rawDate = data['date'];
-        if (rawDate is String) {
-          final parsed = DateTime.tryParse(rawDate);
-          if (parsed != null) {
-            final entryDate = DateTime(parsed.year, parsed.month, parsed.day);
-            if (entryDate.isAtSameMomentAs(normalizedDate)) {
-              final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
-              if (reportNo > maxReportNo) {
-                maxReportNo = reportNo;
-              }
-            }
-          }
+        final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (reportNo > maxReportNo) {
+          maxReportNo = reportNo;
         }
       }
 
@@ -369,7 +358,7 @@ class ApiService {
   static Future<ApiResponse> getLatestProgressiveArrivals({
     required String type,
     required String centre,
-    required DateTime beforeDate,
+    DateTime? beforeDate,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -389,7 +378,7 @@ class ApiService {
           .get();
 
       Map<String, dynamic>? latestEntry;
-      DateTime? latestDate;
+      int highestReportNo = -1;
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
@@ -397,20 +386,10 @@ class ApiService {
         final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
-        final rawDate = data['date'];
-        if (rawDate is String) {
-          final parsed = DateTime.tryParse(rawDate);
-          if (parsed != null) {
-            final entryDate = DateTime(parsed.year, parsed.month, parsed.day);
-            final beforeDateOnly = DateTime(beforeDate.year, beforeDate.month, beforeDate.day);
-
-            if (entryDate.isBefore(beforeDateOnly)) {
-              if (latestDate == null || entryDate.isAfter(latestDate)) {
-                latestDate = entryDate;
-                latestEntry = data;
-              }
-            }
-          }
+        final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (reportNo > highestReportNo) {
+          highestReportNo = reportNo;
+          latestEntry = data;
         }
       }
 
@@ -571,6 +550,135 @@ class ApiService {
       return ApiResponse(
         success: false,
         message: 'Error deleting entry: $e',
+      );
+    }
+  }
+
+  // ============ PROFORMA METHODS ============
+
+  static Future<ApiResponse> saveProforma(Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      data['userId'] = user.uid;
+      data['createdAt'] = FieldValue.serverTimestamp();
+
+      final docRef = await _db.collection('proformas').add(data);
+
+      return ApiResponse(
+        success: true,
+        message: 'Proforma saved successfully',
+        data: {'id': docRef.id},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error saving proforma: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getProformas() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final querySnapshot = await _db
+          .collection('proformas')
+          .where('userId', isEqualTo: user.uid)
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      final proformas = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      return ApiResponse(
+        success: true,
+        message: 'Proformas fetched successfully',
+        data: {'proformas': proformas},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching proformas: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getProformaByPurchaseEntry(String purchaseEntryId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final querySnapshot = await _db
+          .collection('proformas')
+          .where('userId', isEqualTo: user.uid)
+          .where('purchaseEntryId', isEqualTo: purchaseEntryId)
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        return ApiResponse(
+          success: false,
+          message: 'No proforma found for this entry',
+        );
+      }
+
+      final doc = querySnapshot.docs.first;
+      final data = doc.data();
+      data['id'] = doc.id;
+
+      return ApiResponse(
+        success: true,
+        message: 'Proforma found',
+        data: {'proforma': data},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching proforma: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> deleteProforma(String docId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      await _db.collection('proformas').doc(docId).delete();
+
+      return ApiResponse(
+        success: true,
+        message: 'Proforma deleted successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error deleting proforma: $e',
       );
     }
   }

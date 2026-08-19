@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../enums/report_type.dart';
 import '../services/apiservice.dart';
+import '../models/report_modals.dart';  // ADD THIS - use FactoryData from here
 
 // Import the actual implementations
 import 'purchase_entry_dialog.dart';
@@ -41,7 +42,7 @@ class FactoryData {
 
   Map<String, dynamic> toJson() => {
     'factoryName': factoryName,
-    'variety': variety,
+    'variety': variety ?? '-',  // 👈 MUST have this fallback here too!
     'progressiveRealisable': progressiveRealisable,
     'progressiveSold': progressiveSold,
     'dayUnsold': dayUnsold,
@@ -153,8 +154,6 @@ abstract class CreateEntryDialogState<T extends StatefulWidget> extends State<T>
   @override
   void initState() {
     super.initState();
-    // Check if this is being used with CreateEntryDialog
-    // But we're now using separate dialogs, so this may not be needed
   }
 
   @override
@@ -191,10 +190,6 @@ abstract class CreateEntryDialogState<T extends StatefulWidget> extends State<T>
   }
 
   Future<void> autoGenerateReportNo() async {
-    if (widget is CreateEntryDialog) {
-      final w = widget as CreateEntryDialog;
-      if (w.isModify) return;
-    }
     if (selectedCentre == null || selectedCentre!.isEmpty) return;
 
     setState(() {
@@ -517,12 +512,12 @@ class CreateEntryDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (type == ReportType.dailyPurchase) {
-      return PurchaseCreateEntryDialog(
+      return PurchaseEntryDialog(  // Changed from PurchaseCreateEntryDialog
         isModify: isModify,
         existingData: existingData,
       );
     } else {
-      return SeedCreateEntryDialog(
+      return SeedEntryDialog(  // Changed from SeedCreateEntryDialog
         isModify: isModify,
         existingData: existingData,
       );

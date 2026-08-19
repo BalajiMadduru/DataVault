@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import '../enums/report_type.dart';
-import 'drawer_expandabletile.dart';
 
 class CustomDrawer extends StatefulWidget {
   final ReportType selectedType;
-  final ValueChanged<ReportType> onTypeSelected;
+  final Function(ReportType) onTypeSelected;
   final VoidCallback onCreatePurchase;
   final VoidCallback onCreateSeed;
   final VoidCallback onModifyPurchase;
   final VoidCallback onModifySeed;
   final VoidCallback onViewPurchaseReports;
   final VoidCallback onViewSeedReports;
+  final VoidCallback? onViewProforma;
 
   const CustomDrawer({
     super.key,
@@ -22,6 +22,7 @@ class CustomDrawer extends StatefulWidget {
     required this.onModifySeed,
     required this.onViewPurchaseReports,
     required this.onViewSeedReports,
+    this.onViewProforma,
   });
 
   @override
@@ -29,198 +30,275 @@ class CustomDrawer extends StatefulWidget {
 }
 
 class _CustomDrawerState extends State<CustomDrawer> {
-  bool _isPurchaseExpanded = false;
+  bool _isPurchaseExpanded = true;
   bool _isSeedExpanded = false;
   bool _isReportsExpanded = false;
-
-  void _togglePurchaseExpanded() {
-    setState(() {
-      _isPurchaseExpanded = !_isPurchaseExpanded;
-      if (_isPurchaseExpanded) {
-        _isSeedExpanded = false;
-        _isReportsExpanded = false;
-      }
-    });
-  }
-
-  void _toggleSeedExpanded() {
-    setState(() {
-      _isSeedExpanded = !_isSeedExpanded;
-      if (_isSeedExpanded) {
-        _isPurchaseExpanded = false;
-        _isReportsExpanded = false;
-      }
-    });
-  }
-
-  void _toggleReportsExpanded() {
-    setState(() {
-      _isReportsExpanded = !_isReportsExpanded;
-      if (_isReportsExpanded) {
-        _isPurchaseExpanded = false;
-        _isSeedExpanded = false;
-      }
-    });
-  }
-
-  void _executeAction(VoidCallback action) {
-    Navigator.of(context).pop();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      action();
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  // DATA ENTRY Section
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      'DATA ENTRY',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                        letterSpacing: 1,
-                      ),
+      child: Container(
+        color: const Color(0xFF0F172A),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Drawer Header
+              Container(
+                padding: const EdgeInsets.all(20),
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Color(0xFF1E293B),
+                      width: 1,
                     ),
                   ),
-
-                  // Day Wise Purchase Data - Expandable
-                  ExpandableTile(
-                    icon: Icons.shopping_basket_outlined,
-                    title: 'Day Wise Purchase Data',
-                    isExpanded: _isPurchaseExpanded,
-                    onTap: _togglePurchaseExpanded,
-                    children: [
-                      SubTile(
-                        icon: Icons.add_rounded,
-                        title: 'Create',
-                        onTap: () => _executeAction(widget.onCreatePurchase),
-                      ),
-                      SubTile(
-                        icon: Icons.edit_rounded,
-                        title: 'Modify',
-                        onTap: () => _executeAction(widget.onModifyPurchase),
-                      ),
-                    ],
-                  ),
-
-                  // Day Wise Seed Purchase Data - Expandable
-                  ExpandableTile(
-                    icon: Icons.eco_rounded,
-                    title: 'Day Wise Seed Purchase Data',
-                    isExpanded: _isSeedExpanded,
-                    onTap: _toggleSeedExpanded,
-                    children: [
-                      SubTile(
-                        icon: Icons.add_rounded,
-                        title: 'Create',
-                        onTap: () => _executeAction(widget.onCreateSeed),
-                      ),
-                      SubTile(
-                        icon: Icons.edit_rounded,
-                        title: 'Modify',
-                        onTap: () => _executeAction(widget.onModifySeed),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-
-                  // REPORTS Section
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      'REPORTS',
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.assignment_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Reports',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Select report type',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B),
-                        letterSpacing: 1,
+                        color: Colors.grey[400],
+                        fontSize: 14,
                       ),
                     ),
-                  ),
-
-                  ExpandableTile(
-                    icon: Icons.assessment_rounded,
-                    title: 'View Reports',
-                    isExpanded: _isReportsExpanded,
-                    onTap: _toggleReportsExpanded,
-                    children: [
-                      SubTile(
-                        icon: Icons.shopping_basket_rounded,
-                        title: 'Purchase Reports',
-                        onTap: () => _executeAction(widget.onViewPurchaseReports),
-                      ),
-                      SubTile(
-                        icon: Icons.eco_rounded,
-                        title: 'Seed Reports',
-                        onTap: () => _executeAction(widget.onViewSeedReports),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 16),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+
+              // Expandable Sections
+              Expanded(
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  children: [
+                    const SizedBox(height: 8),
+
+                    // ============ DAILY PURCHASE SECTION ============
+                    _buildExpandableSection(
+                      title: 'Daily Purchase',
+                      icon: Icons.shopping_basket_rounded,
+                      isExpanded: _isPurchaseExpanded,
+                      onTap: () {
+                        setState(() {
+                          _isPurchaseExpanded = !_isPurchaseExpanded;
+                          // Optionally collapse others
+                          // _isSeedExpanded = false;
+                          // _isReportsExpanded = false;
+                        });
+                      },
+                      children: [
+                        _buildSubItem(
+                          context: context,
+                          title: 'Create Purchase Entry',
+                          icon: Icons.add_circle_outline,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onCreatePurchase();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'Modify Purchase Entry',
+                          icon: Icons.edit_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onModifyPurchase();
+                          },
+                        ),
+                      ],
+                    ),
+
+                    // ============ DAILY SEED SECTION ============
+                    _buildExpandableSection(
+                      title: 'Daily Seed',
+                      icon: Icons.eco_rounded,
+                      isExpanded: _isSeedExpanded,
+                      onTap: () {
+                        setState(() {
+                          _isSeedExpanded = !_isSeedExpanded;
+                          // Optionally collapse others
+                          // _isPurchaseExpanded = false;
+                          // _isReportsExpanded = false;
+                        });
+                      },
+                      children: [
+                        _buildSubItem(
+                          context: context,
+                          title: 'Create Seed Entry',
+                          icon: Icons.add_circle_outline,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onCreateSeed();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'Modify Seed Entry',
+                          icon: Icons.edit_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onModifySeed();
+                          },
+                        ),
+                      ],
+                    ),
+
+                    // ============ REPORTS SECTION ============
+                    _buildExpandableSection(
+                      title: 'Reports',
+                      icon: Icons.list_alt,
+                      isExpanded: _isReportsExpanded,
+                      onTap: () {
+                        setState(() {
+                          _isReportsExpanded = !_isReportsExpanded;
+                          // Optionally collapse others
+                          // _isPurchaseExpanded = false;
+                          // _isSeedExpanded = false;
+                        });
+                      },
+                      children: [
+                        _buildSubItem(
+                          context: context,
+                          title: 'View Purchase Reports',
+                          icon: Icons.visibility_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onViewPurchaseReports();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'View Seed Reports',
+                          icon: Icons.visibility_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onViewSeedReports();
+                          },
+                        ),
+                        if (widget.onViewProforma != null)
+                          _buildSubItem(
+                            context: context,
+                            title: 'Proforma Reports',
+                            icon: Icons.picture_as_pdf,
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onViewProforma!();
+                            },
+                            accentColor: const Color(0xFF059669),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      color: const Color(0xFF0F172A),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFF38BDF8),
-              borderRadius: BorderRadius.circular(12),
+  Widget _buildExpandableSection({
+    required String title,
+    required IconData icon,
+    required bool isExpanded,
+    required VoidCallback onTap,
+    required List<Widget> children,
+  }) {
+    return Column(
+      children: [
+        // Main section header
+        Material(
+          color: Colors.transparent,
+          child: ListTile(
+            leading: Icon(
+              icon,
+              color: Colors.grey[400],
             ),
-            child: const Icon(Icons.bolt_rounded, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Workflo',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
+            title: Text(
+              title,
+              style: TextStyle(
+                color: Colors.grey[300],
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
               ),
-              Text(
-                'Farmers Purchase Data',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 12,
-                ),
-              ),
-            ],
+            ),
+            trailing: Icon(
+              isExpanded ? Icons.expand_less : Icons.expand_more,
+              color: Colors.grey[400],
+            ),
+            onTap: onTap,
+            tileColor: Colors.transparent,
+            hoverColor: const Color(0xFF1E293B),
+            focusColor: const Color(0xFF1E293B),
+            splashColor: Colors.grey[800]?.withOpacity(0.3),
           ),
-        ],
+        ),
+        // Children (sub-items)
+        if (isExpanded)
+          Container(
+            padding: const EdgeInsets.only(left: 16),
+            child: Column(
+              children: children,
+            ),
+          ),
+        const Divider(color: Color(0xFF1E293B), height: 1),
+      ],
+    );
+  }
+
+  Widget _buildSubItem({
+    required BuildContext context,
+    required String title,
+    required IconData icon,
+    required VoidCallback onTap,
+    Color? accentColor,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        leading: Icon(
+          icon,
+          size: 20,
+          color: accentColor ?? Colors.grey[500],
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: accentColor ?? Colors.grey[400],
+            fontSize: 13,
+          ),
+        ),
+        onTap: onTap,
+        tileColor: Colors.transparent,
+        hoverColor: const Color(0xFF1E293B),
+        focusColor: const Color(0xFF1E293B),
+        splashColor: accentColor != null
+            ? accentColor.withOpacity(0.2)
+            : Colors.grey[800]?.withOpacity(0.3),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        dense: true,
       ),
     );
   }
