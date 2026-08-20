@@ -27,6 +27,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
   final ScrollController _scrollController = ScrollController();
   final FocusNode _dialogFocusNode = FocusNode();
   bool _isSubmitting = false;
+  DateTime? _lastSubmitTime; // Prevent double submission
 
   // Find-then-edit flow
   bool _entryFound = false;
@@ -263,6 +264,14 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
   }
 
   void _submitForm() async {
+    // Prevent double submission within 2 seconds
+    final now = DateTime.now();
+    if (_lastSubmitTime != null &&
+        now.difference(_lastSubmitTime!).inMilliseconds < 2000) {
+      return;
+    }
+    _lastSubmitTime = now;
+
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSubmitting = true);
@@ -752,195 +761,207 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
           maxWidth: 950,
           maxHeight: 750,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Fixed Header
-            Row(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD1FAE5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.eco_rounded, color: Color(0xFF0F172A), size: 24),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '$title Seed Report',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
-                CommonFormWidgets.closeButton(context),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Scrollable Content
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Fixed Header
+                Row(
                   children: [
-                    if (widget.isModify)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            CommonFormWidgets.sectionHeader('Header Information'),
-                            TextButton.icon(
-                              onPressed: _isSubmitting ? null : _resetLookup,
-                              icon: const Icon(Icons.search, size: 16),
-                              label: const Text('Change entry'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF0F172A),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      CommonFormWidgets.sectionHeader('Header Information'),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: CommonFormWidgets.centreDropdown(
-                            selectedCentre: _selectedCentre,
-                            readOnly: widget.isModify,
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedCentre = value;
-                                _resetReportNoToDefault();
-                              });
-                              if (value != null) _autoGenerateReportNo();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: CommonFormWidgets.textField(
-                            controller: _reportNoController,
-                            label: 'Report No.',
-                            hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
-                            icon: Icons.numbers,
-                            keyboardType: TextInputType.number,
-                            readOnly: widget.isModify || _isLoadingReportNo,
-                            suffixIcon: _isLoadingReportNo
-                                ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            )
-                                : null,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter report number';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1FAE5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.eco_rounded, color: Color(0xFF0F172A), size: 24),
                     ),
-                    const SizedBox(height: 12),
-
-                    InkWell(
-                      onTap: widget.isModify ? null : () => _selectDate(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey[300]!),
-                          borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '$title Seed Report',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
                         ),
-                        child: Row(
+                      ),
+                    ),
+                    CommonFormWidgets.closeButton(context),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Scrollable Content
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight - 100,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
-                                style: const TextStyle(fontSize: 16),
+                            if (widget.isModify)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    CommonFormWidgets.sectionHeader('Header Information'),
+                                    TextButton.icon(
+                                      onPressed: _isSubmitting ? null : _resetLookup,
+                                      icon: const Icon(Icons.search, size: 16),
+                                      label: const Text('Change entry'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: const Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              CommonFormWidgets.sectionHeader('Header Information'),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: CommonFormWidgets.centreDropdown(
+                                    selectedCentre: _selectedCentre,
+                                    readOnly: widget.isModify,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedCentre = value;
+                                        _resetReportNoToDefault();
+                                      });
+                                      if (value != null) _autoGenerateReportNo();
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: CommonFormWidgets.textField(
+                                    controller: _reportNoController,
+                                    label: 'Report No.',
+                                    hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
+                                    icon: Icons.numbers,
+                                    keyboardType: TextInputType.number,
+                                    readOnly: widget.isModify || _isLoadingReportNo,
+                                    suffixIcon: _isLoadingReportNo
+                                        ? const Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    )
+                                        : null,
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter report number';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+
+                            InkWell(
+                              onTap: widget.isModify ? null : () => _selectDate(context),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey[300]!),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
+                                        style: const TextStyle(fontSize: 16),
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_drop_down),
+                                  ],
+                                ),
                               ),
                             ),
-                            const Icon(Icons.arrow_drop_down),
+                            const SizedBox(height: 16),
+
+                            CommonFormWidgets.sectionHeaderWithAction(
+                              'Ginning & Pressing Factory Details',
+                              actionLabel: 'Add Factory',
+                              onAction: _openAddSeedFactoryDialog,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildSeedFactoryTable(),
+                            const SizedBox(height: 16),
+
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: const Text('Cancel'),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: _isSubmitting ? null : _submitForm,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF0F172A),
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: _isSubmitting
+                                        ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      ),
+                                    )
+                                        : Text(
+                                      widget.isModify ? 'Update' : 'Submit',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-
-                    CommonFormWidgets.sectionHeaderWithAction(
-                      'Ginning & Pressing Factory Details',
-                      actionLabel: 'Add Factory',
-                      onAction: _openAddSeedFactoryDialog,
-                    ),
-                    const SizedBox(height: 12),
-                    _buildSeedFactoryTable(),
-                    const SizedBox(height: 16),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text('Cancel'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: _isSubmitting ? null : _submitForm,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F172A),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: _isSubmitting
-                                ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                                : Text(
-                              widget.isModify ? 'Update' : 'Submit',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );

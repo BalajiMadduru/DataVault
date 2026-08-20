@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as excel_lib;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import '../services/apiservice.dart';
 
 class ProformaViewScreen extends StatefulWidget {
@@ -53,8 +56,9 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.print),
-            onPressed: _proformaData != null ? () => _printProforma() : null,
+            icon: const Icon(Icons.download),
+            onPressed: _proformaData != null ? () => _exportToExcel() : null,
+            tooltip: 'Export to Excel',
           ),
         ],
       ),
@@ -80,13 +84,135 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     );
   }
 
-  void _printProforma() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Print functionality coming soon'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+  Future<void> _exportToExcel() async {
+    if (_proformaData == null) return;
+
+    try {
+      var excel = excel_lib.Excel.createExcel();
+      var sheet = excel['Proforma'];
+
+      // Add empty row
+      sheet.appendRow([]);
+
+      // Company Header
+      sheet.appendRow([
+        'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI',
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+      ]);
+
+      sheet.appendRow([]);
+
+      // Proforma Title
+      sheet.appendRow([
+        'PROFORMA FOR KAPAS PURCHASE',
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+      ]);
+
+      sheet.appendRow([]);
+
+      // Centre and Date
+      final data = _proformaData!;
+      final date = DateTime.parse(data['date']);
+      sheet.appendRow([
+        'CENTRE:', data['centre'] ?? '',
+        '', '', '', '', '', '', '', '',
+        'DATE:', DateFormat('dd/MM/yyyy').format(date),
+        '', '', '', '', ''
+      ]);
+
+      sheet.appendRow([]);
+
+      // Column Headers
+      sheet.appendRow([
+        'DATE',
+        'QTY',
+        'RATE',
+        'AMOUNT',
+        'FARMERS',
+        'MOISTURE',
+        'Moi. Value',
+        'SHORTAGE',
+        'Shortage value',
+        'PADATHA',
+        'Padtha value',
+        'out Turn',
+        'Out Turn value',
+        'seed',
+        'seed value',
+        'bales',
+        'HEAP'
+      ]);
+
+      // Data Row
+      sheet.appendRow([
+        DateFormat('dd/MM/yyyy').format(date),
+        data['quantity']?.toString() ?? '0',
+        data['rate']?.toString() ?? '0',
+        (data['amount'] ?? 0).toStringAsFixed(2),
+        data['farmers']?.toString() ?? '0',
+        data['moisture']?.toString() ?? '0',
+        (data['moistureValue'] ?? 0).toStringAsFixed(2),
+        data['shortage']?.toString() ?? '0',
+        (data['shortageValue'] ?? 0).toStringAsFixed(2),
+        data['padtha']?.toString() ?? '0',
+        (data['padthaValue'] ?? 0).toStringAsFixed(2),
+        data['outTurn']?.toString() ?? '0',
+        (data['outTurnValue'] ?? 0).toStringAsFixed(2),
+        (data['seed'] ?? 0).toStringAsFixed(2),
+        (data['seedValue'] ?? 0).toStringAsFixed(2),
+        '', // bales - empty if not available
+        ''  // heap - empty if not available
+      ]);
+
+      // Add total row with seed value highlighted
+      sheet.appendRow([]);
+      sheet.appendRow([
+        'Total Seed Value',
+        '', '', '', '', '', '', '', '', '', '', '', '',
+        '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}',
+        '', '', ''
+      ]);
+
+      final fileBytes = excel.save();
+      if (fileBytes != null) {
+        String fileName = 'Proforma_${data['centre']}_${DateFormat('ddMMyyyy').format(date)}.xlsx';
+        String? savePath;
+
+        if (Platform.isAndroid || Platform.isIOS) {
+          final directory = await getExternalStorageDirectory();
+          if (directory != null) {
+            savePath = '${directory.path}/$fileName';
+          }
+        } else {
+          final directory = await getApplicationDocumentsDirectory();
+          savePath = '${directory.path}/$fileName';
+        }
+
+        if (savePath != null) {
+          final file = File(savePath);
+          await file.writeAsBytes(fileBytes);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✅ Proforma exported to: $fileName'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Error exporting proforma: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildProformaContent() {
@@ -127,9 +253,38 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                 ),
               ),
               const Divider(height: 32),
-              _buildProformaTable(data),
+              // Proforma Table in Excel-like format
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: _buildProformaTable(data),
+                ),
+              ),
               const SizedBox(height: 20),
-              _buildSummaryRow('Total Seed Value', '₹${data['seedValue'].toStringAsFixed(2)}', isBold: true),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Total Seed Value',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    ),
+                    Text(
+                      '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -138,70 +293,103 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   }
 
   Widget _buildProformaTable(Map<String, dynamic> data) {
-    final rows = [
-      _buildTableRow('Date', DateFormat('dd/MM/yyyy').format(DateTime.parse(data['date']))),
-      _buildTableRow('Quantity (Quintals)', data['quantity'].toString()),
-      _buildTableRow('Rate (per Quintal)', '₹${data['rate']}'),
-      _buildTableRow('Amount', '₹${data['amount'].toStringAsFixed(2)}'),
-      _buildTableRow('Farmers', data['farmers'].toString()),
-      _buildTableRow('Moisture %', data['moisture'].toString()),
-      _buildTableRow('Moisture Value', data['moistureValue'].toStringAsFixed(2)),
-      _buildTableRow('Shortage %', data['shortage'].toString()),
-      _buildTableRow('Shortage Value', data['shortageValue'].toStringAsFixed(2)),
-      _buildTableRow('Padtha %', data['padtha'].toString()),
-      _buildTableRow('Padtha Value', data['padthaValue'].toStringAsFixed(2)),
-      _buildTableRow('Out Turn %', data['outTurn'].toString()),
-      _buildTableRow('Out Turn Value', data['outTurnValue'].toStringAsFixed(2)),
-      _buildTableRow('Seed %', data['seed'].toStringAsFixed(2)),
-      _buildTableRow('Seed Value', '₹${data['seedValue'].toStringAsFixed(2)}', isBold: true),
+    final date = DateTime.parse(data['date']);
+
+    // Table headers matching the screenshot
+    final headers = [
+      'DATE', 'QTY', 'RATE', 'AMOUNT', 'FARMERS',
+      'MOISTURE', 'Moi. Value', 'SHORTAGE', 'Shortage value',
+      'PADATHA', 'Padtha value', 'out Turn', 'Out Turn value',
+      'seed', 'seed value', 'bales', 'HEAP'
     ];
 
-    return Column(children: rows);
-  }
+    final values = [
+      DateFormat('dd/MM/yyyy').format(date),
+      data['quantity']?.toString() ?? '0',
+      data['rate']?.toString() ?? '0',
+      (data['amount'] ?? 0).toStringAsFixed(2),
+      data['farmers']?.toString() ?? '0',
+      data['moisture']?.toString() ?? '0',
+      (data['moistureValue'] ?? 0).toStringAsFixed(2),
+      data['shortage']?.toString() ?? '0',
+      (data['shortageValue'] ?? 0).toStringAsFixed(2),
+      data['padtha']?.toString() ?? '0',
+      (data['padthaValue'] ?? 0).toStringAsFixed(2),
+      data['outTurn']?.toString() ?? '0',
+      (data['outTurnValue'] ?? 0).toStringAsFixed(2),
+      (data['seed'] ?? 0).toStringAsFixed(2),
+      (data['seedValue'] ?? 0).toStringAsFixed(2),
+      '', // bales
+      ''  // heap
+    ];
 
-  Widget _buildTableRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 14, color: Color(0xFF334155)),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header Row
+        Container(
+          color: const Color(0xFFF1F5F9),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            children: headers.map((header) {
+              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales', 'HEAP'].contains(header);
+              return Container(
+                width: header == 'DATE' ? 90 :
+                header == 'QTY' || header == 'RATE' || header == 'AMOUNT' ? 80 :
+                header == 'FARMERS' ? 70 :
+                header == 'MOISTURE' ? 80 :
+                header == 'Moi. Value' || header == 'Shortage value' || header == 'Padtha value' || header == 'Out Turn value' ? 85 :
+                header == 'SHORTAGE' || header == 'PADATHA' || header == 'out Turn' ? 80 :
+                header == 'seed' ? 60 :
+                header == 'seed value' ? 80 :
+                header == 'bales' ? 60 : 60,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  header,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Color(0xFF0F172A),
+                  ),
+                  textAlign: isNumeric ? TextAlign.right : TextAlign.center,
+                ),
+              );
+            }).toList(),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-              color: isBold ? const Color(0xFF0F172A) : const Color(0xFF1E293B),
-            ),
+        ),
+        // Data Row
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            children: List.generate(values.length, (index) {
+              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales', 'HEAP'].contains(headers[index]);
+              final isBold = headers[index] == 'seed value';
+              return Container(
+                width: headers[index] == 'DATE' ? 90 :
+                headers[index] == 'QTY' || headers[index] == 'RATE' || headers[index] == 'AMOUNT' ? 80 :
+                headers[index] == 'FARMERS' ? 70 :
+                headers[index] == 'MOISTURE' ? 80 :
+                headers[index] == 'Moi. Value' || headers[index] == 'Shortage value' || headers[index] == 'Padtha value' || headers[index] == 'Out Turn value' ? 85 :
+                headers[index] == 'SHORTAGE' || headers[index] == 'PADATHA' || headers[index] == 'out Turn' ? 80 :
+                headers[index] == 'seed' ? 60 :
+                headers[index] == 'seed value' ? 80 :
+                headers[index] == 'bales' ? 60 : 60,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  values[index],
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                    color: isBold ? const Color(0xFF059669) : const Color(0xFF0F172A),
+                  ),
+                  textAlign: isNumeric ? TextAlign.right : TextAlign.center,
+                ),
+              );
+            }),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSummaryRow(String label, String value, {bool isBold = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-          ),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -226,6 +226,88 @@ class ApiService {
     }
   }
 
+  // ============ DUPLICATE CHECK METHOD ============
+
+  static Future<ApiResponse> checkDuplicateEntry({
+    required String type,
+    required String centre,
+    required int reportNo,
+    required DateTime date,
+    required String variety,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedVariety = variety.trim().toLowerCase();
+
+      // Get all entries for this user and type
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: type)
+          .get();
+
+      // Check for duplicate
+      bool foundDuplicate = false;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        // Check centre match (case insensitive)
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        // Check reportNo match
+        final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (storedReportNo != reportNo) continue;
+
+        // Check date match
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null &&
+              parsed.year == date.year &&
+              parsed.month == date.month &&
+              parsed.day == date.day) {
+
+            // Check variety match (case insensitive)
+            final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+            if (storedVariety == normalizedVariety) {
+              foundDuplicate = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (foundDuplicate) {
+        return ApiResponse(
+          success: true,
+          message: 'Duplicate entry found',
+          data: {'exists': true},
+        );
+      } else {
+        return ApiResponse(
+          success: true,
+          message: 'No duplicate found',
+          data: {'exists': false},
+        );
+      }
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error checking duplicate: $e',
+      );
+    }
+  }
+
   // ============ PURCHASE DATA METHODS ============
 
   static Future<ApiResponse> savePurchaseEntry(Map<String, dynamic> data) async {
@@ -682,6 +764,75 @@ class ApiService {
       );
     }
   }
+
+  // Add this method to check if entry exists (used for validation)
+  static Future<ApiResponse> checkEntryExists({
+    required String type,
+    required String centre,
+    required int reportNo,
+    required DateTime date,
+    required String variety,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedVariety = variety.trim().toLowerCase();
+
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: type)
+          .get();
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (storedReportNo != reportNo) continue;
+
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null &&
+              parsed.year == date.year &&
+              parsed.month == date.month &&
+              parsed.day == date.day) {
+
+            final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+            if (storedVariety == normalizedVariety) {
+              return ApiResponse(
+                success: true,
+                message: 'Entry exists',
+                data: {'exists': true, 'docId': doc.id},
+              );
+            }
+          }
+        }
+      }
+
+      return ApiResponse(
+        success: true,
+        message: 'No entry found',
+        data: {'exists': false},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error checking entry: $e',
+      );
+    }
+  }
+
 }
 
 class ApiResponse {

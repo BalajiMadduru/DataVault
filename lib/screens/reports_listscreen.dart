@@ -3,6 +3,7 @@ import 'package:excel/excel.dart' as excel_lib;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import '../services/apiservice.dart';
+import '../models/report_modals.dart';
 
 class ReportsListScreen extends StatefulWidget {
   final String reportType;
@@ -20,39 +21,17 @@ enum _DateFilterMode { single, range }
 
 class _ReportsListScreenState extends State<ReportsListScreen> {
   List<Map<String, dynamic>> _reports = [];
+  List<Map<String, dynamic>> _filteredReports = [];
   bool _isLoading = true;
+  bool _isDeleting = false;
 
+  // Filters
   DateTime? _filterStartDate;
   DateTime? _filterEndDate;
   _DateFilterMode _filterMode = _DateFilterMode.single;
+  String? _selectedCentreFilter;
 
-  bool get _isFilterActive => _filterStartDate != null || _filterEndDate != null;
-
-  List<Map<String, dynamic>> get _filteredReports {
-    if (!_isFilterActive) return [];
-
-    return _reports.where((report) {
-      final rawDate = report['date']?.toString();
-      if (rawDate == null || rawDate.isEmpty) return false;
-
-      final reportDate = DateTime.tryParse(rawDate);
-      if (reportDate == null) return false;
-
-      final normalizedReportDate = DateTime(reportDate.year, reportDate.month, reportDate.day);
-
-      if (_filterStartDate != null) {
-        final start = DateTime(_filterStartDate!.year, _filterStartDate!.month, _filterStartDate!.day);
-        if (normalizedReportDate.isBefore(start)) return false;
-      }
-
-      if (_filterEndDate != null) {
-        final end = DateTime(_filterEndDate!.year, _filterEndDate!.month, _filterEndDate!.day);
-        if (normalizedReportDate.isAfter(end)) return false;
-      }
-
-      return true;
-    }).toList();
-  }
+  bool get _isFilterActive => _filterStartDate != null || _filterEndDate != null || _selectedCentreFilter != null;
 
   @override
   void initState() {
@@ -83,6 +62,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         _filterStartDate = picked;
         _filterEndDate = picked;
       });
+      _applyFilters();
     }
   }
 
@@ -113,6 +93,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         _filterStartDate = picked.start;
         _filterEndDate = picked.end;
       });
+      _applyFilters();
     }
   }
 
@@ -121,6 +102,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       _filterStartDate = null;
       _filterEndDate = null;
     });
+    _applyFilters();
   }
 
   void _setFilterMode(_DateFilterMode mode) {
@@ -130,6 +112,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       _filterStartDate = null;
       _filterEndDate = null;
     });
+    _applyFilters();
   }
 
   void _openDatePicker() {
@@ -142,6 +125,46 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
   String _formatFilterDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  void _applyFilters() {
+    setState(() {
+      _filteredReports = _reports.where((report) {
+        // Date filter
+        final rawDate = report['date']?.toString();
+        if (rawDate == null || rawDate.isEmpty) return false;
+
+        final reportDate = DateTime.tryParse(rawDate);
+        if (reportDate == null) return false;
+
+        final normalizedReportDate = DateTime(reportDate.year, reportDate.month, reportDate.day);
+
+        if (_filterStartDate != null) {
+          final start = DateTime(_filterStartDate!.year, _filterStartDate!.month, _filterStartDate!.day);
+          if (normalizedReportDate.isBefore(start)) return false;
+        }
+
+        if (_filterEndDate != null) {
+          final end = DateTime(_filterEndDate!.year, _filterEndDate!.month, _filterEndDate!.day);
+          if (normalizedReportDate.isAfter(end)) return false;
+        }
+
+        // Centre filter
+        if (_selectedCentreFilter != null && _selectedCentreFilter!.isNotEmpty) {
+          final reportCentre = report['centre']?.toString().toLowerCase() ?? '';
+          if (reportCentre != _selectedCentreFilter!.toLowerCase()) return false;
+        }
+
+        return true;
+      }).toList();
+    });
+  }
+
+  void _clearCentreFilter() {
+    setState(() {
+      _selectedCentreFilter = null;
+    });
+    _applyFilters();
   }
 
   void _loadReports() async {
@@ -160,6 +183,165 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         }
         _isLoading = false;
       });
+      _applyFilters();
+    }
+  }
+
+  // ========================================================================
+  // DELETE REPORT METHOD
+  // ========================================================================
+
+  Future<void> _deleteReport(Map<String, dynamic> report, int index) async {
+    final docId = report['id']?.toString();
+    if (docId == null || docId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot delete: Report ID not found'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.delete_outline, color: Colors.red.shade700, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Delete Report',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Are you sure you want to delete this report?',
+              style: TextStyle(fontSize: 14, color: Color(0xFF334155)),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Centre: ${report['centre'] ?? 'Unknown'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                  Text(
+                    'Report #${report['reportNo'] ?? 'N/A'}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                  Text(
+                    'Date: ${report['date']?.toString().split('T').first ?? 'N/A'}',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'This action cannot be undone!',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.red,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      final response = await ApiService.deleteEntry(docId);
+
+      if (!mounted) {
+        setState(() => _isDeleting = false);
+        return;
+      }
+
+      if (response.success) {
+        // Remove the report from the list
+        setState(() {
+          _reports.removeAt(index);
+          _isDeleting = false;
+        });
+        _applyFilters();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('✅ Report deleted successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Failed to delete: ${response.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Error deleting report: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -1621,6 +1803,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Filter Mode Chips
                 Row(
                   children: [
                     _ModeChip(
@@ -1634,9 +1817,64 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                       selected: _filterMode == _DateFilterMode.range,
                       onTap: () => _setFilterMode(_DateFilterMode.range),
                     ),
+                    const SizedBox(width: 8),
+                    // Centre Filter Dropdown
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedCentreFilter,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            hintText: 'All Centres',
+                            hintStyle: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF1F5F9),
+                            isDense: true,
+                            suffixIcon: _selectedCentreFilter != null
+                                ? IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              onPressed: _clearCentreFilter,
+                              padding: EdgeInsets.zero,
+                            )
+                                : null,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('All Centres'),
+                            ),
+                            ...ReportConstants.centres.map((centre) {
+                              return DropdownMenuItem<String>(
+                                value: centre,
+                                child: Text(centre),
+                              );
+                            }),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedCentreFilter = value;
+                            });
+                            _applyFilters();
+                          },
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
+                // Date Picker
                 Row(
                   children: [
                     Expanded(
@@ -1666,7 +1904,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _isFilterActive
+                                  _isFilterActive && _filterStartDate != null
                                       ? (_filterMode == _DateFilterMode.single
                                       ? _formatFilterDate(_filterStartDate!)
                                       : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}')
@@ -1725,7 +1963,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   const SizedBox(height: 16),
                   Text(
                     _isFilterActive
-                        ? 'No data record were found'
+                        ? 'No data records found'
                         : 'Select a date to view reports',
                     style: const TextStyle(
                       fontSize: 16,
@@ -1737,7 +1975,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _isFilterActive
-                        ? 'Try a different date'
+                        ? 'Try changing your filters'
                         : 'Choose a date above to see reports',
                     style: const TextStyle(
                       fontSize: 14,
@@ -1748,11 +1986,14 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   if (_isFilterActive) ...[
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: _clearDateFilter,
+                      onPressed: () {
+                        _clearDateFilter();
+                        _clearCentreFilter();
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0F172A),
                       ),
-                      child: const Text('Clear Filter'),
+                      child: const Text('Clear All Filters'),
                     ),
                   ],
                 ],
@@ -1851,6 +2092,14 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                           icon: const Icon(Icons.download),
                           onPressed: _exportToExcel,
                           tooltip: 'Export',
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            Icons.delete_outline,
+                            color: Colors.red.shade400,
+                          ),
+                          onPressed: _isDeleting ? null : () => _deleteReport(report, index),
+                          tooltip: 'Delete Report',
                         ),
                       ],
                     ),
