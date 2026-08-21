@@ -612,7 +612,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                 factory['heapNo']?.toString() ?? '',
                 factory['heapQty']?.toString() ?? '',
                 factory['seedFarmers']?.toString() ?? '',
-                factory['realisable']?.toString() ?? '',
+                factory['seed_realisable']?.toString() ?? '', // FIXED: was 'realisable'
                 factory['readySeedSold']?.toString() ?? '',
                 factory['readySeedUnsold']?.toString() ?? '',
                 factory['baseRate']?.toString() ?? '',
@@ -1562,7 +1562,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ),
             const SizedBox(width: 4),
             Container(
-              width: 30,
+              width: 40, // Increased from 30 to avoid truncation
               decoration: const BoxDecoration(
                 border: Border(
                   right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
@@ -1709,13 +1709,13 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               ),
               const SizedBox(width: 4),
               Container(
-                width: 30,
+                width: 40, // Increased from 30
                 decoration: const BoxDecoration(
                   border: Border(
                     right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
                   ),
                 ),
-                child: Text(factory['realisable']?.toString() ?? '',
+                child: Text(factory['seed_realisable']?.toString() ?? '', // FIXED: was 'realisable'
                   style: const TextStyle(fontSize: 10),
                   textAlign: TextAlign.center,
                 ),
