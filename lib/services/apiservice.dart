@@ -29,7 +29,15 @@ class ApiService {
 
       return _saveDailyRecordAndRespond(credential, email, mobile, username);
     } on FirebaseAuthException catch (e) {
-      return ApiResponse(success: false, message: _mapAuthError(e.code));
+      // NOTE: the Firebase error code is now surfaced in `data['code']` so
+      // the UI can react to specific cases (e.g. offer to create an
+      // account when sign-in fails because none exists yet) instead of
+      // only having the human-readable message to work with.
+      return ApiResponse(
+        success: false,
+        message: _mapAuthError(e.code),
+        data: {'code': e.code},
+      );
     } catch (e) {
       return ApiResponse(
         success: false,
@@ -68,9 +76,14 @@ class ApiService {
         return ApiResponse(
           success: false,
           message: 'An account already exists for that email. Try signing in instead.',
+          data: {'code': e.code},
         );
       }
-      return ApiResponse(success: false, message: _mapAuthError(e.code));
+      return ApiResponse(
+        success: false,
+        message: _mapAuthError(e.code),
+        data: {'code': e.code},
+      );
     } catch (e) {
       return ApiResponse(
         success: false,
@@ -142,7 +155,11 @@ class ApiService {
         message: 'Password reset link sent to $email',
       );
     } on FirebaseAuthException catch (e) {
-      return ApiResponse(success: false, message: _mapAuthError(e.code));
+      return ApiResponse(
+        success: false,
+        message: _mapAuthError(e.code),
+        data: {'code': e.code},
+      );
     } catch (e) {
       return ApiResponse(
         success: false,
@@ -437,9 +454,13 @@ class ApiService {
     }
   }
 
+  // ============ GET LATEST PROGRESSIVE ARRIVALS ============
+  // NOTE: Scoped by centre AND variety, so progressive totals are
+  // tracked separately per variety within a centre.
   static Future<ApiResponse> getLatestProgressiveArrivals({
     required String type,
     required String centre,
+    required String variety,
     DateTime? beforeDate,
   }) async {
     try {
@@ -452,6 +473,7 @@ class ApiService {
       }
 
       final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedVariety = variety.trim().toLowerCase();
 
       final querySnapshot = await _db
           .collection('purchases')
@@ -467,6 +489,9 @@ class ApiService {
 
         final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
+
+        final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+        if (storedVariety != normalizedVariety) continue;
 
         final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (reportNo > highestReportNo) {

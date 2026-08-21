@@ -133,7 +133,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await _loadDefaultCentre();
-        if (_selectedCentre != null && _selectedCentre!.isNotEmpty) {
+        if (_selectedCentre != null &&
+            _selectedCentre!.isNotEmpty &&
+            _selectedVariety != null &&
+            _selectedVariety!.isNotEmpty) {
           await _fetchPreviousProgressive();
         }
       });
@@ -313,12 +316,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     _balesPressedProgController.text = _formatNumber(_previousBalesProg + dayValue);
   }
 
+  // ============================================================
+  // FETCH PREVIOUS PROGRESSIVE - now scoped by centre AND variety
+  // ============================================================
   Future<void> _fetchPreviousProgressive() async {
     if (widget.isModify) return;
+
     if (_selectedCentre == null || _selectedCentre!.isEmpty) {
       setState(() {
         _isLoadingPreviousProgressive = false;
         _debugMessage = 'No centre selected';
+      });
+      return;
+    }
+
+    if (_selectedVariety == null || _selectedVariety!.isEmpty) {
+      setState(() {
+        _isLoadingPreviousProgressive = false;
+        _debugMessage = 'No variety selected';
       });
       return;
     }
@@ -329,15 +344,17 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     });
 
     final requestedCentre = _selectedCentre;
+    final requestedVariety = _selectedVariety;
 
     try {
       final response = await ApiService.getLatestProgressiveArrivals(
         type: 'purchase',
         centre: _selectedCentre!,
+        variety: _selectedVariety!,
       );
 
       if (!mounted) return;
-      if (requestedCentre != _selectedCentre) return;
+      if (requestedCentre != _selectedCentre || requestedVariety != _selectedVariety) return;
 
       setState(() {
         _isLoadingPreviousProgressive = false;
@@ -367,7 +384,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _recalculateBalesProg();
       });
     } catch (e) {
-      if (mounted && requestedCentre == _selectedCentre) {
+      if (mounted && requestedCentre == _selectedCentre && requestedVariety == _selectedVariety) {
         setState(() {
           _isLoadingPreviousProgressive = false;
           _debugMessage = '❌ Error: $e';
@@ -1449,7 +1466,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 });
                                 if (value != null) {
                                   _rememberCentre(value);
-                                  _fetchPreviousProgressive();
+                                  if (_selectedVariety != null && _selectedVariety!.isNotEmpty) {
+                                    _fetchPreviousProgressive();
+                                  }
                                 }
                               },
                             ),
@@ -1511,8 +1530,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               onChanged: (value) {
                                 setState(() {
                                   _selectedVariety = value;
+                                  _previousProgApmc = 0;
+                                  _previousProgOutside = 0;
+                                  _previousFarmersProg = 0;
+                                  _previousMspProg = 0;
+                                  _previousBalesProg = 0;
+                                  _debugMessage = '';
+                                  _progArrivalsApmcController.text = '';
+                                  _progArrivalsOutsideController.text = '';
+                                  _farmersProgressiveController.text = '';
+                                  _mspValueProgController.text = '';
+                                  _balesPressedProgController.text = '';
                                   _isEntrySaved = false;
                                 });
+                                if (value != null &&
+                                    _selectedCentre != null &&
+                                    _selectedCentre!.isNotEmpty) {
+                                  _fetchPreviousProgressive();
+                                }
                               },
                               validator: (value) => value == null ? 'Please select a variety' : null,
                             ),
@@ -1536,7 +1571,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 padding: EdgeInsets.only(bottom: 4),
                                 child: Text(
                                   'Progressive totals are calculated automatically from '
-                                      'the last entry for this centre + today\'s values.',
+                                      'the last entry for this centre + variety + today\'s values.',
                                   style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                                 ),
                               ),
