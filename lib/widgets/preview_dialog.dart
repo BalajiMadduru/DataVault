@@ -122,6 +122,12 @@ class PreviewDialog extends StatelessWidget {
   }
 
   Widget _buildPurchasePreview(Map<String, dynamic>? data) {
+    // Safe getter helper
+    String safeString(dynamic value, {String defaultValue = ''}) {
+      if (value == null) return defaultValue;
+      return value.toString();
+    }
+
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -174,14 +180,14 @@ class PreviewDialog extends StatelessWidget {
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
-                  data?['centre']?.toString().toUpperCase() ?? 'DEVADURGA',
+                  safeString(data?['centre'], defaultValue: 'DEVADURGA').toUpperCase(),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ),
               const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(width: 4),
               Text(
-                data?['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+                safeString(data?['date']).split('T').first.replaceAll('-', '.'),
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               ),
             ],
@@ -194,14 +200,14 @@ class PreviewDialog extends StatelessWidget {
               const Text('REPORT NO.:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(width: 4),
               Text(
-                data?['reportNo']?.toString() ?? '1',
+                safeString(data?['reportNo'], defaultValue: '1'),
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               ),
               const Spacer(),
               const Text('VARIETY:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(width: 4),
               Text(
-                data?['variety']?.toString() ?? 'BB MOD',
+                safeString(data?['variety'], defaultValue: 'BB MOD'),
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               ),
             ],
@@ -216,46 +222,52 @@ class PreviewDialog extends StatelessWidget {
   }
 
   Widget _buildPurchaseTable(Map<String, dynamic>? data) {
+    // Safe getter helper
+    String safeString(dynamic value, {String defaultValue = '0'}) {
+      if (value == null) return defaultValue;
+      return value.toString();
+    }
+
     final rows = [
-      ['1', "DAY'S ARRIVALS IN QTLS / BALES", 'APMC:', data?['dayArrivalsApmc']?.toString() ?? '0'],
-      ['', '', 'OUTSIDE APMC:', data?['dayArrivalsOutside']?.toString() ?? '0'],
-      ['2', 'PROG. ARRIVALS IN QTLS / BALES', 'APMC:', data?['progArrivalsApmc']?.toString() ?? '0'],
-      ['', '', 'OUTSIDE APMC:', data?['progArrivalsOutside']?.toString() ?? '0'],
-      ['3', 'MOISTURE PERCENTAGE (%)', '', data?['moisture']?.toString() ?? '8-20%'],
-      ['4', 'MARKET RATE (KAPAS RATE IN QTLS)', 'HIGHEST', data?['marketRateHighest']?.toString() ?? '0'],
-      ['', '', 'LOWEST', data?['marketRateLowest']?.toString() ?? '0'],
-      ['', '', 'AVERAGE', data?['marketRateAverage']?.toString() ?? '0'],
+      ['1', "DAY'S ARRIVALS IN QTLS / BALES", 'APMC:', safeString(data?['dayArrivalsApmc'])],
+      ['', '', 'OUTSIDE APMC:', safeString(data?['dayArrivalsOutside'])],
+      ['2', 'PROG. ARRIVALS IN QTLS / BALES', 'APMC:', safeString(data?['progArrivalsApmc'])],
+      ['', '', 'OUTSIDE APMC:', safeString(data?['progArrivalsOutside'])],
+      ['3', 'MOISTURE PERCENTAGE (%)', '', safeString(data?['moisture'], defaultValue: '8-20%')],
+      ['4', 'MARKET RATE (KAPAS RATE IN QTLS)', 'HIGHEST', safeString(data?['marketRateHighest'])],
+      ['', '', 'LOWEST', safeString(data?['marketRateLowest'])],
+      ['', '', 'AVERAGE', safeString(data?['marketRateAverage'])],
       ['5', 'MARKET OUT TURN', '', '-'],
       ['6', 'MARKET EXPENSES', '', '-'],
       ['7', 'MARKET SHORTAGE', '', '-'],
       ['8', 'MARKET PADTHA', '', '-'],
-      ['9', 'MARKET COTTON SEED RATE (PER QTLS)', 'HIGHEST', data?['marketSeedRateHighest']?.toString() ?? '0'],
-      ['', '', 'LOWEST', data?['marketSeedRateLowest']?.toString() ?? '0'],
-      ['10', 'CCI PURCHASE IN', 'QTLS', data?['cciPurchaseQtls']?.toString() ?? '0'],
-      ['', '', 'BALES', data?['cciPurchaseBales']?.toString() ?? '0'],
-      ['', '', 'Kapas Moisture %', data?['cciKapasMoisture']?.toString() ?? '0'],
-      ['11', 'MSP VALUE (IN LAKHS)', 'DAY WISE', data?['mspValueDay']?.toString() ?? '0'],
-      ['', '', 'PROGRESSIVE', data?['mspValueProg']?.toString() ?? '0'],
-      ['12', 'No. OF FARMERS BENEFITTED', 'DAY WISE', data?['farmersDay']?.toString() ?? '0'],
-      ['', '', 'PROGRESSIVE', data?['farmersProgressive']?.toString() ?? '0'],
-      ['13', 'CCI RATE (KAPAS RATE IN QTLS)', 'HIGHEST', data?['cciRateHighest']?.toString() ?? '0'],
-      ['', '', 'LOWEST', data?['cciRateLowest']?.toString() ?? '0'],
-      ['', '', 'AVERAGE', data?['cciRateAverage']?.toString() ?? '0'],
-      ['14', 'CCI COTTON SEED RATE', '', data?['cciSeedRate']?.toString() ?? '0'],
-      ['15', 'CCI OUT TURN', '', data?['cciOutTurn']?.toString() ?? '0'],
-      ['16', 'CCI SHORTAGE', '', data?['cciShortage']?.toString() ?? '0'],
-      ['17', 'CCI EXPENSES', '', data?['cciExpenses']?.toString() ?? '0'],
-      ['18', "PROCESSING CYCLE DAY'S", '', data?['processingCycle']?.toString() ?? '0'],
-      ['19', 'CCI PADTHA', '', data?['cciPadtha']?.toString() ?? '0'],
-      ['20', 'PROGRESSIVE PURCHASE', 'QTLS', data?['progPurchaseQtls']?.toString() ?? '0'],
-      ['', '', 'BALES', data?['progPurchaseBales']?.toString() ?? '0'],
-      ['21', 'PROGRESSIVE', 'PADTHA', data?['progPadtha']?.toString() ?? '0'],
-      ['', '', 'AVG. RATE', data?['progAvgRate']?.toString() ?? '0'],
-      ['22', 'BALES PRESSED DETAILS', 'TODAYS', data?['balesPressedToday']?.toString() ?? '0'],
-      ['', '', 'PROGRESSIVE', data?['balesPressedProg']?.toString() ?? '0'],
-      ['23', 'TOTAL BALES SHIFTED TO GODOWN', '', data?['totalBalesShifted']?.toString() ?? '0'],
-      ['24', 'SAMPLE SENT TO B.O FOR TESTING', '', data?['sampleSent']?.toString() ?? '-'],
-      ['25', 'HEAP RESULT SENT TO B.O', '', data?['heapResult']?.toString() ?? '-'],
+      ['9', 'MARKET COTTON SEED RATE (PER QTLS)', 'HIGHEST', safeString(data?['marketSeedRateHighest'])],
+      ['', '', 'LOWEST', safeString(data?['marketSeedRateLowest'])],
+      ['10', 'CCI PURCHASE IN', 'QTLS', safeString(data?['cciPurchaseQtls'])],
+      ['', '', 'BALES', safeString(data?['cciPurchaseBales'])],
+      ['', '', 'Kapas Moisture %', safeString(data?['cciKapasMoisture'])],
+      ['11', 'MSP VALUE (IN LAKHS)', 'DAY WISE', safeString(data?['mspValueDay'])],
+      ['', '', 'PROGRESSIVE', safeString(data?['mspValueProg'])],
+      ['12', 'No. OF FARMERS BENEFITTED', 'DAY WISE', safeString(data?['farmersDay'])],
+      ['', '', 'PROGRESSIVE', safeString(data?['farmersProgressive'])],
+      ['13', 'CCI RATE (KAPAS RATE IN QTLS)', 'HIGHEST', safeString(data?['cciRateHighest'])],
+      ['', '', 'LOWEST', safeString(data?['cciRateLowest'])],
+      ['', '', 'AVERAGE', safeString(data?['cciRateAverage'])],
+      ['14', 'CCI COTTON SEED RATE', '', safeString(data?['cciSeedRate'])],
+      ['15', 'CCI OUT TURN', '', safeString(data?['cciOutTurn'])],
+      ['16', 'CCI SHORTAGE', '', safeString(data?['cciShortage'])],
+      ['17', 'CCI EXPENSES', '', safeString(data?['cciExpenses'])],
+      ['18', "PROCESSING CYCLE DAY'S", '', safeString(data?['processingCycle'])],
+      ['19', 'CCI PADTHA', '', safeString(data?['cciPadtha'])],
+      ['20', 'PROGRESSIVE PURCHASE', 'QTLS', safeString(data?['progPurchaseQtls'])],
+      ['', '', 'BALES', safeString(data?['progPurchaseBales'])],
+      ['21', 'PROGRESSIVE', 'PADTHA', safeString(data?['progPadtha'])],
+      ['', '', 'AVG. RATE', safeString(data?['progAvgRate'])],
+      ['22', 'BALES PRESSED DETAILS', 'TODAYS', safeString(data?['balesPressedToday'])],
+      ['', '', 'PROGRESSIVE', safeString(data?['balesPressedProg'])],
+      ['23', 'TOTAL BALES SHIFTED TO GODOWN', '', safeString(data?['totalBalesShifted'])],
+      ['24', 'SAMPLE SENT TO B.O FOR TESTING', '', safeString(data?['sampleSent'], defaultValue: '-')],
+      ['25', 'HEAP RESULT SENT TO B.O', '', safeString(data?['heapResult'], defaultValue: '-')],
     ];
 
     return Container(
@@ -332,6 +344,12 @@ class PreviewDialog extends StatelessWidget {
   }
 
   Widget _buildSeedPreview(Map<String, dynamic>? data) {
+    // Safe getter helper
+    String safeString(dynamic value, {String defaultValue = ''}) {
+      if (value == null) return defaultValue;
+      return value.toString();
+    }
+
     List<Map<String, dynamic>> factories = [];
     final factoriesData = data?['seedFactories'] ?? data?['factories'];
     if (factoriesData is List) {
@@ -372,14 +390,14 @@ class PreviewDialog extends StatelessWidget {
             const SizedBox(width: 4),
             Expanded(
               child: Text(
-                data?['centre']?.toString().toUpperCase() ?? 'DEVADURGA',
+                safeString(data?['centre'], defaultValue: 'DEVADURGA').toUpperCase(),
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               ),
             ),
             const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
             const SizedBox(width: 4),
             Text(
-              data?['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+              safeString(data?['date']).split('T').first.replaceAll('-', '.'),
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ],
@@ -392,7 +410,7 @@ class PreviewDialog extends StatelessWidget {
             const Text('REPORT NO.:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
             const SizedBox(width: 4),
             Text(
-              data?['reportNo']?.toString() ?? '1',
+              safeString(data?['reportNo'], defaultValue: '1'),
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
             ),
           ],
@@ -466,23 +484,25 @@ class PreviewDialog extends StatelessWidget {
                           SizedBox(
                             width: 160,
                             child: Text(
-                              factory['factoryName']?.toString() ?? '',
+                              safeString(factory['factoryName']),
                               style: const TextStyle(fontSize: 10),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          SizedBox(width: 70, child: Text(factory['variety']?.toString() ?? '', style: const TextStyle(fontSize: 10))),
-                          SizedBox(width: 80, child: Text(factory['progressiveRealisable']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
-                          SizedBox(width: 70, child: Text(factory['progressiveSold']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
-                          SizedBox(width: 65, child: Text(factory['dayUnsold']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
-                          SizedBox(width: 60, child: Text(factory['kapasForm']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
-                          SizedBox(width: 60, child: Text(factory['readyForm']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 70, child: Text(safeString(factory['variety']), style: const TextStyle(fontSize: 10))),
+                          SizedBox(width: 80, child: Text(safeString(factory['progressiveRealisable'], defaultValue: '0'), style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 70, child: Text(safeString(factory['progressiveSold'], defaultValue: '0'), style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 65, child: Text(safeString(factory['dayUnsold'], defaultValue: '0'), style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 60, child: Text(safeString(factory['kapasForm'], defaultValue: '0'), style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 60, child: Text(safeString(factory['readyForm'], defaultValue: '0'), style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
                           SizedBox(width: 50, child: Text(
-                            (factory['total'] ?? (factory['kapasForm'] ?? 0) + (factory['readyForm'] ?? 0)).toString(),
+                            safeString(factory['total'], defaultValue:
+                            ((safeString(factory['kapasForm'], defaultValue: '0')) + (safeString(factory['readyForm'], defaultValue: '0'))).toString()
+                            ),
                             style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
                             textAlign: TextAlign.right,
                           )),
-                          SizedBox(width: 60, child: Text(factory['baseRate']?.toString() ?? '0', style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
+                          SizedBox(width: 60, child: Text(safeString(factory['baseRate'], defaultValue: '0'), style: const TextStyle(fontSize: 10), textAlign: TextAlign.right)),
                         ],
                       ),
                     );

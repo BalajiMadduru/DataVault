@@ -30,8 +30,37 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   DateTime? _filterEndDate;
   _DateFilterMode _filterMode = _DateFilterMode.single;
   String? _selectedCentreFilter;
+  String? _selectedVarietyFilter;
 
-  bool get _isFilterActive => _filterStartDate != null || _filterEndDate != null || _selectedCentreFilter != null;
+  bool get _isDateFilterActive => _filterStartDate != null || _filterEndDate != null;
+
+  bool get _isFilterActive =>
+      _isDateFilterActive || _selectedCentreFilter != null || _selectedVarietyFilter != null;
+
+  // Get the list of available centres from the reports
+  List<String> get _availableCentres {
+    final centres = <String>{};
+    for (final report in _reports) {
+      final centre = report['centre']?.toString();
+      if (centre != null && centre.isNotEmpty) {
+        centres.add(centre);
+      }
+    }
+    return centres.toList()..sort();
+  }
+
+  // Get the list of available varieties from the reports (purchase only)
+  List<String> get _availableVarieties {
+    if (widget.reportType != 'purchase') return [];
+    final varieties = <String>{};
+    for (final report in _reports) {
+      final variety = report['variety']?.toString();
+      if (variety != null && variety.isNotEmpty) {
+        varieties.add(variety);
+      }
+    }
+    return varieties.toList()..sort();
+  }
 
   @override
   void initState() {
@@ -123,6 +152,26 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     }
   }
 
+  void _clearCentreFilter() {
+    setState(() => _selectedCentreFilter = null);
+    _applyFilters();
+  }
+
+  void _clearVarietyFilter() {
+    setState(() => _selectedVarietyFilter = null);
+    _applyFilters();
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _filterStartDate = null;
+      _filterEndDate = null;
+      _selectedCentreFilter = null;
+      _selectedVarietyFilter = null;
+    });
+    _applyFilters();
+  }
+
   String _formatFilterDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
@@ -155,16 +204,15 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           if (reportCentre != _selectedCentreFilter!.toLowerCase()) return false;
         }
 
+        // Variety filter (for purchase reports only)
+        if (_selectedVarietyFilter != null && _selectedVarietyFilter!.isNotEmpty) {
+          final reportVariety = report['variety']?.toString().toLowerCase() ?? '';
+          if (reportVariety != _selectedVarietyFilter!.toLowerCase()) return false;
+        }
+
         return true;
       }).toList();
     });
-  }
-
-  void _clearCentreFilter() {
-    setState(() {
-      _selectedCentreFilter = null;
-    });
-    _applyFilters();
   }
 
   void _loadReports() async {
@@ -262,6 +310,16 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     'Date: ${report['date']?.toString().split('T').first ?? 'N/A'}',
                     style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                   ),
+                  if (report['variety'] != null)
+                    Text(
+                      'Variety: ${report['variety']}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                  if (report['factoryName'] != null)
+                    Text(
+                      'Factory: ${report['factoryName']}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
                 ],
               ),
             ),
@@ -612,7 +670,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                 factory['heapNo']?.toString() ?? '',
                 factory['heapQty']?.toString() ?? '',
                 factory['seedFarmers']?.toString() ?? '',
-                factory['seed_realisable']?.toString() ?? '', // FIXED: was 'realisable'
+                factory['seed_realisable']?.toString() ?? '',
                 factory['readySeedSold']?.toString() ?? '',
                 factory['readySeedUnsold']?.toString() ?? '',
                 factory['baseRate']?.toString() ?? '',
@@ -885,6 +943,22 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                             color: Color(0xFF64748B),
                           ),
                         ),
+                        if (report['variety'] != null)
+                          Text(
+                            'Variety: ${report['variety']}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        if (!isPurchase && report['factoryName'] != null)
+                          Text(
+                            'Factory: ${report['factoryName']}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -1036,78 +1110,12 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   report['reportNo']?.toString() ?? '1',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
-              ],
-            ),
-          ),
-
-          // SL NO | PARTICULARS | VARIETY
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-            decoration: const BoxDecoration(
-              color: Color(0xFFE2E8F0),
-              border: Border(
-                top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                    ),
-                  ),
-                  child: const Text(
-                    'SL NO',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      border: Border(
-                        right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: const Text(
-                      'PARTICULARS',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 11,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                const Text(
-                  'VARIETY:',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
+                const Text('VARIETY:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 const SizedBox(width: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    report['variety']?.toString() ?? 'BB MOD',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
+                Text(
+                  report['variety']?.toString() ?? 'BB MOD',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
@@ -1562,7 +1570,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ),
             const SizedBox(width: 4),
             Container(
-              width: 40, // Increased from 30 to avoid truncation
+              width: 40,
               decoration: const BoxDecoration(
                 border: Border(
                   right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
@@ -1709,13 +1717,13 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               ),
               const SizedBox(width: 4),
               Container(
-                width: 40, // Increased from 30
+                width: 40,
                 decoration: const BoxDecoration(
                   border: Border(
                     right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
                   ),
                 ),
-                child: Text(factory['seed_realisable']?.toString() ?? '', // FIXED: was 'realisable'
+                child: Text(factory['seed_realisable']?.toString() ?? '',
                   style: const TextStyle(fontSize: 10),
                   textAlign: TextAlign.center,
                 ),
@@ -1776,6 +1784,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   @override
   Widget build(BuildContext context) {
     final isPurchase = widget.reportType == 'purchase';
+    final availableCentres = _availableCentres;
+    final availableVarieties = _availableVarieties;
 
     return Scaffold(
       appBar: AppBar(
@@ -1804,76 +1814,141 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Filter Mode Chips
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     _ModeChip(
                       label: 'Single Date',
                       selected: _filterMode == _DateFilterMode.single,
                       onTap: () => _setFilterMode(_DateFilterMode.single),
                     ),
-                    const SizedBox(width: 8),
                     _ModeChip(
                       label: 'Date Range',
                       selected: _filterMode == _DateFilterMode.range,
                       onTap: () => _setFilterMode(_DateFilterMode.range),
                     ),
-                    const SizedBox(width: 8),
-                    // Centre Filter Dropdown
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedCentreFilter,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            hintText: 'All Centres',
-                            hintStyle: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            filled: true,
-                            fillColor: const Color(0xFFF1F5F9),
-                            isDense: true,
-                            suffixIcon: _selectedCentreFilter != null
-                                ? IconButton(
-                              icon: const Icon(Icons.close, size: 16),
-                              onPressed: _clearCentreFilter,
-                              padding: EdgeInsets.zero,
-                            )
-                                : null,
-                          ),
-                          items: [
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('All Centres'),
-                            ),
-                            ...ReportConstants.centres.map((centre) {
-                              return DropdownMenuItem<String>(
-                                value: centre,
-                                child: Text(centre),
-                              );
-                            }),
-                          ],
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedCentreFilter = value;
-                            });
-                            _applyFilters();
-                          },
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 10),
+
+                // Centre Filter Dropdown
+                if (availableCentres.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedCentreFilter,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              hintText: 'All Centres',
+                              hintStyle: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF1F5F9),
+                              isDense: true,
+                              suffixIcon: _selectedCentreFilter != null
+                                  ? IconButton(
+                                icon: const Icon(Icons.close, size: 16),
+                                onPressed: _clearCentreFilter,
+                                padding: EdgeInsets.zero,
+                              )
+                                  : null,
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('All Centres'),
+                              ),
+                              ...availableCentres.map((centre) {
+                                return DropdownMenuItem<String>(
+                                  value: centre,
+                                  child: Text(centre),
+                                );
+                              }),
+                            ],
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedCentreFilter = value;
+                              });
+                              _applyFilters();
+                            },
+                          ),
+                        ),
+                      ),
+                      // Variety filter for purchase reports
+                      if (isPurchase && availableVarieties.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedVarietyFilter,
+                              isExpanded: true,
+                              decoration: InputDecoration(
+                                hintText: 'All Varieties',
+                                hintStyle: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                                filled: true,
+                                fillColor: const Color(0xFFF1F5F9),
+                                isDense: true,
+                                suffixIcon: _selectedVarietyFilter != null
+                                    ? IconButton(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  onPressed: _clearVarietyFilter,
+                                  padding: EdgeInsets.zero,
+                                )
+                                    : null,
+                              ),
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('All Varieties'),
+                                ),
+                                ...availableVarieties.map((variety) {
+                                  return DropdownMenuItem<String>(
+                                    value: variety,
+                                    child: Text(variety),
+                                  );
+                                }),
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedVarietyFilter = value;
+                                });
+                                _applyFilters();
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+
                 // Date Picker
                 Row(
                   children: [
@@ -1887,7 +1962,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                             color: const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: _isFilterActive
+                              color: _isDateFilterActive
                                   ? const Color(0xFF0F172A)
                                   : const Color(0xFFE2E8F0),
                             ),
@@ -1897,14 +1972,14 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                               Icon(
                                 Icons.calendar_today_rounded,
                                 size: 16,
-                                color: _isFilterActive
+                                color: _isDateFilterActive
                                     ? const Color(0xFF0F172A)
                                     : const Color(0xFF64748B),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _isFilterActive && _filterStartDate != null
+                                  _isDateFilterActive && _filterStartDate != null
                                       ? (_filterMode == _DateFilterMode.single
                                       ? _formatFilterDate(_filterStartDate!)
                                       : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}')
@@ -1914,7 +1989,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: _isFilterActive
+                                    color: _isDateFilterActive
                                         ? const Color(0xFF0F172A)
                                         : const Color(0xFF64748B),
                                   ),
@@ -1925,7 +2000,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                         ),
                       ),
                     ),
-                    if (_isFilterActive) ...[
+                    if (_isDateFilterActive) ...[
                       const SizedBox(width: 8),
                       IconButton(
                         onPressed: _clearDateFilter,
@@ -1936,6 +2011,39 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     ],
                   ],
                 ),
+
+                // Active filters summary
+                if (_isFilterActive) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (_selectedCentreFilter != null)
+                        _FilterChip(
+                          label: 'Centre: $_selectedCentreFilter',
+                          onPressed: _clearCentreFilter,
+                        ),
+                      if (_selectedVarietyFilter != null)
+                        _FilterChip(
+                          label: 'Variety: $_selectedVarietyFilter',
+                          onPressed: _clearVarietyFilter,
+                        ),
+                      if (_isDateFilterActive)
+                        _FilterChip(
+                          label: _filterMode == _DateFilterMode.single
+                              ? 'Date: ${_formatFilterDate(_filterStartDate!)}'
+                              : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}',
+                          onPressed: _clearDateFilter,
+                        ),
+                      _FilterChip(
+                        label: 'Clear All',
+                        onPressed: _clearAllFilters,
+                        isClearAll: true,
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -1964,7 +2072,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   Text(
                     _isFilterActive
                         ? 'No data records found'
-                        : 'Select a date to view reports',
+                        : 'Select filters to view reports',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -1976,7 +2084,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   Text(
                     _isFilterActive
                         ? 'Try changing your filters'
-                        : 'Choose a date above to see reports',
+                        : 'Use the filters above to find reports',
                     style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF94A3B8),
@@ -1986,10 +2094,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   if (_isFilterActive) ...[
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed: () {
-                        _clearDateFilter();
-                        _clearCentreFilter();
-                      },
+                      onPressed: _clearAllFilters,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF0F172A),
                       ),
@@ -2026,7 +2131,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     title: Text(
                       isPurchase
                           ? '${report['centre'] ?? 'Unknown'} - Report #${report['reportNo'] ?? 'N/A'}'
-                          : report['factoryName'] ?? 'Report',
+                          : (report['factoryName'] ?? report['centre'] ?? 'Report'),
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 16,
@@ -2043,7 +2148,22 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                             fontSize: 13,
                           ),
                         ),
+                        Text(
+                          'Centre: ${report['centre'] ?? 'Unknown'}',
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 13,
+                          ),
+                        ),
                         if (isPurchase) ...[
+                          if (report['variety'] != null)
+                            Text(
+                              'Variety: ${report['variety']}',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13,
+                              ),
+                            ),
                           const SizedBox(height: 2),
                           Text(
                             'Amount: ₹${report['mspValueDay'] ?? 0} | Farmers: ${report['farmersDay'] ?? 0}',
@@ -2061,6 +2181,14 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                             ),
                           ),
                         ] else ...[
+                          if (report['variety'] != null)
+                            Text(
+                              'Variety: ${report['variety']}',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13,
+                              ),
+                            ),
                           const SizedBox(height: 2),
                           Text(
                             'Heap Qty: ${report['heapQty'] ?? 0} Quintals | Base Rate: ₹${report['baseRate'] ?? 0}',
@@ -2146,6 +2274,54 @@ class _ModeChip extends StatelessWidget {
             color: selected ? Colors.white : const Color(0xFF64748B),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onPressed;
+  final bool isClearAll;
+
+  const _FilterChip({
+    required this.label,
+    required this.onPressed,
+    this.isClearAll = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isClearAll ? Colors.red.shade50 : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isClearAll ? Colors.red.shade200 : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: isClearAll ? Colors.red.shade700 : const Color(0xFF334155),
+              fontWeight: isClearAll ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onPressed,
+            child: Icon(
+              Icons.close,
+              size: 14,
+              color: isClearAll ? Colors.red.shade700 : const Color(0xFF64748B),
+            ),
+          ),
+        ],
       ),
     );
   }

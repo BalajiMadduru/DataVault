@@ -110,14 +110,16 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
 
       sheet.appendRow([]);
 
-      // Centre and Date
+      // Centre, Variety and Date
       final data = _proformaData!;
       final date = DateTime.parse(data['date']);
       sheet.appendRow([
         'CENTRE:', data['centre'] ?? '',
-        '', '', '', '', '', '', '', '',
+        '', '', '',
+        'VARIETY:', data['variety'] ?? '',
+        '', '', '',
         'DATE:', DateFormat('dd/MM/yyyy').format(date),
-        '', '', '', '', ''
+        '', '', '', ''
       ]);
 
       sheet.appendRow([]);
@@ -160,8 +162,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         (data['outTurnValue'] ?? 0).toStringAsFixed(2),
         (data['seed'] ?? 0).toStringAsFixed(2),
         (data['seedValue'] ?? 0).toStringAsFixed(2),
-        '', // bales - empty if not available
-        ''  // heap - empty if not available
+        data['bales']?.toString() ?? '',
+        data['heap']?.toString() ?? ''
       ]);
 
       // Add total row with seed value highlighted
@@ -218,6 +220,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   Widget _buildProformaContent() {
     final data = _proformaData!;
     final date = DateTime.parse(data['date']);
+    final centre = data['centre'] ?? '';
+    final variety = data['variety'] ?? '';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -234,20 +238,109 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                   children: [
                     Text(
                       'PROFORMA FOR KAPAS PURCHASE',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF0F172A),
+                        color: Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Centre: ${data['centre']}',
-                      style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-                    ),
-                    Text(
-                      'Date: ${DateFormat('dd/MM/yyyy').format(date)}',
-                      style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                    const SizedBox(height: 8),
+                    // Centre, Variety and Date in a row
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'CENTRE',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  centre.isNotEmpty ? centre : 'N/A',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 30,
+                            color: const Color(0xFFE2E8F0),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'VARIETY',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  variety.isNotEmpty ? variety : 'N/A',
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 1,
+                            height: 30,
+                            color: const Color(0xFFE2E8F0),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'DATE',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  DateFormat('dd/MM/yyyy').format(date),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -319,8 +412,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       (data['outTurnValue'] ?? 0).toStringAsFixed(2),
       (data['seed'] ?? 0).toStringAsFixed(2),
       (data['seedValue'] ?? 0).toStringAsFixed(2),
-      '', // bales
-      ''  // heap
+      data['bales']?.toString() ?? '',
+      data['heap']?.toString() ?? ''
     ];
 
     return Column(

@@ -326,7 +326,13 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
 
   void _showSeedFactoryFormDialog(FactoryData? factoryData) {
     final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
-    String? selectedVariety = factoryData?.variety;
+    // Default to a real, valid variety right away — not just for display —
+    // so the state variable actually matches what's shown, and sanitize any
+    // previously-saved bad value (e.g. '-') that isn't in the current list.
+    String selectedVariety = (factoryData?.variety != null &&
+        ReportConstants.varieties.contains(factoryData!.variety))
+        ? factoryData.variety
+        : ReportConstants.varieties.first;
     final realisableController = TextEditingController(text: factoryData?.progressiveRealisable.toString() ?? '');
     final soldController = TextEditingController(text: factoryData?.progressiveSold.toString() ?? '');
     final kapasController = TextEditingController(text: factoryData?.kapasForm.toString() ?? '');
@@ -360,7 +366,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: selectedVariety ?? (ReportConstants.varieties.isNotEmpty ? ReportConstants.varieties.first : null),
+                        value: selectedVariety,
                         decoration: InputDecoration(
                           labelText: 'Variety',
                           hintText: 'Select variety',
@@ -373,7 +379,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         ),
                         items: ReportConstants.varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                        onChanged: (value) => setDialogState(() => selectedVariety = value),
+                        onChanged: (value) => setDialogState(() => selectedVariety = value ?? selectedVariety),
                         validator: (value) {
                           if (value == null || value.isEmpty) return 'Please select a variety';
                           return null;
@@ -485,7 +491,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
 
                     final factory = FactoryData(
                       factoryName: nameController.text,
-                      variety: selectedVariety ?? '-',
+                      variety: selectedVariety,
                       progressiveRealisable: progressiveRealisable,
                       progressiveSold: progressiveSold,
                       kapasForm: kapasForm,
@@ -798,162 +804,165 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                   child: SingleChildScrollView(
                     controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight - 100,
-                      ),
-                      child: IntrinsicHeight(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (widget.isModify)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    CommonFormWidgets.sectionHeader('Header Information'),
-                                    TextButton.icon(
-                                      onPressed: _isSubmitting ? null : _resetLookup,
-                                      icon: const Icon(Icons.search, size: 16),
-                                      label: const Text('Change entry'),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: const Color(0xFF0F172A),
+                    child: Form(
+                      key: _formKey,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight - 100,
+                        ),
+                        child: IntrinsicHeight(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (widget.isModify)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      CommonFormWidgets.sectionHeader('Header Information'),
+                                      TextButton.icon(
+                                        onPressed: _isSubmitting ? null : _resetLookup,
+                                        icon: const Icon(Icons.search, size: 16),
+                                        label: const Text('Change entry'),
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: const Color(0xFF0F172A),
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              CommonFormWidgets.sectionHeader('Header Information'),
-
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.centreDropdown(
-                                    selectedCentre: _selectedCentre,
-                                    readOnly: widget.isModify,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedCentre = value;
-                                        _resetReportNoToDefault();
-                                      });
-                                      if (value != null) _autoGenerateReportNo();
-                                    },
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _reportNoController,
-                                    label: 'Report No.',
-                                    hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
-                                    icon: Icons.numbers,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: widget.isModify || _isLoadingReportNo,
-                                    suffixIcon: _isLoadingReportNo
-                                        ? const Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                    )
-                                        : null,
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Please enter report number';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
+                                )
+                              else
+                                CommonFormWidgets.sectionHeader('Header Information'),
 
-                            InkWell(
-                              onTap: widget.isModify ? null : () => _selectDate(context),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey[300]!),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Text(
-                                        'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
-                                        style: const TextStyle(fontSize: 16),
-                                      ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: CommonFormWidgets.centreDropdown(
+                                      selectedCentre: _selectedCentre,
+                                      readOnly: widget.isModify,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _selectedCentre = value;
+                                          _resetReportNoToDefault();
+                                        });
+                                        if (value != null) _autoGenerateReportNo();
+                                      },
                                     ),
-                                    const Icon(Icons.arrow_drop_down),
-                                  ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: CommonFormWidgets.textField(
+                                      controller: _reportNoController,
+                                      label: 'Report No.',
+                                      hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
+                                      icon: Icons.numbers,
+                                      keyboardType: TextInputType.number,
+                                      readOnly: widget.isModify || _isLoadingReportNo,
+                                      suffixIcon: _isLoadingReportNo
+                                          ? const Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        ),
+                                      )
+                                          : null,
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Please enter report number';
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              InkWell(
+                                onTap: widget.isModify ? null : () => _selectDate(context),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: Colors.grey[300]!),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
+                                          style: const TextStyle(fontSize: 16),
+                                        ),
+                                      ),
+                                      const Icon(Icons.arrow_drop_down),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
+                              const SizedBox(height: 16),
 
-                            CommonFormWidgets.sectionHeaderWithAction(
-                              'Ginning & Pressing Factory Details',
-                              actionLabel: 'Add Factory',
-                              onAction: _openAddSeedFactoryDialog,
-                            ),
-                            const SizedBox(height: 12),
-                            _buildSeedFactoryTable(),
-                            const SizedBox(height: 16),
+                              CommonFormWidgets.sectionHeaderWithAction(
+                                'Ginning & Pressing Factory Details',
+                                actionLabel: 'Add Factory',
+                                onAction: _openAddSeedFactoryDialog,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildSeedFactoryTable(),
+                              const SizedBox(height: 16),
 
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
                                       ),
-                                    ),
-                                    child: const Text('Cancel'),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: _isSubmitting ? null : _submitForm,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF0F172A),
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    child: _isSubmitting
-                                        ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    )
-                                        : Text(
-                                      widget.isModify ? 'Update' : 'Submit',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                      child: const Text('Cancel'),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ElevatedButton(
+                                      onPressed: _isSubmitting ? null : _submitForm,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF0F172A),
+                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      child: _isSubmitting
+                                          ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                          : Text(
+                                        widget.isModify ? 'Update' : 'Submit',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

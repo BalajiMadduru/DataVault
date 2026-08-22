@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -29,6 +31,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   final _lookupFormKey = GlobalKey<FormState>();
   final _factoryFormKey = GlobalKey<FormState>();
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _factoryTableScrollController = ScrollController();
   final FocusNode _dialogFocusNode = FocusNode();
   bool _isSubmitting = false;
   DateTime? _lastSubmitTime;
@@ -36,6 +39,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   // Flag to prevent duplicate submissions
   bool _isEntrySaved = false;
   String? _savedDocId;
+
+  // Regenerating the proforma for an already-saved entry (modify flow)
+  bool _isRegeneratingProforma = false;
 
   // Find-then-edit flow
   bool _entryFound = false;
@@ -116,6 +122,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   String _debugMessage = '';
   bool _isLoadingReportNo = false;
 
+  // Store original day values when in modify mode to calculate progressive correctly
+  double _originalDayApmc = 0;
+  double _originalDayOutside = 0;
+  int _originalFarmersDay = 0;
+  double _originalMspDay = 0;
+  int _originalBalesToday = 0;
+
   @override
   void initState() {
     super.initState();
@@ -126,6 +139,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _entryFound = true;
       _isEntrySaved = true;
       _savedDocId = _docId;
+
+      // In modify mode, fetch the latest progressive values
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchLatestProgressiveForModify();
+      });
     } else if (!widget.isModify) {
       _entryFound = true;
       _purchaseFactories = [];
@@ -148,6 +166,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _farmersDayController.addListener(_recalculateFarmersProg);
       _mspValueDayController.addListener(_recalculateMspProg);
       _balesPressedTodayController.addListener(_recalculateBalesProg);
+    } else {
+      // In modify mode, add listeners but with different logic
+      _dayArrivalsApmcController.addListener(_recalculateProgApmcModify);
+      _dayArrivalsOutsideController.addListener(_recalculateProgOutsideModify);
+      _farmersDayController.addListener(_recalculateFarmersProgModify);
+      _mspValueDayController.addListener(_recalculateMspProgModify);
+      _balesPressedTodayController.addListener(_recalculateBalesProgModify);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -158,6 +183,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _factoryTableScrollController.dispose();
     _dialogFocusNode.dispose();
     _reportNoController.dispose();
     _moistureController.dispose();
@@ -198,11 +224,47 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     super.dispose();
   }
 
+  // ============================================================
+  // RECALCULATION METHODS FOR MODIFY MODE
+  // ============================================================
+
+  void _recalculateProgApmcModify() {
+    final dayValue = double.tryParse(_dayArrivalsApmcController.text) ?? 0;
+    _progArrivalsApmcController.text = _formatNumber(_previousProgApmc + dayValue);
+  }
+
+  void _recalculateProgOutsideModify() {
+    final dayValue = double.tryParse(_dayArrivalsOutsideController.text) ?? 0;
+    _progArrivalsOutsideController.text = _formatNumber(_previousProgOutside + dayValue);
+  }
+
+  void _recalculateFarmersProgModify() {
+    final dayValue = double.tryParse(_farmersDayController.text) ?? 0;
+    _farmersProgressiveController.text = _formatNumber(_previousFarmersProg + dayValue);
+  }
+
+  void _recalculateMspProgModify() {
+    final dayValue = double.tryParse(_mspValueDayController.text) ?? 0;
+    _mspValueProgController.text = _formatNumber(_previousMspProg + dayValue);
+  }
+
+  void _recalculateBalesProgModify() {
+    final dayValue = double.tryParse(_balesPressedTodayController.text) ?? 0;
+    _balesPressedProgController.text = _formatNumber(_previousBalesProg + dayValue);
+  }
+
   void _loadExistingData(Map<String, dynamic> data) {
     final centre = data['centre'] as String?;
     _selectedCentre = (centre != null && centre.isNotEmpty) ? centre : null;
     _reportNoController.text = data['reportNo']?.toString() ?? '';
     _moistureController.text = data['moisture'] ?? '';
+
+    _originalDayApmc = double.tryParse(data['dayArrivalsApmc']?.toString() ?? '0') ?? 0;
+    _originalDayOutside = double.tryParse(data['dayArrivalsOutside']?.toString() ?? '0') ?? 0;
+    _originalFarmersDay = int.tryParse(data['farmersDay']?.toString() ?? '0') ?? 0;
+    _originalMspDay = double.tryParse(data['mspValueDay']?.toString() ?? '0') ?? 0;
+    _originalBalesToday = int.tryParse(data['balesPressedToday']?.toString() ?? '0') ?? 0;
+
     _farmersDayController.text = data['farmersDay']?.toString() ?? '';
     _farmersProgressiveController.text = data['farmersProgressive']?.toString() ?? '';
     _dayArrivalsApmcController.text = data['dayArrivalsApmc']?.toString() ?? '';
@@ -265,6 +327,65 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
+  // ============================================================
+  // FETCH LATEST PROGRESSIVE FOR MODIFY MODE
+  // ============================================================
+  Future<void> _fetchLatestProgressiveForModify() async {
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
+    if (_selectedVariety == null || _selectedVariety!.isEmpty) return;
+
+    setState(() {
+      _isLoadingPreviousProgressive = true;
+      _debugMessage = 'Fetching latest progressive values...';
+    });
+
+    try {
+      final response = await ApiService.getLatestProgressiveArrivals(
+        type: 'purchase',
+        centre: _selectedCentre!,
+        variety: _selectedVariety!,
+        excludeDocId: _docId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingPreviousProgressive = false;
+
+        if (response.success && response.data != null) {
+          _previousProgApmc = (response.data!['progArrivalsApmc'] as num?)?.toDouble() ?? 0;
+          _previousProgOutside = (response.data!['progArrivalsOutside'] as num?)?.toDouble() ?? 0;
+          _previousFarmersProg = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
+          _previousMspProg = (response.data!['mspValueProg'] as num?)?.toDouble() ?? 0;
+          _previousBalesProg = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
+          _debugMessage = '✅ Loaded latest: APMC=$_previousProgApmc, Outside=$_previousProgOutside';
+        } else {
+          _previousProgApmc = 0;
+          _previousProgOutside = 0;
+          _previousFarmersProg = 0;
+          _previousMspProg = 0;
+          _previousBalesProg = 0;
+          _debugMessage = '⚠️ No previous entries found, starting from 0';
+        }
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _recalculateProgApmcModify();
+        _recalculateProgOutsideModify();
+        _recalculateFarmersProgModify();
+        _recalculateMspProgModify();
+        _recalculateBalesProgModify();
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPreviousProgressive = false;
+          _debugMessage = '❌ Error: $e';
+        });
+      }
+    }
+  }
+
   Future<void> _loadDefaultCentre() async {
     if (_selectedCentre != null) return;
     final prefs = await SharedPreferences.getInstance();
@@ -317,7 +438,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 
   // ============================================================
-  // FETCH PREVIOUS PROGRESSIVE - now scoped by centre AND variety
+  // FETCH PREVIOUS PROGRESSIVE - for new entry creation
   // ============================================================
   Future<void> _fetchPreviousProgressive() async {
     if (widget.isModify) return;
@@ -427,6 +548,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _savedDocId = _docId;
       });
       _loadExistingData(entry);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fetchLatestProgressiveForModify();
+      });
     } else {
       setState(() {
         _isSearching = false;
@@ -462,7 +586,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     );
     if (picked != null && picked != _selectedDate) {
       setState(() => _selectedDate = picked);
-      await _fetchPreviousProgressive();
+      if (!widget.isModify) {
+        await _fetchPreviousProgressive();
+      }
     }
   }
 
@@ -507,7 +633,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     });
   }
 
-  void _showProformaSuccessDialog(Map<String, dynamic> proformaData) {
+  void _showProformaSuccessDialog(Map<String, dynamic> proformaData, {bool isUpdate = false}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -524,7 +650,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
               child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669)),
             ),
             const SizedBox(width: 12),
-            const Text('Proforma Generated!'),
+            Text(isUpdate ? 'Proforma Updated!' : 'Proforma Generated!'),
           ],
         ),
         content: Column(
@@ -532,6 +658,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildProformaSummaryRow('Centre', proformaData['centre']),
+            _buildProformaSummaryRow('Variety', proformaData['variety'] ?? '-'),
             _buildProformaSummaryRow('Date', DateFormat('dd/MM/yyyy').format(_selectedDate)),
             _buildProformaSummaryRow('Quantity', '${proformaData['quantity']} Quintals'),
             _buildProformaSummaryRow('Rate', '₹${proformaData['rate']}'),
@@ -822,18 +949,154 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 
   // ============================================================
-  // SAVE PROFORMA - Saves initial entry, allows later update
+  // Builds the proforma payload from the CURRENT form values.
+  // ============================================================
+  Map<String, dynamic>? _buildProformaPayload(String purchaseEntryId) {
+    final quantity = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
+    final rate = double.tryParse(_cciRateAverageController.text) ?? 0;
+    if (quantity <= 0 || rate <= 0) return null;
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) return null;
+
+    final farmers = int.tryParse(_farmersDayController.text) ?? 0;
+    final moisture = double.tryParse(_cciKapasMoistureController.text) ?? 0;
+    final shortage = double.tryParse(_cciShortageController.text) ?? 0;
+    final padtha = double.tryParse(_cciPadthaController.text) ?? 0;
+    final outTurn = double.tryParse(_cciOutTurnController.text) ?? 0;
+
+    final bales = int.tryParse(_cciPurchaseBalesController.text) ?? 0;
+    double heap = 0;
+    for (final factory in _purchaseFactories) {
+      heap += factory.heapQty;
+    }
+
+    final amount = quantity * rate;
+    final moistureValue = moisture * quantity;
+    final shortageValue = shortage * quantity;
+    final padthaValue = padtha * quantity;
+    final outTurnValue = outTurn * quantity;
+    final seed = 100 - (outTurn + shortage);
+    final seedValue = seed * quantity;
+
+    return {
+      'centre': _selectedCentre!,
+      'variety': _selectedVariety ?? '',
+      'date': _selectedDate.toIso8601String(),
+      'purchaseEntryId': purchaseEntryId,
+      'quantity': quantity,
+      'rate': rate,
+      'amount': amount,
+      'farmers': farmers,
+      'moisture': moisture,
+      'moistureValue': moistureValue,
+      'shortage': shortage,
+      'shortageValue': shortageValue,
+      'padtha': padtha,
+      'padthaValue': padthaValue,
+      'outTurn': outTurn,
+      'outTurnValue': outTurnValue,
+      'seed': seed,
+      'seedValue': seedValue,
+      'bales': bales,
+      'heap': heap,
+    };
+  }
+
+  // ============================================================
+  // UPDATE & REGENERATE PROFORMA
+  // ============================================================
+  Future<void> _regenerateProforma() async {
+    if (_isSubmitting || _isRegeneratingProforma) return;
+
+    if (_docId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Save the entry first before regenerating the proforma'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a centre'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    _autoFillProgressive();
+
+    final proformaData = _buildProformaPayload(_docId!);
+    if (proformaData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid quantity and average rate to regenerate the proforma'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isRegeneratingProforma = true);
+
+    try {
+      final entryResponse = await ApiService.updateEntry(_docId!, _buildPurchaseData());
+
+      if (!mounted) return;
+
+      if (!entryResponse.success) {
+        setState(() => _isRegeneratingProforma = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update entry: ${entryResponse.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final proformaResponse = await ApiService.saveProforma(proformaData);
+
+      if (!mounted) return;
+
+      setState(() => _isRegeneratingProforma = false);
+
+      if (proformaResponse.success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Proforma regenerated with the latest values'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        _showProformaSuccessDialog(proformaData, isUpdate: true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to regenerate proforma: ${proformaResponse.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isRegeneratingProforma = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error regenerating proforma: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ============================================================
+  // SAVE PROFORMA - Saves initial entry
   // ============================================================
   Future<void> _saveProforma() async {
-    // Prevent double submission
     final now = DateTime.now();
     if (_lastSubmitTime != null &&
         now.difference(_lastSubmitTime!).inMilliseconds < 2000) {
       return;
     }
-    _lastSubmitTime = now;
 
-    // If already saved, prevent duplicate
     if (_isEntrySaved) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -844,7 +1107,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       return;
     }
 
-    // Validate required fields
     if (_selectedCentre == null || _selectedCentre!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -897,7 +1159,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       return;
     }
 
-    // Check if entry already exists - SHOW DIALOG if duplicate
+    _lastSubmitTime = now;
+
     final exists = await _checkEntryExists();
     if (exists) {
       _showDuplicateErrorDialog();
@@ -905,28 +1168,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       return;
     }
 
-    // Auto-fill Progressive values
     _autoFillProgressive();
-
-    final farmers = int.tryParse(_farmersDayController.text) ?? 0;
-    final moisture = double.tryParse(_cciKapasMoistureController.text) ?? 0;
-    final shortage = double.tryParse(_cciShortageController.text) ?? 0;
-    final padtha = double.tryParse(_cciPadthaController.text) ?? 0;
-    final outTurn = double.tryParse(_cciOutTurnController.text) ?? 0;
-
-    // Calculate derived values
-    final amount = quantity * rate;
-    final moistureValue = moisture * quantity;
-    final shortageValue = shortage * quantity;
-    final padthaValue = padtha * quantity;
-    final outTurnValue = outTurn * quantity;
-    final seed = 100 - (outTurn + shortage);
-    final seedValue = seed * quantity;
 
     setState(() => _isSubmitting = true);
 
     try {
-      // Build purchase data (without factories, bales pressed, other details)
       final purchaseData = _buildPurchaseData();
 
       final response = await ApiService.savePurchaseEntry(purchaseData);
@@ -947,26 +1193,18 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
         debugLog('✅ Purchase entry saved with ID: $entryId');
 
-        // Build and save proforma
-        final proformaData = {
-          'centre': _selectedCentre!,
-          'date': _selectedDate.toIso8601String(),
-          'purchaseEntryId': entryId ?? '',
-          'quantity': quantity,
-          'rate': rate,
-          'amount': amount,
-          'farmers': farmers,
-          'moisture': moisture,
-          'moistureValue': moistureValue,
-          'shortage': shortage,
-          'shortageValue': shortageValue,
-          'padtha': padtha,
-          'padthaValue': padthaValue,
-          'outTurn': outTurn,
-          'outTurnValue': outTurnValue,
-          'seed': seed,
-          'seedValue': seedValue,
-        };
+        final proformaData = _buildProformaPayload(entryId ?? '');
+
+        if (proformaData == null) {
+          setState(() => _isSubmitting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Entry saved, but the proforma could not be generated — check quantity/rate'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
 
         final proformaResponse = await ApiService.saveProforma(proformaData);
 
@@ -1008,33 +1246,39 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 
   // ============================================================
-  // SUBMIT FORM - UPDATED to UPDATE existing entry if already saved
+  // SUBMIT FORM
   // ============================================================
   void _submitForm() async {
-    // Prevent double submission
     final now = DateTime.now();
     if (_lastSubmitTime != null &&
         now.difference(_lastSubmitTime!).inMilliseconds < 2000) {
       return;
     }
-    _lastSubmitTime = now;
 
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fix the highlighted fields before updating'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    _lastSubmitTime = now;
 
     setState(() => _isSubmitting = true);
 
     final data = _buildPurchaseData();
+    final wasExistingEntry = (_isEntrySaved || widget.isModify) && _docId != null;
 
     final ApiResponse response;
 
-    // If entry is already saved (from proforma generation), UPDATE it
     if (_isEntrySaved && _docId != null) {
-      // Update the existing entry with all fields (including factory details)
       response = await ApiService.updateEntry(_docId!, data);
     } else if (widget.isModify && _docId != null) {
       response = await ApiService.updateEntry(_docId!, data);
     } else {
-      // Check for duplicate before saving
       final exists = await _checkEntryExists();
       if (exists) {
         setState(() => _isSubmitting = false);
@@ -1042,6 +1286,20 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         return;
       }
       response = await ApiService.savePurchaseEntry(data);
+    }
+
+    if (!mounted) return;
+
+    if (response.success && wasExistingEntry) {
+      final proformaSync = _buildProformaPayload(_docId!);
+      if (proformaSync != null) {
+        final syncResponse = await ApiService.saveProforma(proformaSync);
+        if (!syncResponse.success) {
+          debugLog('⚠️ Failed to sync proforma after update: ${syncResponse.message}');
+        } else {
+          debugLog('✅ Proforma synced after update');
+        }
+      }
     }
 
     if (!mounted) return;
@@ -1280,58 +1538,75 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     return Container(
       decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(12)),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columnSpacing: 16,
-          headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
-          columns: const [
-            DataColumn(label: Text('SNO', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Factory Name', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Heap No.', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Heap Qty', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Farmers', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Realisable', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Seed Sold', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Seed Unsold', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('Base Rate', style: TextStyle(fontWeight: FontWeight.bold))),
-            DataColumn(label: Text('', style: TextStyle(fontWeight: FontWeight.bold))),
-          ],
-          rows: _purchaseFactories.asMap().entries.map((entry) {
-            final index = entry.key;
-            final factory = entry.value;
-            return DataRow(cells: [
-              DataCell(Text('${index + 1}')),
-              DataCell(Text(factory.factoryName)),
-              DataCell(Text(factory.heapNo.toString())),
-              DataCell(Text(factory.heapQty.toString())),
-              DataCell(Text(factory.seedFarmers.toString())),
-              DataCell(Text(factory.seedRealisable.toString())),
-              DataCell(Text(factory.readySeedSold.toString())),
-              DataCell(Text(factory.readySeedUnsold.toString())),
-              DataCell(Text(factory.baseRate.toString())),
-              DataCell(Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: () => _openEditPurchaseFactoryDialog(index),
-                    icon: const Icon(Icons.edit, size: 18, color: Color(0xFFF59E0B)),
-                    tooltip: 'Edit',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => _deletePurchaseFactory(index),
-                    icon: const Icon(Icons.delete, size: 18, color: Colors.red),
-                    tooltip: 'Delete',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              )),
-            ]);
-          }).toList(),
+      child: ScrollConfiguration(
+        // By default Flutter only allows touch/stylus to drag-scroll.
+        // Without this, dragging with a mouse or trackpad on web/desktop does nothing.
+        behavior: ScrollConfiguration.of(context).copyWith(
+          dragDevices: {
+            PointerDeviceKind.touch,
+            PointerDeviceKind.mouse,
+            PointerDeviceKind.trackpad,
+          },
+        ),
+        child: Scrollbar(
+          controller: _factoryTableScrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          child: SingleChildScrollView(
+            controller: _factoryTableScrollController,
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              columnSpacing: 16,
+              headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+              columns: const [
+                DataColumn(label: Text('SNO', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Factory Name', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Heap No.', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Heap Qty', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Farmers', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Realisable', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Seed Sold', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Seed Unsold', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Base Rate', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('', style: TextStyle(fontWeight: FontWeight.bold))),
+              ],
+              rows: _purchaseFactories.asMap().entries.map((entry) {
+                final index = entry.key;
+                final factory = entry.value;
+                return DataRow(cells: [
+                  DataCell(Text('${index + 1}')),
+                  DataCell(Text(factory.factoryName)),
+                  DataCell(Text(factory.heapNo.toString())),
+                  DataCell(Text(factory.heapQty.toString())),
+                  DataCell(Text(factory.seedFarmers.toString())),
+                  DataCell(Text(factory.seedRealisable.toString())),
+                  DataCell(Text(factory.readySeedSold.toString())),
+                  DataCell(Text(factory.readySeedUnsold.toString())),
+                  DataCell(Text(factory.baseRate.toString())),
+                  DataCell(Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        onPressed: () => _openEditPurchaseFactoryDialog(index),
+                        icon: const Icon(Icons.edit, size: 18, color: Color(0xFFF59E0B)),
+                        tooltip: 'Edit',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () => _deletePurchaseFactory(index),
+                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                        tooltip: 'Delete',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  )),
+                ]);
+              }).toList(),
+            ),
+          ),
         ),
       ),
     );
@@ -1385,750 +1660,785 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                   return SingleChildScrollView(
                     controller: _scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: IntrinsicHeight(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Header
+                        Row(
                           children: [
-                            Row(
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE0F2FE),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.shopping_basket_rounded,
+                                color: Color(0xFF0F172A),
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '$title Purchase Entry',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ),
+                            CommonFormWidgets.closeButton(context),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Main Content
+                        if (widget.isModify)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFE0F2FE),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(
-                                    Icons.shopping_basket_rounded,
-                                    color: Color(0xFF0F172A),
-                                    size: 24,
+                                CommonFormWidgets.sectionHeader('Header Information'),
+                                TextButton.icon(
+                                  onPressed: _isSubmitting ? null : _resetLookup,
+                                  icon: const Icon(Icons.search, size: 16),
+                                  label: const Text('Change entry'),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF0F172A),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    '$title Purchase Entry',
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                ),
-                                CommonFormWidgets.closeButton(context),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                            if (widget.isModify)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    CommonFormWidgets.sectionHeader('Header Information'),
-                                    TextButton.icon(
-                                      onPressed: _isSubmitting ? null : _resetLookup,
-                                      icon: const Icon(Icons.search, size: 16),
-                                      label: const Text('Change entry'),
-                                      style: TextButton.styleFrom(
-                                        foregroundColor: const Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              )
-                            else
-                              CommonFormWidgets.sectionHeader('Header Information'),
+                          )
+                        else
+                          CommonFormWidgets.sectionHeader('Header Information'),
 
-                            CommonFormWidgets.centreDropdown(
-                              selectedCentre: _selectedCentre,
-                              readOnly: widget.isModify,
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedCentre = value;
-                                  _previousProgApmc = 0;
-                                  _previousProgOutside = 0;
-                                  _previousFarmersProg = 0;
-                                  _previousMspProg = 0;
-                                  _previousBalesProg = 0;
-                                  _debugMessage = '';
-                                  _progArrivalsApmcController.text = '';
-                                  _progArrivalsOutsideController.text = '';
-                                  _farmersProgressiveController.text = '';
-                                  _mspValueProgController.text = '';
-                                  _balesPressedProgController.text = '';
-                                  _resetReportNoToDefault();
-                                  _isEntrySaved = false;
-                                });
-                                if (value != null) {
-                                  _rememberCentre(value);
-                                  if (_selectedVariety != null && _selectedVariety!.isNotEmpty) {
-                                    _fetchPreviousProgressive();
-                                  }
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            CommonFormWidgets.textField(
-                              controller: _reportNoController,
-                              label: 'Report No.',
-                              hint: 'e.g., 1',
-                              icon: Icons.numbers,
-                              keyboardType: TextInputType.number,
-                              readOnly: widget.isModify,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) return 'Please enter report number';
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 10),
-
-                            InkWell(
-                              onTap: widget.isModify ? null : () => _selectDate(context),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey[300]!),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.calendar_today, color: Color(0xFF64748B), size: 18),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
-                                        style: const TextStyle(fontSize: 14),
-                                      ),
-                                    ),
-                                    const Icon(Icons.arrow_drop_down),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-
-                            DropdownButtonFormField<String>(
-                              initialValue: _selectedVariety,
-                              decoration: InputDecoration(
-                                labelText: 'Variety',
-                                hintText: 'Select variety',
-                                prefixIcon: const Icon(Icons.eco, size: 18),
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              ),
-                              items: ReportConstants.varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedVariety = value;
-                                  _previousProgApmc = 0;
-                                  _previousProgOutside = 0;
-                                  _previousFarmersProg = 0;
-                                  _previousMspProg = 0;
-                                  _previousBalesProg = 0;
-                                  _debugMessage = '';
-                                  _progArrivalsApmcController.text = '';
-                                  _progArrivalsOutsideController.text = '';
-                                  _farmersProgressiveController.text = '';
-                                  _mspValueProgController.text = '';
-                                  _balesPressedProgController.text = '';
-                                  _isEntrySaved = false;
-                                });
-                                if (value != null &&
-                                    _selectedCentre != null &&
-                                    _selectedCentre!.isNotEmpty) {
+                        CommonFormWidgets.centreDropdown(
+                          selectedCentre: _selectedCentre,
+                          readOnly: widget.isModify,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedCentre = value;
+                              _previousProgApmc = 0;
+                              _previousProgOutside = 0;
+                              _previousFarmersProg = 0;
+                              _previousMspProg = 0;
+                              _previousBalesProg = 0;
+                              _debugMessage = '';
+                              _progArrivalsApmcController.text = '';
+                              _progArrivalsOutsideController.text = '';
+                              _farmersProgressiveController.text = '';
+                              _mspValueProgController.text = '';
+                              _balesPressedProgController.text = '';
+                              _resetReportNoToDefault();
+                              _isEntrySaved = false;
+                            });
+                            if (value != null) {
+                              _rememberCentre(value);
+                              if (_selectedVariety != null && _selectedVariety!.isNotEmpty) {
+                                if (widget.isModify) {
+                                  _fetchLatestProgressiveForModify();
+                                } else {
                                   _fetchPreviousProgressive();
                                 }
-                              },
-                              validator: (value) => value == null ? 'Please select a variety' : null,
-                            ),
-                            const SizedBox(height: 10),
+                              }
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 10),
 
-                            CommonFormWidgets.textField(
-                              controller: _moistureController,
-                              label: 'Moisture Percentage (%)',
-                              hint: 'e.g., 8-20%',
-                              icon: Icons.water_drop,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) return 'Please enter moisture percentage';
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 14),
+                        CommonFormWidgets.textField(
+                          controller: _reportNoController,
+                          label: 'Report No.',
+                          hint: 'e.g., 1',
+                          icon: Icons.numbers,
+                          keyboardType: TextInputType.number,
+                          readOnly: widget.isModify,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) return 'Please enter report number';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
 
-                            CommonFormWidgets.sectionHeader('Arrivals'),
-                            if (!widget.isModify) ...[
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 4),
-                                child: Text(
-                                  'Progressive totals are calculated automatically from '
-                                      'the last entry for this centre + variety + today\'s values.',
-                                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                ),
-                              ),
-                              if (_debugMessage.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
+                        InkWell(
+                          onTap: widget.isModify ? null : () => _selectDate(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey[300]!),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today, color: Color(0xFF64748B), size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
                                   child: Text(
-                                    _debugMessage,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: _debugMessage.contains('✅')
-                                          ? Colors.green
-                                          : _debugMessage.contains('⚠️')
-                                          ? Colors.orange
-                                          : _debugMessage.contains('❌')
-                                          ? Colors.red
-                                          : Colors.grey,
-                                    ),
+                                    'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
+                                    style: const TextStyle(fontSize: 14),
                                   ),
                                 ),
-                            ],
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _dayArrivalsApmcController,
-                                    label: 'Day APMC',
-                                    hint: 'Quintals/Bales',
-                                    icon: Icons.local_shipping,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _dayArrivalsOutsideController,
-                                    label: 'Day Outside',
-                                    hint: 'Quintals/Bales',
-                                    icon: Icons.local_shipping_outlined,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
+                                const Icon(Icons.arrow_drop_down),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _progArrivalsApmcController,
-                                    label: 'Prog APMC',
-                                    hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'Quintals/Bales',
-                                    icon: Icons.trending_up,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _progArrivalsOutsideController,
-                                    label: 'Prog Outside',
-                                    hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'Quintals/Bales',
-                                    icon: Icons.trending_up_outlined,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
 
-                            CommonFormWidgets.sectionHeader('Market Rates (Kapas Rate in Quintals)'),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _marketRateHighestController,
-                                    label: 'Highest',
-                                    hint: 'e.g., 7785.6',
-                                    icon: Icons.arrow_upward,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _marketRateAverageController,
-                                    label: 'Average',
-                                    hint: 'e.g., 7200',
-                                    icon: Icons.linear_scale,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                              ],
+                        DropdownButtonFormField<String>(
+                          initialValue: _selectedVariety,
+                          decoration: InputDecoration(
+                            labelText: 'Variety',
+                            hintText: 'Select variety',
+                            prefixIcon: const Icon(Icons.eco, size: 18),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
                             ),
-                            const SizedBox(height: 10),
-                            CommonFormWidgets.textField(
-                              controller: _marketRateLowestController,
-                              label: 'Lowest',
-                              hint: 'e.g., 7000',
-                              icon: Icons.arrow_downward,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            ),
-                            const SizedBox(height: 10),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          ),
+                          items: ReportConstants.varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedVariety = value;
+                              _previousProgApmc = 0;
+                              _previousProgOutside = 0;
+                              _previousFarmersProg = 0;
+                              _previousMspProg = 0;
+                              _previousBalesProg = 0;
+                              _debugMessage = '';
+                              _progArrivalsApmcController.text = '';
+                              _progArrivalsOutsideController.text = '';
+                              _farmersProgressiveController.text = '';
+                              _mspValueProgController.text = '';
+                              _balesPressedProgController.text = '';
+                              _isEntrySaved = false;
+                            });
+                            if (value != null &&
+                                _selectedCentre != null &&
+                                _selectedCentre!.isNotEmpty) {
+                              if (widget.isModify) {
+                                _fetchLatestProgressiveForModify();
+                              } else {
+                                _fetchPreviousProgressive();
+                              }
+                            }
+                          },
+                          validator: (value) => value == null ? 'Please select a variety' : null,
+                        ),
+                        const SizedBox(height: 10),
 
-                            const Text('Market Seed Rate', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _marketSeedRateHighestController,
-                                    label: 'Highest',
-                                    hint: 'e.g., 3700',
-                                    icon: Icons.arrow_upward,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _marketSeedRateLowestController,
-                                    label: 'Lowest',
-                                    hint: 'e.g., 3600',
-                                    icon: Icons.arrow_downward,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
+                        CommonFormWidgets.textField(
+                          controller: _moistureController,
+                          label: 'Moisture Percentage (%)',
+                          hint: 'e.g., 8-20%',
+                          icon: Icons.water_drop,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) return 'Please enter moisture percentage';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 14),
 
-                            CommonFormWidgets.sectionHeader('CCI Purchase'),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciPurchaseQtlsController,
-                                    label: 'Quintals',
-                                    hint: 'e.g., 109.2',
-                                    icon: Icons.scale,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciPurchaseBalesController,
-                                    label: 'Bales',
-                                    hint: 'e.g., 22',
-                                    icon: Icons.inventory,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                              ],
+                        // Arrivals Section
+                        CommonFormWidgets.sectionHeader('Arrivals'),
+                        if (!widget.isModify) ...[
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              'Progressive totals are calculated automatically from '
+                                  'the last entry for this centre + variety + today\'s values.',
+                              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                             ),
-                            const SizedBox(height: 10),
-                            CommonFormWidgets.textField(
-                              controller: _cciKapasMoistureController,
-                              label: 'Kapas Moisture %',
-                              hint: 'e.g., 12',
-                              icon: Icons.water_drop,
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('MSP Value'),
-                            if (!widget.isModify)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  'Progressive MSP is auto-calculated from previous entry + today\'s MSP value',
-                                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                                ),
-                              ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _mspValueDayController,
-                                    label: 'Day Wise',
-                                    hint: 'e.g., 850187.52',
-                                    icon: Icons.today,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _mspValueProgController,
-                                    label: 'Progressive',
-                                    hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 850187.52',
-                                    icon: Icons.trending_up,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    readOnly: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('Farmers Benefitted'),
-                            if (!widget.isModify)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  'Progressive Farmers is auto-calculated from previous entry + today\'s farmers',
-                                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                                ),
-                              ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _farmersDayController,
-                                    label: 'Day Wise',
-                                    hint: 'e.g., 2',
-                                    icon: Icons.people,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _farmersProgressiveController,
-                                    label: 'Progressive',
-                                    hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 2',
-                                    icon: Icons.people_outline,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('CCI Rates (Kapas Rate in Quintals)'),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciRateHighestController,
-                                    label: 'Highest',
-                                    hint: 'e.g., 7785.6',
-                                    icon: Icons.arrow_upward,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciRateAverageController,
-                                    label: 'Average',
-                                    hint: 'e.g., 7785.6',
-                                    icon: Icons.linear_scale,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            CommonFormWidgets.textField(
-                              controller: _cciRateLowestController,
-                              label: 'Lowest',
-                              hint: 'e.g., 7785.6',
-                              icon: Icons.arrow_downward,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('CCI Details'),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciSeedRateController,
-                                    label: 'Seed Rate',
-                                    hint: 'e.g., 3700',
-                                    icon: Icons.attach_money,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciOutTurnController,
-                                    label: 'Out Turn',
-                                    hint: 'e.g., 0.33',
-                                    icon: Icons.percent,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciShortageController,
-                                    label: 'Shortage',
-                                    hint: 'e.g., 0.035',
-                                    icon: Icons.warning_amber_rounded,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciExpensesController,
-                                    label: 'Expenses',
-                                    hint: 'e.g., 4050',
-                                    icon: Icons.money_off,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _processingCycleController,
-                                    label: 'Processing Cycle',
-                                    hint: 'e.g., 7 days',
-                                    icon: Icons.autorenew,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _cciPadthaController,
-                                    label: 'Padtha',
-                                    hint: 'e.g., 62706',
-                                    icon: Icons.receipt,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-
-                            // ============ SAVE PROFORMA BUTTON ============
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: (_isSubmitting || _isEntrySaved) ? null : _saveProforma,
-                                    icon: const Icon(Icons.save, color: Colors.white, size: 18),
-                                    label: Text(
-                                      _isEntrySaved ? '✓ Saved' : 'Save & Generate Proforma',
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: _isEntrySaved ? Colors.green : const Color(0xFF059669),
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('Progressive Purchase'),
-                            const Padding(
-                              padding: EdgeInsets.only(bottom: 4),
+                          ),
+                          if (_debugMessage.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
                               child: Text(
-                                'Values are auto-filled from CCI Purchase when generating Proforma',
-                                style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _progPurchaseQtlsController,
-                                    label: 'Quintals',
-                                    hint: 'Auto-filled',
-                                    icon: Icons.scale,
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    readOnly: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _progPurchaseBalesController,
-                                    label: 'Bales',
-                                    hint: 'Auto-filled',
-                                    icon: Icons.inventory,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _progPadthaController,
-                                    label: 'Padtha',
-                                    hint: 'Auto-filled',
-                                    icon: Icons.receipt_long,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _progAvgRateController,
-                                    label: 'Avg Rate',
-                                    hint: 'Auto-filled',
-                                    icon: Icons.calculate,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('Bales Pressed'),
-                            if (!widget.isModify)
-                              const Padding(
-                                padding: EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  'Progressive Bales is auto-calculated from previous entry + today\'s bales',
-                                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                                _debugMessage,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: _debugMessage.contains('✅')
+                                      ? Colors.green
+                                      : _debugMessage.contains('⚠️')
+                                      ? Colors.orange
+                                      : _debugMessage.contains('❌')
+                                      ? Colors.red
+                                      : Colors.grey,
                                 ),
                               ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _balesPressedTodayController,
-                                    label: 'Today',
-                                    hint: 'e.g., 0',
-                                    icon: Icons.today,
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _balesPressedProgController,
-                                    label: 'Progressive',
-                                    hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 0',
-                                    icon: Icons.trending_up,
-                                    keyboardType: TextInputType.number,
-                                    readOnly: true,
-                                  ),
-                                ),
-                              ],
                             ),
-                            const SizedBox(height: 10),
-
-                            CommonFormWidgets.textField(
-                              controller: _totalBalesShiftedController,
-                              label: 'Total Bales Shifted to Godown',
-                              hint: 'e.g., 0',
-                              icon: Icons.warehouse,
-                              keyboardType: TextInputType.number,
+                        ],
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _dayArrivalsApmcController,
+                                label: 'Day APMC',
+                                hint: 'Quintals/Bales',
+                                icon: Icons.local_shipping,
+                                keyboardType: TextInputType.number,
+                              ),
                             ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeader('Other Details'),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _sampleSentController,
-                                    label: 'Sample Sent to B.O',
-                                    hint: 'e.g., - or Yes',
-                                    icon: Icons.send,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: CommonFormWidgets.textField(
-                                    controller: _heapResultController,
-                                    label: 'Heap Result Sent to B.O',
-                                    hint: 'e.g., - or Yes',
-                                    icon: Icons.check_circle_outline,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-
-                            CommonFormWidgets.sectionHeaderWithAction(
-                              'Factory Details',
-                              actionLabel: 'Add Factory',
-                              onAction: _openAddPurchaseFactoryDialog,
-                            ),
-                            const SizedBox(height: 10),
-                            _buildPurchaseFactoryListView(),
-                            const SizedBox(height: 14),
-
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    child: const Text('Cancel'),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: _isSubmitting ? null : _submitForm,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: _isEntrySaved ? const Color(0xFF0F172A) : const Color(0xFF0F172A),
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    child: _isSubmitting
-                                        ? const SizedBox(
-                                      height: 18,
-                                      width: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    )
-                                        : Text(
-                                      _isEntrySaved ? 'Update Report' : (widget.isModify ? 'Update' : 'Submit'),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _dayArrivalsOutsideController,
+                                label: 'Day Outside',
+                                hint: 'Quintals/Bales',
+                                icon: Icons.local_shipping_outlined,
+                                keyboardType: TextInputType.number,
+                              ),
                             ),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _progArrivalsApmcController,
+                                label: 'Prog APMC',
+                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'Quintals/Bales',
+                                icon: Icons.trending_up,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _progArrivalsOutsideController,
+                                label: 'Prog Outside',
+                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'Quintals/Bales',
+                                icon: Icons.trending_up_outlined,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Market Rates
+                        CommonFormWidgets.sectionHeader('Market Rates (Kapas Rate in Quintals)'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _marketRateHighestController,
+                                label: 'Highest',
+                                hint: 'e.g., 7785.6',
+                                icon: Icons.arrow_upward,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _marketRateAverageController,
+                                label: 'Average',
+                                hint: 'e.g., 7200',
+                                icon: Icons.linear_scale,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        CommonFormWidgets.textField(
+                          controller: _marketRateLowestController,
+                          label: 'Lowest',
+                          hint: 'e.g., 7000',
+                          icon: Icons.arrow_downward,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 10),
+
+                        const Text('Market Seed Rate', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _marketSeedRateHighestController,
+                                label: 'Highest',
+                                hint: 'e.g., 3700',
+                                icon: Icons.arrow_upward,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _marketSeedRateLowestController,
+                                label: 'Lowest',
+                                hint: 'e.g., 3600',
+                                icon: Icons.arrow_downward,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // CCI Purchase
+                        CommonFormWidgets.sectionHeader('CCI Purchase'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciPurchaseQtlsController,
+                                label: 'Quintals',
+                                hint: 'e.g., 109.2',
+                                icon: Icons.scale,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciPurchaseBalesController,
+                                label: 'Bales',
+                                hint: 'e.g., 22',
+                                icon: Icons.inventory,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        CommonFormWidgets.textField(
+                          controller: _cciKapasMoistureController,
+                          label: 'Kapas Moisture %',
+                          hint: 'e.g., 12',
+                          icon: Icons.water_drop,
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // MSP Value
+                        CommonFormWidgets.sectionHeader('MSP Value'),
+                        if (!widget.isModify)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              'Progressive MSP is auto-calculated from previous entry + today\'s MSP value',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _mspValueDayController,
+                                label: 'Day Wise',
+                                hint: 'e.g., 850187.52',
+                                icon: Icons.today,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _mspValueProgController,
+                                label: 'Progressive',
+                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 850187.52',
+                                icon: Icons.trending_up,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                readOnly: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Farmers Benefitted
+                        CommonFormWidgets.sectionHeader('Farmers Benefitted'),
+                        if (!widget.isModify)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              'Progressive Farmers is auto-calculated from previous entry + today\'s farmers',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _farmersDayController,
+                                label: 'Day Wise',
+                                hint: 'e.g., 2',
+                                icon: Icons.people,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _farmersProgressiveController,
+                                label: 'Progressive',
+                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 2',
+                                icon: Icons.people_outline,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // CCI Rates
+                        CommonFormWidgets.sectionHeader('CCI Rates (Kapas Rate in Quintals)'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciRateHighestController,
+                                label: 'Highest',
+                                hint: 'e.g., 7785.6',
+                                icon: Icons.arrow_upward,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciRateAverageController,
+                                label: 'Average',
+                                hint: 'e.g., 7785.6',
+                                icon: Icons.linear_scale,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        CommonFormWidgets.textField(
+                          controller: _cciRateLowestController,
+                          label: 'Lowest',
+                          hint: 'e.g., 7785.6',
+                          icon: Icons.arrow_downward,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // CCI Details
+                        CommonFormWidgets.sectionHeader('CCI Details'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciSeedRateController,
+                                label: 'Seed Rate',
+                                hint: 'e.g., 3700',
+                                icon: Icons.attach_money,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciOutTurnController,
+                                label: 'Out Turn',
+                                hint: 'e.g., 0.33',
+                                icon: Icons.percent,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciShortageController,
+                                label: 'Shortage',
+                                hint: 'e.g., 0.035',
+                                icon: Icons.warning_amber_rounded,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciExpensesController,
+                                label: 'Expenses',
+                                hint: 'e.g., 4050',
+                                icon: Icons.money_off,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _processingCycleController,
+                                label: 'Processing Cycle',
+                                hint: 'e.g., 7 days',
+                                icon: Icons.autorenew,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciPadthaController,
+                                label: 'Padtha',
+                                hint: 'e.g., 62706',
+                                icon: Icons.receipt,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // ============ SAVE / REGENERATE PROFORMA BUTTON ============
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: (_isSubmitting || _isRegeneratingProforma)
+                                    ? null
+                                    : (_isEntrySaved ? _regenerateProforma : _saveProforma),
+                                icon: _isRegeneratingProforma
+                                    ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                                    : Icon(
+                                  _isEntrySaved ? Icons.refresh : Icons.save,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  _isRegeneratingProforma
+                                      ? 'Regenerating...'
+                                      : (_isEntrySaved
+                                      ? 'Update & Regenerate Proforma'
+                                      : 'Save & Generate Proforma'),
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF059669),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Progressive Purchase
+                        CommonFormWidgets.sectionHeader('Progressive Purchase'),
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            'Values are auto-filled from CCI Purchase when generating Proforma',
+                            style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _progPurchaseQtlsController,
+                                label: 'Quintals',
+                                hint: 'Auto-filled',
+                                icon: Icons.scale,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                readOnly: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _progPurchaseBalesController,
+                                label: 'Bales',
+                                hint: 'Auto-filled',
+                                icon: Icons.inventory,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _progPadthaController,
+                                label: 'Padtha',
+                                hint: 'Auto-filled',
+                                icon: Icons.receipt_long,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _progAvgRateController,
+                                label: 'Avg Rate',
+                                hint: 'Auto-filled',
+                                icon: Icons.calculate,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Bales Pressed
+                        CommonFormWidgets.sectionHeader('Bales Pressed'),
+                        if (!widget.isModify)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              'Progressive Bales is auto-calculated from previous entry + today\'s bales',
+                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _balesPressedTodayController,
+                                label: 'Today',
+                                hint: 'e.g., 0',
+                                icon: Icons.today,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _balesPressedProgController,
+                                label: 'Progressive',
+                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 0',
+                                icon: Icons.trending_up,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        CommonFormWidgets.textField(
+                          controller: _totalBalesShiftedController,
+                          label: 'Total Bales Shifted to Godown',
+                          hint: 'e.g., 0',
+                          icon: Icons.warehouse,
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Other Details
+                        CommonFormWidgets.sectionHeader('Other Details'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _sampleSentController,
+                                label: 'Sample Sent to B.O',
+                                hint: 'e.g., - or Yes',
+                                icon: Icons.send,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _heapResultController,
+                                label: 'Heap Result Sent to B.O',
+                                hint: 'e.g., - or Yes',
+                                icon: Icons.check_circle_outline,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Factory Details
+                        CommonFormWidgets.sectionHeaderWithAction(
+                          'Factory Details',
+                          actionLabel: 'Add Factory',
+                          onAction: _openAddPurchaseFactoryDialog,
+                        ),
+                        const SizedBox(height: 10),
+                        _buildPurchaseFactoryListView(),
+                        const SizedBox(height: 14),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isSubmitting ? null : _submitForm,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _isEntrySaved ? const Color(0xFF0F172A) : const Color(0xFF0F172A),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: _isSubmitting
+                                    ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                                    : Text(
+                                  _isEntrySaved ? 'Update Report' : (widget.isModify ? 'Update' : 'Submit'),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   );
                 },
