@@ -7,8 +7,13 @@ import '../services/apiservice.dart';
 
 class ProformaViewScreen extends StatefulWidget {
   final String purchaseEntryId;
+  final String proformaId;
 
-  const ProformaViewScreen({super.key, required this.purchaseEntryId});
+  const ProformaViewScreen({
+    super.key,
+    this.purchaseEntryId = '',
+    this.proformaId = '',
+  });
 
   @override
   State<ProformaViewScreen> createState() => _ProformaViewScreenState();
@@ -35,9 +40,19 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   Future<void> _loadProforma() async {
     setState(() => _isLoading = true);
 
-    final response = await ApiService.getProformaByPurchaseEntry(
-      widget.purchaseEntryId,
-    );
+    ApiResponse response;
+
+    if (widget.proformaId.isNotEmpty) {
+      response = await ApiService.getProformaById(widget.proformaId);
+    } else if (widget.purchaseEntryId.isNotEmpty) {
+      response = await ApiService.getProformaByPurchaseEntry(widget.purchaseEntryId);
+    } else {
+      setState(() {
+        _error = 'No proforma ID or purchase entry ID provided';
+        _isLoading = false;
+      });
+      return;
+    }
 
     if (!mounted) return;
 
@@ -98,83 +113,96 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       var excel = excel_lib.Excel.createExcel();
       var sheet = excel['Proforma'];
 
-      // Add empty row
-      sheet.appendRow([]);
+      final data = _proformaData!;
+      final centre = data['centre'] ?? '';
+      final variety = data['variety'] ?? '';
+      final entries = data['entries'] as Map<String, dynamic>? ?? {};
+
+      final entryList = entries.entries.toList();
+      entryList.sort((a, b) {
+        final dateA = DateTime.tryParse(a.value['entryDate']?.toString() ?? '');
+        final dateB = DateTime.tryParse(b.value['entryDate']?.toString() ?? '');
+        if (dateA == null || dateB == null) return 0;
+        return dateA.compareTo(dateB);
+      });
 
       // Company Header
-      sheet.appendRow([
-        'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI',
-        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
-      ]);
-
+      sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
       sheet.appendRow([]);
 
-      // Proforma Title
+      // Proforma Title with Centre and Variety
       sheet.appendRow([
         'PROFORMA FOR KAPAS PURCHASE',
-        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+        'CENTRE: $centre',
+        'VARIETY: $variety'
       ]);
-
       sheet.appendRow([]);
 
-      // Column Headers (Centre and Variety included alongside the other fields)
-      final data = _proformaData!;
-      final date = DateTime.parse(data['date']);
-      sheet.appendRow([
-        'DATE',
-        'CENTRE',
-        'VARIETY',
-        'QTY',
-        'RATE',
-        'AMOUNT',
-        'FARMERS',
-        'MOISTURE',
-        'Moi. Value',
-        'SHORTAGE',
-        'Shortage value',
-        'PADATHA',
-        'Padtha value',
-        'out Turn',
-        'Out Turn value',
-        'seed',
-        'seed value',
-        'bales'
-      ]);
+      // Column Headers
+      final headers = [
+        'DATE', 'QTY', 'RATE', 'AMOUNT', 'FARMERS', 'MOISTURE',
+        'Moi. Value', 'SHORTAGE', 'Shortage value', 'PADATHA',
+        'Padtha value', 'out Turn', 'Out Turn value', 'seed',
+        'seed value', 'bales'
+      ];
+      sheet.appendRow(headers);
 
-      // Data Row
+      // Data Rows for each entry
+      for (final entry in entryList) {
+        final e = entry.value as Map<String, dynamic>;
+        final date = DateTime.tryParse(e['entryDate']?.toString() ?? '');
+        sheet.appendRow([
+          date != null ? DateFormat('dd/MM/yyyy').format(date) : '',
+          e['quantity']?.toString() ?? '0',
+          e['rate']?.toString() ?? '0',
+          (e['amount'] ?? 0).toStringAsFixed(2),
+          e['farmers']?.toString() ?? '0',
+          e['moisture']?.toString() ?? '0',
+          (e['moistureValue'] ?? 0).toStringAsFixed(2),
+          e['shortage']?.toString() ?? '0',
+          (e['shortageValue'] ?? 0).toStringAsFixed(2),
+          e['padtha']?.toString() ?? '0',
+          (e['padthaValue'] ?? 0).toStringAsFixed(2),
+          e['outTurn']?.toString() ?? '0',
+          (e['outTurnValue'] ?? 0).toStringAsFixed(2),
+          (e['seed'] ?? 0).toStringAsFixed(2),
+          (e['seedValue'] ?? 0).toStringAsFixed(2),
+          e['bales']?.toString() ?? ''
+        ]);
+      }
+
+      // Add PROG. AVG. row
+      sheet.appendRow([]);
       sheet.appendRow([
-        DateFormat('dd/MM/yyyy').format(date),
-        data['centre']?.toString() ?? '',
-        data['variety']?.toString() ?? '',
+        'PROG. AVG.',
         data['quantity']?.toString() ?? '0',
-        data['rate']?.toString() ?? '0',
+        data['rate']?.toStringAsFixed(2) ?? '0',
         (data['amount'] ?? 0).toStringAsFixed(2),
         data['farmers']?.toString() ?? '0',
-        data['moisture']?.toString() ?? '0',
+        data['moisture']?.toStringAsFixed(2) ?? '0',
         (data['moistureValue'] ?? 0).toStringAsFixed(2),
-        data['shortage']?.toString() ?? '0',
+        data['shortage']?.toStringAsFixed(2) ?? '0',
         (data['shortageValue'] ?? 0).toStringAsFixed(2),
-        data['padtha']?.toString() ?? '0',
+        data['padtha']?.toStringAsFixed(2) ?? '0',
         (data['padthaValue'] ?? 0).toStringAsFixed(2),
-        data['outTurn']?.toString() ?? '0',
+        data['outTurn']?.toStringAsFixed(2) ?? '0',
         (data['outTurnValue'] ?? 0).toStringAsFixed(2),
-        (data['seed'] ?? 0).toStringAsFixed(2),
+        data['seed']?.toStringAsFixed(2) ?? '0',
         (data['seedValue'] ?? 0).toStringAsFixed(2),
-        data['bales']?.toString() ?? ''
+        data['bales']?.toString() ?? '0'
       ]);
 
-      // Add total row with seed value highlighted
+      // Total Seed Value
       sheet.appendRow([]);
       sheet.appendRow([
         'Total Seed Value',
-        '', '', '', '', '', '', '', '', '', '', '', '', '', '',
-        '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}',
-        ''
+        '', '', '', '', '', '', '', '', '', '', '', '', '',
+        '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}'
       ]);
 
       final fileBytes = excel.save();
       if (fileBytes != null) {
-        String fileName = 'Proforma_${data['centre']}_${DateFormat('ddMMyyyy').format(date)}.xlsx';
+        String fileName = 'Proforma_${centre}_${variety}_${DateFormat('ddMMyyyy').format(DateTime.now())}.xlsx';
         String? savePath;
 
         if (Platform.isAndroid || Platform.isIOS) {
@@ -217,6 +245,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   Widget _buildProformaContent() {
     final data = _proformaData!;
     final centre = data['centre'] ?? '';
+    final variety = data['variety'] ?? '';
+    final entries = data['entries'] as Map<String, dynamic>? ?? {};
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -240,7 +270,6 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Centre only — variety and date now shown in the table below
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -249,25 +278,86 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text(
-                            'CENTRE',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF64748B),
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'CENTRE',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                centre.isNotEmpty ? centre : 'N/A',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            centre.isNotEmpty ? centre : 'N/A',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF0F172A),
-                            ),
+                          Container(
+                            width: 1,
+                            height: 40,
+                            margin: const EdgeInsets.symmetric(horizontal: 24),
+                            color: const Color(0xFFE2E8F0),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'VARIETY',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                variety.isNotEmpty ? variety : 'N/A',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            width: 1,
+                            height: 40,
+                            margin: const EdgeInsets.symmetric(horizontal: 24),
+                            color: const Color(0xFFE2E8F0),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'ENTRIES',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${entries.length}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -276,7 +366,6 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                 ),
               ),
               const Divider(height: 32),
-              // Proforma Table in Excel-like format
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: const [
@@ -327,6 +416,11 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 8),
+              Text(
+                'Total Entries: ${entries.length}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+              ),
             ],
           ),
         ),
@@ -335,36 +429,27 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   }
 
   Widget _buildProformaTable(Map<String, dynamic> data) {
-    final date = DateTime.parse(data['date']);
+    final entries = data['entries'] as Map<String, dynamic>? ?? {};
 
-    // Table headers matching the screenshot, with Centre and Variety included
+    final entryList = entries.entries.toList();
+    entryList.sort((a, b) {
+      final dateA = DateTime.tryParse(a.value['entryDate']?.toString() ?? '');
+      final dateB = DateTime.tryParse(b.value['entryDate']?.toString() ?? '');
+      if (dateA == null || dateB == null) return 0;
+      return dateA.compareTo(dateB);
+    });
+
     final headers = [
-      'DATE', 'CENTRE', 'VARIETY', 'QTY', 'RATE', 'AMOUNT', 'FARMERS',
-      'MOISTURE', 'Moi. Value', 'SHORTAGE', 'Shortage value',
-      'PADATHA', 'Padtha value', 'out Turn', 'Out Turn value',
-      'seed', 'seed value', 'bales'
+      'DATE', 'QTY', 'RATE', 'AMOUNT', 'FARMERS', 'MOISTURE',
+      'Moi. Value', 'SHORTAGE', 'Shortage value', 'PADATHA',
+      'Padtha value', 'out Turn', 'Out Turn value', 'seed',
+      'seed value', 'bales'
     ];
 
-    final values = [
-      DateFormat('dd/MM/yyyy').format(date),
-      data['centre']?.toString() ?? '',
-      data['variety']?.toString() ?? '',
-      data['quantity']?.toString() ?? '0',
-      data['rate']?.toString() ?? '0',
-      (data['amount'] ?? 0).toStringAsFixed(2),
-      data['farmers']?.toString() ?? '0',
-      data['moisture']?.toString() ?? '0',
-      (data['moistureValue'] ?? 0).toStringAsFixed(2),
-      data['shortage']?.toString() ?? '0',
-      (data['shortageValue'] ?? 0).toStringAsFixed(2),
-      data['padtha']?.toString() ?? '0',
-      (data['padthaValue'] ?? 0).toStringAsFixed(2),
-      data['outTurn']?.toString() ?? '0',
-      (data['outTurnValue'] ?? 0).toStringAsFixed(2),
-      (data['seed'] ?? 0).toStringAsFixed(2),
-      (data['seedValue'] ?? 0).toStringAsFixed(2),
-      data['bales']?.toString() ?? ''
-    ];
+    final numericFields = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value',
+      'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'];
+    final boldFields = ['seed value'];
+    final avgFields = ['RATE', 'MOISTURE', 'SHORTAGE', 'PADATHA', 'out Turn', 'seed'];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -376,7 +461,7 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Row(
             children: headers.map((header) {
-              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'].contains(header);
+              final isNumeric = numericFields.contains(header);
               return Container(
                 width: _columnWidth(header),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -393,41 +478,284 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
             }).toList(),
           ),
         ),
-        // Data Row
+
+        // Data Rows
+        ...entryList.map((entry) {
+          final e = entry.value as Map<String, dynamic>;
+          final date = DateTime.tryParse(e['entryDate']?.toString() ?? '');
+          final values = [
+            date != null ? DateFormat('dd/MM/yyyy').format(date) : '',
+            e['quantity']?.toString() ?? '0',
+            e['rate']?.toString() ?? '0',
+            (e['amount'] ?? 0).toStringAsFixed(2),
+            e['farmers']?.toString() ?? '0',
+            e['moisture']?.toString() ?? '0',
+            (e['moistureValue'] ?? 0).toStringAsFixed(2),
+            e['shortage']?.toString() ?? '0',
+            (e['shortageValue'] ?? 0).toStringAsFixed(2),
+            e['padtha']?.toString() ?? '0',
+            (e['padthaValue'] ?? 0).toStringAsFixed(2),
+            e['outTurn']?.toString() ?? '0',
+            (e['outTurnValue'] ?? 0).toStringAsFixed(2),
+            (e['seed'] ?? 0).toStringAsFixed(2),
+            (e['seedValue'] ?? 0).toStringAsFixed(2),
+            e['bales']?.toString() ?? ''
+          ];
+
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: const Color(0xFFE2E8F0), width: 0.5),
+              ),
+            ),
+            child: Row(
+              children: List.generate(values.length, (index) {
+                final isNumeric = numericFields.contains(headers[index]);
+                final isBold = boldFields.contains(headers[index]);
+                return Container(
+                  width: _columnWidth(headers[index]),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    values[index],
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+                      color: isBold ? const Color(0xFF059669) : const Color(0xFF0F172A),
+                    ),
+                    textAlign: isNumeric ? TextAlign.right : TextAlign.center,
+                  ),
+                );
+              }),
+            ),
+          );
+        }).toList(),
+
+        // PROG. AVG. Row
         Container(
+          color: const Color(0xFF0F172A),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Row(
-            children: List.generate(values.length, (index) {
-              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'].contains(headers[index]);
-              final isBold = headers[index] == 'seed value';
-              return Container(
-                width: _columnWidth(headers[index]),
+            children: [
+              Container(
+                width: _columnWidth('DATE'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: const Text(
+                  'PROG. AVG.',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              Container(
+                width: _columnWidth('QTY'),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
-                  values[index],
-                  style: TextStyle(
+                  data['quantity']?.toString() ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                     fontSize: 10,
-                    fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-                    color: isBold ? const Color(0xFF059669) : const Color(0xFF0F172A),
+                    color: Colors.white,
                   ),
-                  textAlign: isNumeric ? TextAlign.right : TextAlign.center,
+                  textAlign: TextAlign.right,
                 ),
-              );
-            }),
+              ),
+              Container(
+                width: _columnWidth('RATE'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['rate']?.toStringAsFixed(2) ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('AMOUNT'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  (data['amount'] ?? 0).toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('FARMERS'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['farmers']?.toString() ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('MOISTURE'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['moisture']?.toStringAsFixed(2) ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('Moi. Value'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  (data['moistureValue'] ?? 0).toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('SHORTAGE'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['shortage']?.toStringAsFixed(2) ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('Shortage value'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  (data['shortageValue'] ?? 0).toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('PADATHA'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['padtha']?.toStringAsFixed(2) ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('Padtha value'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  (data['padthaValue'] ?? 0).toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('out Turn'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['outTurn']?.toStringAsFixed(2) ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('Out Turn value'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  (data['outTurnValue'] ?? 0).toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('seed'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['seed']?.toStringAsFixed(2) ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('seed value'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  (data['seedValue'] ?? 0).toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Color(0xFF4ADE80),
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              Container(
+                width: _columnWidth('bales'),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(
+                  data['bales']?.toString() ?? '0',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  // Column widths for the proforma table, including the CENTRE/VARIETY columns
   double _columnWidth(String header) {
     switch (header) {
       case 'DATE':
         return 90;
-      case 'CENTRE':
-      case 'VARIETY':
-        return 100;
       case 'QTY':
       case 'RATE':
       case 'AMOUNT':

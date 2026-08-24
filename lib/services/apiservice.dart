@@ -29,10 +29,6 @@ class ApiService {
 
       return _saveDailyRecordAndRespond(credential, email, mobile, username);
     } on FirebaseAuthException catch (e) {
-      // NOTE: the Firebase error code is now surfaced in `data['code']` so
-      // the UI can react to specific cases (e.g. offer to create an
-      // account when sign-in fails because none exists yet) instead of
-      // only having the human-readable message to work with.
       return ApiResponse(
         success: false,
         message: _mapAuthError(e.code),
@@ -264,28 +260,23 @@ class ApiService {
       final normalizedCentre = centre.trim().toLowerCase();
       final normalizedVariety = variety.trim().toLowerCase();
 
-      // Get all entries for this user and type
       final querySnapshot = await _db
           .collection('purchases')
           .where('userId', isEqualTo: user.uid)
           .where('type', isEqualTo: type)
           .get();
 
-      // Check for duplicate
       bool foundDuplicate = false;
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
 
-        // Check centre match (case insensitive)
         final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
-        // Check reportNo match
         final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (storedReportNo != reportNo) continue;
 
-        // Check date match
         final rawDate = data['date'];
         if (rawDate is String) {
           final parsed = DateTime.tryParse(rawDate);
@@ -294,7 +285,6 @@ class ApiService {
               parsed.month == date.month &&
               parsed.day == date.day) {
 
-            // Check variety match (case insensitive)
             final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
             if (storedVariety == normalizedVariety) {
               foundDuplicate = true;
@@ -423,11 +413,8 @@ class ApiService {
         if (normalizedVariety != null && normalizedVariety.isNotEmpty) {
           bool varietyMatches;
           if (data['variety'] != null) {
-            // Report-level variety (e.g. purchase entries)
             varietyMatches = (data['variety'] as String? ?? '').trim().toLowerCase() == normalizedVariety;
           } else if (data['seedFactories'] is List) {
-            // Seed entries store variety per factory row, so match if ANY
-            // factory in this report has the selected variety.
             varietyMatches = (data['seedFactories'] as List).any((f) {
               final factoryVariety = (f is Map) ? (f['variety'] as String? ?? '') : '';
               return factoryVariety.trim().toLowerCase() == normalizedVariety;
@@ -478,15 +465,12 @@ class ApiService {
   }
 
   // ============ GET LATEST PROGRESSIVE ARRIVALS ============
-  // NOTE: Scoped by centre AND variety, so progressive totals are
-  // tracked separately per variety within a centre.
-  // Add this to ApiService class in apiservice.dart
   static Future<ApiResponse> getLatestProgressiveArrivals({
     required String type,
     required String centre,
     required String variety,
     DateTime? beforeDate,
-    String? excludeDocId, // NEW: exclude a specific document ID
+    String? excludeDocId,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -510,7 +494,6 @@ class ApiService {
       int highestReportNo = -1;
 
       for (final doc in querySnapshot.docs) {
-        // Skip the excluded document
         if (excludeDocId != null && doc.id == excludeDocId) continue;
 
         final data = doc.data();
@@ -675,6 +658,35 @@ class ApiService {
         );
       }
 
+      // First, check if this entry exists in any proforma
+      final proformaQuery = await _db
+          .collection('proformas')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      for (final proformaDoc in proformaQuery.docs) {
+        final data = proformaDoc.data();
+        final entries = data['entries'];
+        if (entries is Map && entries.containsKey(docId)) {
+          // Remove this entry from the proforma
+          final updatedEntries = Map<String, dynamic>.from(entries)..remove(docId);
+
+          if (updatedEntries.isEmpty) {
+            // Delete the entire proforma if no entries left
+            await proformaDoc.reference.delete();
+          } else {
+            // Update the proforma with remaining entries
+            await proformaDoc.reference.update({
+              ..._recomputeProformaTotals(updatedEntries),
+              'entries': updatedEntries,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
+          }
+          break;
+        }
+      }
+
+      // Now delete the purchase entry itself
       await _db.collection('purchases').doc(docId).delete();
 
       return ApiResponse(
@@ -691,54 +703,87 @@ class ApiService {
 
   // ============ PROFORMA METHODS ============
 
-  // Fields that represent day-level running totals. When multiple purchase
-  // entries land on the same centre + day, these are summed across entries.
-  // Everything else (rate, moisture %, shortage %, padtha %, outTurn %,
-  // etc.) isn't meaningful when summed, so the most recently saved entry's
-  // value wins instead.
-  static const List<String> _proformaAdditiveFields = [
+  static const List<String> _proformaSumFields = [
     'quantity', 'amount', 'farmers', 'moistureValue', 'shortageValue',
-    'padthaValue', 'outTurnValue', 'seed', 'seedValue', 'bales', 'heap',
+    'padthaValue', 'outTurnValue', 'seedValue', 'bales', 'heap',
+  ];
+
+  static const List<String> _proformaAvgFields = [
+    'rate', 'moisture', 'shortage', 'padtha', 'outTurn', 'seed',
   ];
 
   static Map<String, dynamic> _recomputeProformaTotals(Map<String, dynamic> entries) {
-    final totals = <String, num>{for (final f in _proformaAdditiveFields) f: 0};
-    Map<String, dynamic>? lastEntry;
+    final sumFields = <String, num>{};
+    final avgFields = <String, List<num>>{};
+
+    int entryCount = 0;
 
     for (final raw in entries.values) {
       final entry = Map<String, dynamic>.from(raw as Map);
-      lastEntry = entry;
-      for (final field in _proformaAdditiveFields) {
+      entryCount++;
+
+      // SUM these fields
+      for (final field in _proformaSumFields) {
         final value = entry[field];
         if (value is num) {
-          totals[field] = (totals[field] ?? 0) + value;
+          sumFields[field] = (sumFields[field] ?? 0) + value;
         } else if (value is String) {
-          totals[field] = (totals[field] ?? 0) + (num.tryParse(value) ?? 0);
+          final parsed = num.tryParse(value);
+          if (parsed != null) {
+            sumFields[field] = (sumFields[field] ?? 0) + parsed;
+          }
+        }
+      }
+
+      // Track for AVERAGE calculation
+      for (final field in _proformaAvgFields) {
+        final value = entry[field];
+        if (value is num) {
+          avgFields[field] = (avgFields[field] ?? [])..add(value);
+        } else if (value is String) {
+          final parsed = num.tryParse(value);
+          if (parsed != null) {
+            avgFields[field] = (avgFields[field] ?? [])..add(parsed);
+          }
         }
       }
     }
 
-    final result = <String, dynamic>{...totals};
-    if (lastEntry != null) {
-      for (final key in lastEntry.keys) {
-        if (!_proformaAdditiveFields.contains(key)) {
-          result[key] = lastEntry[key];
-        }
+    final result = <String, dynamic>{...sumFields};
+
+    // Calculate averages
+    for (final entry in avgFields.entries) {
+      final values = entry.value;
+      if (values.isNotEmpty) {
+        final avg = values.reduce((a, b) => a + b) / values.length;
+        result[entry.key] = avg;
       }
     }
-    result['entryCount'] = entries.length;
+
+    // Get date range from entries
+    final entryDates = entries.values
+        .map((e) => e['entryDate']?.toString())
+        .whereType<String>()
+        .map((d) => DateTime.tryParse(d))
+        .whereType<DateTime>()
+        .toList();
+
+    if (entryDates.isNotEmpty) {
+      entryDates.sort();
+      result['dateRangeStart'] = entryDates.first.toIso8601String();
+      result['dateRangeEnd'] = entryDates.last.toIso8601String();
+      result['date'] = entryDates.last.toIso8601String();
+    }
+
+    result['entryCount'] = entryCount;
     return result;
   }
 
-  /// If [purchaseEntryId] already contributed to a *different* day's
-  /// proforma (e.g. its date or centre was edited since it was last
-  /// generated), remove that stale contribution so a regenerate never
-  /// leaves duplicate/ghost totals behind on the old day.
   static Future<void> _removeStaleProformaContribution(
       String userId,
       String purchaseEntryId, {
-        required String currentDate,
         required String currentCentre,
+        required String currentVariety,
       }) async {
     final query = await _db.collection('proformas').where('userId', isEqualTo: userId).get();
 
@@ -746,7 +791,8 @@ class ApiService {
       final data = doc.data();
       final entries = data['entries'];
       if (entries is! Map || !entries.containsKey(purchaseEntryId)) continue;
-      if (data['date'] == currentDate && data['centre'] == currentCentre) continue;
+
+      if (data['centre'] == currentCentre && data['variety'] == currentVariety) continue;
 
       final updatedEntries = Map<String, dynamic>.from(entries)..remove(purchaseEntryId);
 
@@ -773,13 +819,14 @@ class ApiService {
       }
 
       final centre = data['centre']?.toString() ?? '';
+      final variety = data['variety']?.toString() ?? '';
       final rawDate = data['date'];
       final purchaseEntryId = data['purchaseEntryId']?.toString();
 
-      if (centre.isEmpty || rawDate == null) {
+      if (centre.isEmpty || variety.isEmpty || rawDate == null) {
         return ApiResponse(
           success: false,
-          message: 'Centre and date are required to save a proforma',
+          message: 'Centre, variety, and date are required to save a proforma',
         );
       }
       if (purchaseEntryId == null || purchaseEntryId.isEmpty) {
@@ -789,33 +836,29 @@ class ApiService {
         );
       }
 
-      // Normalize to midnight so multiple purchase entries on the same
-      // calendar day resolve to the same key, regardless of what time
-      // each entry was generated.
       final parsedDate = rawDate is String ? DateTime.parse(rawDate) : rawDate as DateTime;
-      final normalizedDate = DateTime(parsedDate.year, parsedDate.month, parsedDate.day);
-      final normalizedDateStr = normalizedDate.toIso8601String();
-
-      // Clean up any stale contribution left behind on a different day/centre
-      // before writing the fresh one below.
-      await _removeStaleProformaContribution(
-        user.uid,
-        purchaseEntryId,
-        currentDate: normalizedDateStr,
-        currentCentre: centre,
-      );
+      final normalizedDateStr = DateTime(parsedDate.year, parsedDate.month, parsedDate.day).toIso8601String();
 
       final entry = Map<String, dynamic>.from(data)
         ..remove('centre')
-        ..remove('date')
+        ..remove('variety')
         ..remove('userId')
         ..remove('purchaseEntryId');
+
+      entry['entryDate'] = normalizedDateStr;
+
+      await _removeStaleProformaContribution(
+        user.uid,
+        purchaseEntryId,
+        currentCentre: centre,
+        currentVariety: variety,
+      );
 
       final existing = await _db
           .collection('proformas')
           .where('userId', isEqualTo: user.uid)
           .where('centre', isEqualTo: centre)
-          .where('date', isEqualTo: normalizedDateStr)
+          .where('variety', isEqualTo: variety)
           .limit(1)
           .get();
 
@@ -824,15 +867,12 @@ class ApiService {
         final existingEntries = Map<String, dynamic>.from(
           (doc.data()['entries'] as Map?) ?? {},
         );
-        // Overwrite this purchase entry's own slot — never additive here,
-        // so re-generating an already-saved entry replaces it cleanly
-        // instead of double-counting its values.
+
         existingEntries[purchaseEntryId] = entry;
 
         await doc.reference.update({
           ..._recomputeProformaTotals(existingEntries),
           'entries': existingEntries,
-          'date': normalizedDateStr,
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
@@ -843,13 +883,12 @@ class ApiService {
         );
       }
 
-      // No proforma yet for this centre + day — create the first one.
       final entries = {purchaseEntryId: entry};
       final docRef = await _db.collection('proformas').add({
         ..._recomputeProformaTotals(entries),
         'userId': user.uid,
         'centre': centre,
-        'date': normalizedDateStr,
+        'variety': variety,
         'entries': entries,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
@@ -913,47 +952,107 @@ class ApiService {
         );
       }
 
-      // Firestore can't query "does this map contain this key" directly, so
-      // we scan the user's proformas and check the entries map client-side.
-      // Per-user proforma counts are small in practice, so this stays fast.
       final query = await _db.collection('proformas').where('userId', isEqualTo: user.uid).get();
 
       for (final doc in query.docs) {
         final data = doc.data();
         final entries = data['entries'];
+
         if (entries is Map && entries.containsKey(purchaseEntryId)) {
-          data['id'] = doc.id;
+          final entryData = Map<String, dynamic>.from(data);
+          entryData['id'] = doc.id;
+          entryData['selectedEntry'] = entries[purchaseEntryId];
           return ApiResponse(
             success: true,
             message: 'Proforma found',
+            data: {'proforma': entryData},
+          );
+        }
+      }
+
+      final legacyQuery = await _db
+          .collection('proformas')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      for (final doc in legacyQuery.docs) {
+        final data = doc.data();
+        final storedPurchaseEntryId = data['purchaseEntryId']?.toString();
+
+        if (storedPurchaseEntryId == purchaseEntryId) {
+          data['id'] = doc.id;
+          return ApiResponse(
+            success: true,
+            message: 'Proforma found (legacy format)',
             data: {'proforma': data},
           );
         }
       }
 
-      // Fall back to the older schema (a singular purchaseEntryId field on
-      // the doc, from before day-wise merging existed) so old links keep working.
-      final legacy = await _db
-          .collection('proformas')
-          .where('userId', isEqualTo: user.uid)
-          .where('purchaseEntryId', isEqualTo: purchaseEntryId)
-          .limit(1)
-          .get();
-
-      if (legacy.docs.isNotEmpty) {
-        final doc = legacy.docs.first;
+      for (final doc in query.docs) {
         final data = doc.data();
-        data['id'] = doc.id;
-        return ApiResponse(
-          success: true,
-          message: 'Proforma found',
-          data: {'proforma': data},
-        );
+        final entries = data['entries'];
+        if (entries is Map) {
+          for (final entry in entries.values) {
+            if (entry is Map && entry['purchaseEntryId']?.toString() == purchaseEntryId) {
+              final entryData = Map<String, dynamic>.from(data);
+              entryData['id'] = doc.id;
+              entryData['selectedEntry'] = entry;
+              return ApiResponse(
+                success: true,
+                message: 'Proforma found',
+                data: {'proforma': entryData},
+              );
+            }
+          }
+        }
       }
 
       return ApiResponse(
         success: false,
         message: 'No proforma found for this entry',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching proforma: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getProformaById(String proformaId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      final doc = await _db.collection('proformas').doc(proformaId).get();
+
+      if (!doc.exists) {
+        return ApiResponse(
+          success: false,
+          message: 'Proforma not found',
+        );
+      }
+
+      final data = doc.data() ?? {};
+
+      if (data['userId'] != user.uid) {
+        return ApiResponse(
+          success: false,
+          message: 'Access denied',
+        );
+      }
+
+      data['id'] = doc.id;
+      return ApiResponse(
+        success: true,
+        message: 'Proforma found',
+        data: {'proforma': data},
       );
     } catch (e) {
       return ApiResponse(
@@ -987,7 +1086,6 @@ class ApiService {
     }
   }
 
-  // Add this method to check if entry exists (used for validation)
   static Future<ApiResponse> checkEntryExists({
     required String type,
     required String centre,

@@ -61,37 +61,13 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   }
 
   // ========================================================================
-  // HELPER METHODS - Extract purchaseEntryId from proforma
+  // HELPER METHODS
   // ========================================================================
 
-  String? _getPurchaseEntryId(Map<String, dynamic> proforma) {
-    // Try to get from top-level field first (older schema)
-    if (proforma.containsKey('purchaseEntryId')) {
-      final id = proforma['purchaseEntryId']?.toString();
-      if (id != null && id.isNotEmpty) return id;
-    }
-
-    // Try to get from entries map (newer schema)
-    final entries = proforma['entries'];
-    if (entries is Map<String, dynamic>) {
-      // Get the first key from the entries map (this is the purchaseEntryId)
-      if (entries.isNotEmpty) {
-        return entries.keys.first.toString();
-      }
-    }
-
-    // Try to get from entries as List (fallback)
-    if (entries is List && entries.isNotEmpty) {
-      final firstEntry = entries.first as Map<String, dynamic>?;
-      if (firstEntry != null && firstEntry.containsKey('purchaseEntryId')) {
-        return firstEntry['purchaseEntryId']?.toString();
-      }
-    }
-
-    return null;
+  String? _getProformaId(Map<String, dynamic> proforma) {
+    return proforma['id']?.toString();
   }
 
-  // Safe date parsing helper
   DateTime? _safeParseDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return null;
     try {
@@ -101,14 +77,27 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     }
   }
 
-  String _safeFormatDate(String? dateStr, {String defaultValue = 'N/A'}) {
-    final date = _safeParseDate(dateStr);
-    if (date == null) return defaultValue;
-    return DateFormat('dd/MM/yyyy').format(date);
-  }
-
   String _formatFilterDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  String _formatDateRange(Map<String, dynamic> proforma) {
+    final start = proforma['dateRangeStart']?.toString();
+    final end = proforma['dateRangeEnd']?.toString();
+
+    if (start != null && end != null) {
+      final startDate = _safeParseDate(start);
+      final endDate = _safeParseDate(end);
+      if (startDate != null && endDate != null) {
+        if (startDate.year == endDate.year &&
+            startDate.month == endDate.month &&
+            startDate.day == endDate.day) {
+          return DateFormat('dd/MM/yyyy').format(startDate);
+        }
+        return '${DateFormat('dd/MM/yyyy').format(startDate)} - ${DateFormat('dd/MM/yyyy').format(endDate)}';
+      }
+    }
+    return 'Multiple dates';
   }
 
   // ========================================================================
@@ -118,7 +107,6 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   void _applyFilters() {
     setState(() {
       _filteredProformas = _proformas.where((proforma) {
-        // Date filter
         final rawDate = proforma['date']?.toString();
         if (rawDate == null || rawDate.isEmpty) return false;
 
@@ -137,13 +125,11 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
           if (normalizedDate.isAfter(end)) return false;
         }
 
-        // Centre filter
         if (_selectedCentreFilter != null && _selectedCentreFilter!.isNotEmpty) {
           final centre = proforma['centre']?.toString().toLowerCase() ?? '';
           if (centre != _selectedCentreFilter!.toLowerCase()) return false;
         }
 
-        // Variety filter
         if (_selectedVarietyFilter != null && _selectedVarietyFilter!.isNotEmpty) {
           final variety = proforma['variety']?.toString().toLowerCase() ?? '';
           if (variety != _selectedVarietyFilter!.toLowerCase()) return false;
@@ -258,11 +244,12 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     }
   }
 
-  void _viewProforma(String purchaseEntryId) {
-    if (purchaseEntryId.isEmpty) {
+  void _viewProforma(Map<String, dynamic> proforma) {
+    final proformaId = proforma['id']?.toString();
+    if (proformaId == null || proformaId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Invalid proforma data - missing purchase entry ID'),
+          content: Text('Invalid proforma data'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -273,7 +260,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => ProformaViewScreen(
-          purchaseEntryId: purchaseEntryId,
+          proformaId: proformaId,
         ),
       ),
     );
@@ -357,13 +344,12 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
               itemCount: _filteredProformas.length,
               itemBuilder: (context, index) {
                 final proforma = _filteredProformas[index];
-
-                // Extract purchaseEntryId from the proforma
-                final purchaseEntryId = _getPurchaseEntryId(proforma) ?? '';
+                final proformaId = _getProformaId(proforma) ?? '';
                 final centre = proforma['centre'] ?? 'Unknown';
                 final variety = proforma['variety'] ?? 'Unknown';
                 final quantity = proforma['quantity'] ?? 0;
                 final bales = proforma['bales'] ?? 0;
+                final entryCount = proforma['entryCount'] ?? 0;
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -385,7 +371,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                       ),
                     ),
                     title: Text(
-                      'Centre: $centre',
+                      '$centre - $variety',
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF0F172A),
@@ -396,15 +382,15 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                       children: [
                         const SizedBox(height: 4),
                         Text(
-                          'Variety: $variety',
+                          'Entries: $entryCount | Period: ${_formatDateRange(proforma)}',
                           style: const TextStyle(color: Color(0xFF64748B)),
                         ),
                         Text(
-                          'Quantity: $quantity Quintals',
+                          'Total Quantity: $quantity Quintals',
                           style: const TextStyle(color: Color(0xFF64748B)),
                         ),
                         Text(
-                          'Bales: $bales',
+                          'Total Bales: $bales',
                           style: const TextStyle(
                             color: Color(0xFF0F172A),
                             fontWeight: FontWeight.w600,
@@ -418,13 +404,13 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                         size: 16,
                         color: Color(0xFF94A3B8),
                       ),
-                      onPressed: purchaseEntryId.isNotEmpty
-                          ? () => _viewProforma(purchaseEntryId)
+                      onPressed: proformaId.isNotEmpty
+                          ? () => _viewProforma(proforma)
                           : null,
                       tooltip: 'View Proforma',
                     ),
-                    onTap: purchaseEntryId.isNotEmpty
-                        ? () => _viewProforma(purchaseEntryId)
+                    onTap: proformaId.isNotEmpty
+                        ? () => _viewProforma(proforma)
                         : null,
                   ),
                 );
@@ -437,7 +423,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   }
 
   // ========================================================================
-  // FILTER BAR - Date (single/range), Centre, Variety
+  // FILTER BAR
   // ========================================================================
   Widget _buildFilterBar() {
     return Container(
