@@ -390,6 +390,7 @@ class ApiService {
     required String centre,
     required int reportNo,
     required DateTime date,
+    String? variety,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -401,6 +402,7 @@ class ApiService {
       }
 
       final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedVariety = variety?.trim().toLowerCase();
 
       final querySnapshot = await _db
           .collection('purchases')
@@ -418,6 +420,24 @@ class ApiService {
         final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
+        if (normalizedVariety != null && normalizedVariety.isNotEmpty) {
+          bool varietyMatches;
+          if (data['variety'] != null) {
+            // Report-level variety (e.g. purchase entries)
+            varietyMatches = (data['variety'] as String? ?? '').trim().toLowerCase() == normalizedVariety;
+          } else if (data['seedFactories'] is List) {
+            // Seed entries store variety per factory row, so match if ANY
+            // factory in this report has the selected variety.
+            varietyMatches = (data['seedFactories'] as List).any((f) {
+              final factoryVariety = (f is Map) ? (f['variety'] as String? ?? '') : '';
+              return factoryVariety.trim().toLowerCase() == normalizedVariety;
+            });
+          } else {
+            varietyMatches = false;
+          }
+          if (!varietyMatches) continue;
+        }
+
         final rawDate = data['date'];
         if (rawDate is String) {
           final parsed = DateTime.tryParse(rawDate);
@@ -433,9 +453,12 @@ class ApiService {
       }
 
       if (match == null) {
+        final varietyPart = (normalizedVariety != null && normalizedVariety.isNotEmpty)
+            ? ', variety'
+            : '';
         return ApiResponse(
           success: false,
-          message: 'No entry found for that centre, report number & date',
+          message: 'No entry found for that centre$varietyPart, report number & date',
         );
       }
 

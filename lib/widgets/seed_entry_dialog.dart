@@ -39,6 +39,11 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
   String? _selectedCentre;
   final _reportNoController = TextEditingController();
 
+  // Variety used only for the Find Entry lookup step — seed reports don't
+  // have a single report-level variety (it's per factory row), so this
+  // filters for reports containing at least one factory with this variety.
+  String? _lookupVariety;
+
   // Use FactoryData from report_modals.dart (NOT PurchaseFactoryData)
   List<FactoryData> _seedFactories = [];
 
@@ -172,6 +177,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       centre: _selectedCentre!,
       reportNo: reportNo,
       date: normalizedDate,
+      variety: _lookupVariety,
     );
 
     if (!mounted) return;
@@ -748,6 +754,9 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
         focusNode: _dialogFocusNode,
         selectedCentre: _selectedCentre,
         onCentreChanged: (v) => setState(() => _selectedCentre = v),
+        selectedVariety: _lookupVariety,
+        varietyOptions: ReportConstants.varieties,
+        onVarietyChanged: (v) => setState(() => _lookupVariety = v),
         reportNoController: _reportNoController,
         selectedDate: _selectedDate,
         onDateTap: () => _selectDate(context),

@@ -18,7 +18,6 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   List<Map<String, dynamic>> _proformas = [];
   List<Map<String, dynamic>> _filteredProformas = [];
   String? _error;
-  bool _isDeleting = false;
 
   // Filters
   DateTime? _filterStartDate;
@@ -259,170 +258,6 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     }
   }
 
-  // ========================================================================
-  // DELETE PROFORMA METHOD
-  // ========================================================================
-
-  Future<void> _deleteProforma(Map<String, dynamic> proforma, int index) async {
-    final docId = proforma['id']?.toString();
-    if (docId == null || docId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot delete: Proforma ID not found'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    // Show confirmation dialog
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(Icons.delete_outline, color: Colors.red.shade700, size: 24),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'Delete Proforma',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Are you sure you want to delete this proforma?',
-              style: TextStyle(fontSize: 14, color: Color(0xFF334155)),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Centre: ${proforma['centre'] ?? 'Unknown'}',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                  ),
-                  Text(
-                    'Date: ${_safeFormatDate(proforma['date'])}',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                  ),
-                  Text(
-                    'Quantity: ${proforma['quantity'] ?? 0} Quintals',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                  ),
-                  Text(
-                    'Seed Value: ₹${(proforma['seedValue'] ?? 0).toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF059669)),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This action cannot be undone!',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.red,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    setState(() => _isDeleting = true);
-
-    try {
-      final response = await ApiService.deleteProforma(docId);
-
-      if (!mounted) {
-        setState(() => _isDeleting = false);
-        return;
-      }
-
-      if (response.success) {
-        // Remove the proforma from both the source and filtered lists,
-        // matched by id rather than index (index is only valid within
-        // the currently-filtered list, not the underlying data).
-        setState(() {
-          _proformas.removeWhere((p) => p['id']?.toString() == docId);
-          _filteredProformas.removeWhere((p) => p['id']?.toString() == docId);
-          _isDeleting = false;
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('✅ Proforma deleted successfully'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      } else {
-        setState(() => _isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Failed to delete: ${response.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isDeleting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Error deleting proforma: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
   void _viewProforma(String purchaseEntryId) {
     if (purchaseEntryId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -522,14 +357,13 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
               itemCount: _filteredProformas.length,
               itemBuilder: (context, index) {
                 final proforma = _filteredProformas[index];
-                final dateStr = proforma['date']?.toString();
-                final date = _safeParseDate(dateStr);
 
                 // Extract purchaseEntryId from the proforma
                 final purchaseEntryId = _getPurchaseEntryId(proforma) ?? '';
                 final centre = proforma['centre'] ?? 'Unknown';
+                final variety = proforma['variety'] ?? 'Unknown';
                 final quantity = proforma['quantity'] ?? 0;
-                final seedValue = proforma['seedValue'] ?? 0;
+                final bales = proforma['bales'] ?? 0;
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -562,7 +396,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                       children: [
                         const SizedBox(height: 4),
                         Text(
-                          'Date: ${date != null ? DateFormat('dd/MM/yyyy').format(date) : 'N/A'}',
+                          'Variety: $variety',
                           style: const TextStyle(color: Color(0xFF64748B)),
                         ),
                         Text(
@@ -570,7 +404,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                           style: const TextStyle(color: Color(0xFF64748B)),
                         ),
                         Text(
-                          'Seed Value: ₹${(seedValue).toStringAsFixed(2)}',
+                          'Bales: $bales',
                           style: const TextStyle(
                             color: Color(0xFF0F172A),
                             fontWeight: FontWeight.w600,
@@ -578,31 +412,16 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                         ),
                       ],
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(
-                            Icons.arrow_forward_ios,
-                            size: 16,
-                            color: Color(0xFF94A3B8),
-                          ),
-                          onPressed: purchaseEntryId.isNotEmpty
-                              ? () => _viewProforma(purchaseEntryId)
-                              : null,
-                          tooltip: 'View Proforma',
-                        ),
-                        // DELETE ICON
-                        IconButton(
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: Colors.red.shade400,
-                            size: 20,
-                          ),
-                          onPressed: _isDeleting ? null : () => _deleteProforma(proforma, index),
-                          tooltip: 'Delete Proforma',
-                        ),
-                      ],
+                    trailing: IconButton(
+                      icon: const Icon(
+                        Icons.arrow_forward_ios,
+                        size: 16,
+                        color: Color(0xFF94A3B8),
+                      ),
+                      onPressed: purchaseEntryId.isNotEmpty
+                          ? () => _viewProforma(purchaseEntryId)
+                          : null,
+                      tooltip: 'View Proforma',
                     ),
                     onTap: purchaseEntryId.isNotEmpty
                         ? () => _viewProforma(purchaseEntryId)

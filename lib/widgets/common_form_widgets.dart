@@ -148,6 +148,47 @@ class CommonFormWidgets {
     );
   }
 
+  static Widget varietyDropdown({
+    required String? selectedVariety,
+    required bool readOnly,
+    required Function(String?) onChanged,
+    required List<String> varieties,
+    bool isRequired = true,
+  }) {
+    return DropdownButtonFormField<String>(
+      initialValue: selectedVariety,
+      decoration: InputDecoration(
+        labelText: 'Variety',
+        hintText: 'Select variety',
+        prefixIcon: const Icon(Icons.grass),
+        filled: readOnly,
+        fillColor: readOnly ? const Color(0xFFF1F5F9) : null,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
+        ),
+      ),
+      items: varieties.map((String variety) {
+        return DropdownMenuItem(
+          value: variety,
+          child: Text(variety),
+        );
+      }).toList(),
+      onChanged: readOnly ? null : onChanged,
+      validator: isRequired
+          ? (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please select a variety';
+        }
+        return null;
+      }
+          : null,
+    );
+  }
+
   static Widget closeButton(BuildContext context) {
     return IconButton(
       onPressed: () => Navigator.of(context).pop(),
@@ -185,6 +226,9 @@ class CommonFormWidgets {
     required FocusNode focusNode,
     required String? selectedCentre,
     required Function(String?) onCentreChanged,
+    String? selectedVariety,
+    List<String> varietyOptions = const [],
+    Function(String?)? onVarietyChanged,
     required TextEditingController reportNoController,
     required DateTime selectedDate,
     required VoidCallback onDateTap,
@@ -239,6 +283,16 @@ class CommonFormWidgets {
                     onChanged: onCentreChanged,
                   ),
                   const SizedBox(height: 12),
+
+                  if (varietyOptions.isNotEmpty && onVarietyChanged != null) ...[
+                    CommonFormWidgets.varietyDropdown(
+                      selectedVariety: selectedVariety,
+                      readOnly: false,
+                      onChanged: onVarietyChanged,
+                      varieties: varietyOptions,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   CommonFormWidgets.textField(
                     controller: reportNoController,

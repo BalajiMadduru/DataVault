@@ -533,6 +533,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       centre: _selectedCentre!,
       reportNo: reportNo,
       date: normalizedDate,
+      variety: _selectedVariety,
     );
 
     if (!mounted) return;
@@ -1625,6 +1626,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         focusNode: _dialogFocusNode,
         selectedCentre: _selectedCentre,
         onCentreChanged: (v) => setState(() => _selectedCentre = v),
+        selectedVariety: _selectedVariety,
+        varietyOptions: ReportConstants.varieties,
+        onVarietyChanged: (v) => setState(() => _selectedVariety = v),
         reportNoController: _reportNoController,
         selectedDate: _selectedDate,
         onDateTap: () => _selectDate(context),

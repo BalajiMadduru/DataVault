@@ -18,11 +18,18 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _proformaData;
   String? _error;
+  final ScrollController _tableScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _loadProforma();
+  }
+
+  @override
+  void dispose() {
+    _tableScrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProforma() async {
@@ -110,23 +117,13 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
 
       sheet.appendRow([]);
 
-      // Centre, Variety and Date
+      // Column Headers (Centre and Variety included alongside the other fields)
       final data = _proformaData!;
       final date = DateTime.parse(data['date']);
       sheet.appendRow([
-        'CENTRE:', data['centre'] ?? '',
-        '', '', '',
-        'VARIETY:', data['variety'] ?? '',
-        '', '', '',
-        'DATE:', DateFormat('dd/MM/yyyy').format(date),
-        '', '', '', ''
-      ]);
-
-      sheet.appendRow([]);
-
-      // Column Headers
-      sheet.appendRow([
         'DATE',
+        'CENTRE',
+        'VARIETY',
         'QTY',
         'RATE',
         'AMOUNT',
@@ -141,13 +138,14 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         'Out Turn value',
         'seed',
         'seed value',
-        'bales',
-        'HEAP'
+        'bales'
       ]);
 
       // Data Row
       sheet.appendRow([
         DateFormat('dd/MM/yyyy').format(date),
+        data['centre']?.toString() ?? '',
+        data['variety']?.toString() ?? '',
         data['quantity']?.toString() ?? '0',
         data['rate']?.toString() ?? '0',
         (data['amount'] ?? 0).toStringAsFixed(2),
@@ -162,17 +160,16 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         (data['outTurnValue'] ?? 0).toStringAsFixed(2),
         (data['seed'] ?? 0).toStringAsFixed(2),
         (data['seedValue'] ?? 0).toStringAsFixed(2),
-        data['bales']?.toString() ?? '',
-        data['heap']?.toString() ?? ''
+        data['bales']?.toString() ?? ''
       ]);
 
       // Add total row with seed value highlighted
       sheet.appendRow([]);
       sheet.appendRow([
         'Total Seed Value',
-        '', '', '', '', '', '', '', '', '', '', '', '',
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '',
         '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}',
-        '', '', ''
+        ''
       ]);
 
       final fileBytes = excel.save();
@@ -219,9 +216,7 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
 
   Widget _buildProformaContent() {
     final data = _proformaData!;
-    final date = DateTime.parse(data['date']);
     final centre = data['centre'] ?? '';
-    final variety = data['variety'] ?? '';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -245,7 +240,7 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Centre, Variety and Date in a row
+                    // Centre only — variety and date now shown in the table below
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -254,89 +249,24 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'CENTRE',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  centre.isNotEmpty ? centre : 'N/A',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                              ],
+                          const Text(
+                            'CENTRE',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
                             ),
                           ),
-                          Container(
-                            width: 1,
-                            height: 30,
-                            color: const Color(0xFFE2E8F0),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'VARIETY',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  variety.isNotEmpty ? variety : 'N/A',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 1,
-                            height: 30,
-                            color: const Color(0xFFE2E8F0),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'DATE',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  DateFormat('dd/MM/yyyy').format(date),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                              ],
+                          const SizedBox(height: 2),
+                          Text(
+                            centre.isNotEmpty ? centre : 'N/A',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF0F172A),
                             ),
                           ),
                         ],
@@ -347,14 +277,33 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
               ),
               const Divider(height: 32),
               // Proforma Table in Excel-like format
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: const [
+                  Icon(Icons.swipe, size: 14, color: Color(0xFF94A3B8)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Scroll to see all fields',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
               Container(
                 decoration: BoxDecoration(
                   border: Border.all(color: const Color(0xFFCBD5E1)),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: _buildProformaTable(data),
+                child: Scrollbar(
+                  controller: _tableScrollController,
+                  thumbVisibility: true,
+                  trackVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _tableScrollController,
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _buildProformaTable(data),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -388,16 +337,18 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
   Widget _buildProformaTable(Map<String, dynamic> data) {
     final date = DateTime.parse(data['date']);
 
-    // Table headers matching the screenshot
+    // Table headers matching the screenshot, with Centre and Variety included
     final headers = [
-      'DATE', 'QTY', 'RATE', 'AMOUNT', 'FARMERS',
+      'DATE', 'CENTRE', 'VARIETY', 'QTY', 'RATE', 'AMOUNT', 'FARMERS',
       'MOISTURE', 'Moi. Value', 'SHORTAGE', 'Shortage value',
       'PADATHA', 'Padtha value', 'out Turn', 'Out Turn value',
-      'seed', 'seed value', 'bales', 'HEAP'
+      'seed', 'seed value', 'bales'
     ];
 
     final values = [
       DateFormat('dd/MM/yyyy').format(date),
+      data['centre']?.toString() ?? '',
+      data['variety']?.toString() ?? '',
       data['quantity']?.toString() ?? '0',
       data['rate']?.toString() ?? '0',
       (data['amount'] ?? 0).toStringAsFixed(2),
@@ -412,8 +363,7 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       (data['outTurnValue'] ?? 0).toStringAsFixed(2),
       (data['seed'] ?? 0).toStringAsFixed(2),
       (data['seedValue'] ?? 0).toStringAsFixed(2),
-      data['bales']?.toString() ?? '',
-      data['heap']?.toString() ?? ''
+      data['bales']?.toString() ?? ''
     ];
 
     return Column(
@@ -426,17 +376,9 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Row(
             children: headers.map((header) {
-              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales', 'HEAP'].contains(header);
+              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'].contains(header);
               return Container(
-                width: header == 'DATE' ? 90 :
-                header == 'QTY' || header == 'RATE' || header == 'AMOUNT' ? 80 :
-                header == 'FARMERS' ? 70 :
-                header == 'MOISTURE' ? 80 :
-                header == 'Moi. Value' || header == 'Shortage value' || header == 'Padtha value' || header == 'Out Turn value' ? 85 :
-                header == 'SHORTAGE' || header == 'PADATHA' || header == 'out Turn' ? 80 :
-                header == 'seed' ? 60 :
-                header == 'seed value' ? 80 :
-                header == 'bales' ? 60 : 60,
+                width: _columnWidth(header),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
                   header,
@@ -456,18 +398,10 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Row(
             children: List.generate(values.length, (index) {
-              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales', 'HEAP'].contains(headers[index]);
+              final isNumeric = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value', 'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'].contains(headers[index]);
               final isBold = headers[index] == 'seed value';
               return Container(
-                width: headers[index] == 'DATE' ? 90 :
-                headers[index] == 'QTY' || headers[index] == 'RATE' || headers[index] == 'AMOUNT' ? 80 :
-                headers[index] == 'FARMERS' ? 70 :
-                headers[index] == 'MOISTURE' ? 80 :
-                headers[index] == 'Moi. Value' || headers[index] == 'Shortage value' || headers[index] == 'Padtha value' || headers[index] == 'Out Turn value' ? 85 :
-                headers[index] == 'SHORTAGE' || headers[index] == 'PADATHA' || headers[index] == 'out Turn' ? 80 :
-                headers[index] == 'seed' ? 60 :
-                headers[index] == 'seed value' ? 80 :
-                headers[index] == 'bales' ? 60 : 60,
+                width: _columnWidth(headers[index]),
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Text(
                   values[index],
@@ -484,5 +418,41 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         ),
       ],
     );
+  }
+
+  // Column widths for the proforma table, including the CENTRE/VARIETY columns
+  double _columnWidth(String header) {
+    switch (header) {
+      case 'DATE':
+        return 90;
+      case 'CENTRE':
+      case 'VARIETY':
+        return 100;
+      case 'QTY':
+      case 'RATE':
+      case 'AMOUNT':
+        return 80;
+      case 'FARMERS':
+        return 70;
+      case 'MOISTURE':
+        return 80;
+      case 'Moi. Value':
+      case 'Shortage value':
+      case 'Padtha value':
+      case 'Out Turn value':
+        return 85;
+      case 'SHORTAGE':
+      case 'PADATHA':
+      case 'out Turn':
+        return 80;
+      case 'seed':
+        return 60;
+      case 'seed value':
+        return 80;
+      case 'bales':
+        return 60;
+      default:
+        return 60;
+    }
   }
 }

@@ -9,6 +9,9 @@ class FindEntryDialog extends StatelessWidget {
   final FocusNode focusNode;
   final String? selectedCentre;
   final Function(String?) onCentreChanged;
+  final String? selectedVariety;
+  final List<String> varietyOptions;
+  final Function(String?)? onVarietyChanged;
   final TextEditingController reportNoController;
   final DateTime selectedDate;
   final VoidCallback onDateTap;
@@ -25,6 +28,9 @@ class FindEntryDialog extends StatelessWidget {
     required this.focusNode,
     required this.selectedCentre,
     required this.onCentreChanged,
+    this.selectedVariety,
+    this.varietyOptions = const [],
+    this.onVarietyChanged,
     required this.reportNoController,
     required this.selectedDate,
     required this.onDateTap,
@@ -43,6 +49,9 @@ class FindEntryDialog extends StatelessWidget {
       focusNode: focusNode,
       selectedCentre: selectedCentre,
       onCentreChanged: onCentreChanged,
+      selectedVariety: selectedVariety,
+      varietyOptions: varietyOptions,
+      onVarietyChanged: onVarietyChanged,
       reportNoController: reportNoController,
       selectedDate: selectedDate,
       onDateTap: onDateTap,
