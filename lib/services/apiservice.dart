@@ -735,7 +735,7 @@ class ApiService {
         }
       }
 
-      // Track for AVERAGE calculation
+      // Track for AVERAGE calculation (fallback if quantity is 0)
       for (final field in _proformaAvgFields) {
         final value = entry[field];
         if (value is num) {
@@ -751,12 +751,46 @@ class ApiService {
 
     final result = <String, dynamic>{...sumFields};
 
-    // Calculate averages
-    for (final entry in avgFields.entries) {
-      final values = entry.value;
-      if (values.isNotEmpty) {
-        final avg = values.reduce((a, b) => a + b) / values.length;
-        result[entry.key] = avg;
+    // Calculate averages using the formula:
+    // Rate = Amount total / Quantity total
+    // Moisture = Moisture value total / Quantity total
+    // Shortage = Shortage value total / Quantity total
+    // Padtha = Padtha value total / Quantity total
+    // Lint/OutTurn = Lint value total / Quantity total
+    // Seed = Seed value total / Quantity total
+    final totalQuantity = sumFields['quantity'] as num? ?? 0;
+    if (totalQuantity > 0) {
+      // Rate = Amount / Quantity
+      final totalAmount = sumFields['amount'] as num? ?? 0;
+      result['rate'] = totalAmount / totalQuantity;
+
+      // Moisture = Moisture Value / Quantity
+      final totalMoistureValue = sumFields['moistureValue'] as num? ?? 0;
+      result['moisture'] = totalMoistureValue / totalQuantity;
+
+      // Shortage = Shortage Value / Quantity
+      final totalShortageValue = sumFields['shortageValue'] as num? ?? 0;
+      result['shortage'] = totalShortageValue / totalQuantity;
+
+      // Padtha = Padtha Value / Quantity
+      final totalPadthaValue = sumFields['padthaValue'] as num? ?? 0;
+      result['padtha'] = totalPadthaValue / totalQuantity;
+
+      // Lint/OutTurn = OutTurn Value / Quantity
+      final totalOutTurnValue = sumFields['outTurnValue'] as num? ?? 0;
+      result['outTurn'] = totalOutTurnValue / totalQuantity;
+
+      // Seed = Seed Value / Quantity
+      final totalSeedValue = sumFields['seedValue'] as num? ?? 0;
+      result['seed'] = totalSeedValue / totalQuantity;
+    } else {
+      // Fallback to average of individual entries if quantity is 0
+      for (final entry in avgFields.entries) {
+        final values = entry.value;
+        if (values.isNotEmpty) {
+          final avg = values.reduce((a, b) => a + b) / values.length;
+          result[entry.key] = avg;
+        }
       }
     }
 

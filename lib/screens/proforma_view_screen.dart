@@ -126,6 +126,24 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         return dateA.compareTo(dateB);
       });
 
+      // Calculate PROG AVG values
+      final quantity = data['quantity'] as num? ?? 0;
+      final amount = data['amount'] as num? ?? 0;
+      final farmers = data['farmers'] as num? ?? 0;
+      final moistureValue = data['moistureValue'] as num? ?? 0;
+      final shortageValue = data['shortageValue'] as num? ?? 0;
+      final padthaValue = data['padthaValue'] as num? ?? 0;
+      final outTurnValue = data['outTurnValue'] as num? ?? 0;
+      final seedValue = data['seedValue'] as num? ?? 0;
+      final bales = data['bales'] as num? ?? 0;
+
+      final rate = quantity > 0 ? amount / quantity : 0;
+      final moisture = quantity > 0 ? moistureValue / quantity : 0;
+      final shortage = quantity > 0 ? shortageValue / quantity : 0;
+      final padtha = quantity > 0 ? padthaValue / quantity : 0;
+      final outTurn = quantity > 0 ? outTurnValue / quantity : 0;
+      final seed = quantity > 0 ? seedValue / quantity : 0;
+
       // Company Header
       sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
       sheet.appendRow([]);
@@ -171,28 +189,27 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         ]);
       }
 
-      // Add PROG. AVG. row
-      sheet.appendRow([]);
+      // PROG. AVG. row (inside the table)
       sheet.appendRow([
         'PROG. AVG.',
-        data['quantity']?.toString() ?? '0',
-        data['rate']?.toStringAsFixed(2) ?? '0',
-        (data['amount'] ?? 0).toStringAsFixed(2),
-        data['farmers']?.toString() ?? '0',
-        data['moisture']?.toStringAsFixed(2) ?? '0',
-        (data['moistureValue'] ?? 0).toStringAsFixed(2),
-        data['shortage']?.toStringAsFixed(2) ?? '0',
-        (data['shortageValue'] ?? 0).toStringAsFixed(2),
-        data['padtha']?.toStringAsFixed(2) ?? '0',
-        (data['padthaValue'] ?? 0).toStringAsFixed(2),
-        data['outTurn']?.toStringAsFixed(2) ?? '0',
-        (data['outTurnValue'] ?? 0).toStringAsFixed(2),
-        data['seed']?.toStringAsFixed(2) ?? '0',
-        (data['seedValue'] ?? 0).toStringAsFixed(2),
-        data['bales']?.toString() ?? '0'
+        quantity.toString(),
+        rate.toStringAsFixed(2),
+        amount.toStringAsFixed(2),
+        farmers.toString(),
+        moisture.toStringAsFixed(2),
+        moistureValue.toStringAsFixed(2),
+        shortage.toStringAsFixed(2),
+        shortageValue.toStringAsFixed(2),
+        padtha.toStringAsFixed(2),
+        padthaValue.toStringAsFixed(2),
+        outTurn.toStringAsFixed(2),
+        outTurnValue.toStringAsFixed(2),
+        seed.toStringAsFixed(2),
+        seedValue.toStringAsFixed(2),
+        bales.toString()
       ]);
 
-      // Total Seed Value
+      // Total Seed Value (outside the table)
       sheet.appendRow([]);
       sheet.appendRow([
         'Total Seed Value',
@@ -247,6 +264,24 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     final centre = data['centre'] ?? '';
     final variety = data['variety'] ?? '';
     final entries = data['entries'] as Map<String, dynamic>? ?? {};
+
+    // Calculate PROG. AVG. values
+    final quantity = data['quantity'] as num? ?? 0;
+    final amount = data['amount'] as num? ?? 0;
+    final farmers = data['farmers'] as num? ?? 0;
+    final moistureValue = data['moistureValue'] as num? ?? 0;
+    final shortageValue = data['shortageValue'] as num? ?? 0;
+    final padthaValue = data['padthaValue'] as num? ?? 0;
+    final outTurnValue = data['outTurnValue'] as num? ?? 0;
+    final seedValue = data['seedValue'] as num? ?? 0;
+    final bales = data['bales'] as num? ?? 0;
+
+    final rate = quantity > 0 ? amount / quantity : 0;
+    final moisture = quantity > 0 ? moistureValue / quantity : 0;
+    final shortage = quantity > 0 ? shortageValue / quantity : 0;
+    final padtha = quantity > 0 ? padthaValue / quantity : 0;
+    final outTurn = quantity > 0 ? outTurnValue / quantity : 0;
+    final seed = quantity > 0 ? seedValue / quantity : 0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -391,30 +426,15 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                     controller: _tableScrollController,
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: _buildProformaTable(data),
+                    child: _buildProformaTable(data, quantity, amount, farmers, moistureValue, shortageValue, padthaValue, outTurnValue, seedValue, bales, rate, moisture, shortage, padtha, outTurn, seed),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total Seed Value',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-                    ),
-                    Text(
-                      '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                    ),
-                  ],
-                ),
+              _buildProgAvgSummary(
+                quantity, rate, amount, farmers, moisture, moistureValue,
+                shortage, shortageValue, padtha, padthaValue,
+                outTurn, outTurnValue, seed, seedValue, bales,
               ),
               const SizedBox(height: 8),
               Text(
@@ -428,7 +448,24 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     );
   }
 
-  Widget _buildProformaTable(Map<String, dynamic> data) {
+  Widget _buildProformaTable(
+      Map<String, dynamic> data,
+      num quantity,
+      num amount,
+      num farmers,
+      num moistureValue,
+      num shortageValue,
+      num padthaValue,
+      num outTurnValue,
+      num seedValue,
+      num bales,
+      num rate,
+      num moisture,
+      num shortage,
+      num padtha,
+      num outTurn,
+      num seed,
+      ) {
     final entries = data['entries'] as Map<String, dynamic>? ?? {};
 
     final entryList = entries.entries.toList();
@@ -449,7 +486,6 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     final numericFields = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value',
       'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'];
     final boldFields = ['seed value'];
-    final avgFields = ['RATE', 'MOISTURE', 'SHORTAGE', 'PADATHA', 'out Turn', 'seed'];
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -530,225 +566,103 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
             ),
           );
         }).toList(),
-
-        // PROG. AVG. Row
-        Container(
-          color: const Color(0xFF0F172A),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: Row(
-            children: [
-              Container(
-                width: _columnWidth('DATE'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: const Text(
-                  'PROG. AVG.',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              Container(
-                width: _columnWidth('QTY'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['quantity']?.toString() ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('RATE'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['rate']?.toStringAsFixed(2) ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('AMOUNT'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  (data['amount'] ?? 0).toStringAsFixed(2),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('FARMERS'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['farmers']?.toString() ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('MOISTURE'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['moisture']?.toStringAsFixed(2) ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('Moi. Value'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  (data['moistureValue'] ?? 0).toStringAsFixed(2),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('SHORTAGE'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['shortage']?.toStringAsFixed(2) ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('Shortage value'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  (data['shortageValue'] ?? 0).toStringAsFixed(2),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('PADATHA'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['padtha']?.toStringAsFixed(2) ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('Padtha value'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  (data['padthaValue'] ?? 0).toStringAsFixed(2),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('out Turn'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['outTurn']?.toStringAsFixed(2) ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('Out Turn value'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  (data['outTurnValue'] ?? 0).toStringAsFixed(2),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('seed'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['seed']?.toStringAsFixed(2) ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('seed value'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  (data['seedValue'] ?? 0).toStringAsFixed(2),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Color(0xFF4ADE80),
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-              Container(
-                width: _columnWidth('bales'),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  data['bales']?.toString() ?? '0',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Colors.white,
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
+    );
+  }
+
+  // PROG. AVG. summary card - shown outside the table, where "Total Seed
+  // Value" used to be.
+  Widget _buildProgAvgSummary(
+      num quantity,
+      num rate,
+      num amount,
+      num farmers,
+      num moisture,
+      num moistureValue,
+      num shortage,
+      num shortageValue,
+      num padtha,
+      num padthaValue,
+      num outTurn,
+      num outTurnValue,
+      num seed,
+      num seedValue,
+      num bales,
+      ) {
+    final items = <_ProgAvgItem>[
+      _ProgAvgItem('QTY', quantity.toString()),
+      _ProgAvgItem('RATE', rate.toStringAsFixed(2)),
+      _ProgAvgItem('AMOUNT', amount.toStringAsFixed(2)),
+      _ProgAvgItem('FARMERS', farmers.toString()),
+      _ProgAvgItem('MOISTURE', moisture.toStringAsFixed(2)),
+      _ProgAvgItem('Moi. Value', moistureValue.toStringAsFixed(2)),
+      _ProgAvgItem('SHORTAGE', shortage.toStringAsFixed(2)),
+      _ProgAvgItem('Shortage value', shortageValue.toStringAsFixed(2)),
+      _ProgAvgItem('PADATHA', padtha.toStringAsFixed(2)),
+      _ProgAvgItem('Padtha value', padthaValue.toStringAsFixed(2)),
+      _ProgAvgItem('out Turn', outTurn.toStringAsFixed(2)),
+      _ProgAvgItem('Out Turn value', outTurnValue.toStringAsFixed(2)),
+      _ProgAvgItem('seed', seed.toStringAsFixed(2)),
+      _ProgAvgItem('seed value', '₹${seedValue.toStringAsFixed(2)}',
+          highlight: true),
+      _ProgAvgItem('bales', bales.toString()),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'PROG. AVG.',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 20,
+            runSpacing: 12,
+            children: items.map((item) {
+              return SizedBox(
+                width: 110,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.value,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: item.highlight
+                            ? const Color(0xFF4ADE80)
+                            : Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -783,4 +697,12 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
         return 60;
     }
   }
+}
+
+class _ProgAvgItem {
+  final String label;
+  final String value;
+  final bool highlight;
+
+  const _ProgAvgItem(this.label, this.value, {this.highlight = false});
 }
