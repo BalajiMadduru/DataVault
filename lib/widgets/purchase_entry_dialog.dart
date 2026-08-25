@@ -143,6 +143,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       // In modify mode, fetch the latest progressive values
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchLatestProgressiveForModify();
+        // Also fetch progressive purchase values from proforma
+        if (_docId != null) {
+          _fetchProgressivePurchaseFromProforma(_docId!);
+        }
       });
     } else if (!widget.isModify) {
       _entryFound = true;
@@ -156,6 +160,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             _selectedVariety != null &&
             _selectedVariety!.isNotEmpty) {
           await _fetchPreviousProgressive();
+          // Also try to fetch progressive purchase from proforma if exists
+          await _fetchProgressivePurchaseFromProformaForNewEntry();
         }
       });
     }
@@ -386,6 +392,91 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
+  // ============================================================
+  // FETCH PROGRESSIVE PURCHASE VALUES FROM PROFORMA
+  // This method ONLY fetches the Progressive Purchase values from proforma
+  // It does NOT affect any other logic
+  // ============================================================
+  Future<void> _fetchProgressivePurchaseFromProforma(String purchaseEntryId) async {
+    try {
+      final response = await ApiService.getProformaByPurchaseEntry(purchaseEntryId);
+
+      if (!mounted) return;
+
+      if (response.success && response.data != null) {
+        final proforma = response.data!['proforma'] as Map<String, dynamic>;
+
+        // Extract PROG AVG values directly from proforma
+        final quantity = proforma['quantity'] as num? ?? 0;
+        final bales = proforma['bales'] as num? ?? 0;
+        final padtha = proforma['padtha'] as num? ?? 0;
+        final avgRate = proforma['rate'] as num? ?? 0;
+
+        setState(() {
+          _progPurchaseQtlsController.text = quantity.toString();
+          _progPurchaseBalesController.text = bales.toString();
+          _progPadthaController.text = padtha.toStringAsFixed(2);
+          _progAvgRateController.text = avgRate.toStringAsFixed(2);
+        });
+
+        debugLog('✅ Progressive Purchase fetched from proforma: Qty=$quantity, Bales=$bales, Padtha=$padtha, Rate=$avgRate');
+      } else {
+        debugLog('⚠️ No proforma found for progressive purchase values');
+      }
+    } catch (e) {
+      debugLog('❌ Error fetching proforma data: $e');
+    }
+  }
+
+  // ============================================================
+  // FETCH PROGRESSIVE PURCHASE FROM PROFORMA FOR NEW ENTRY
+  // ============================================================
+  Future<void> _fetchProgressivePurchaseFromProformaForNewEntry() async {
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
+    if (_selectedVariety == null || _selectedVariety!.isEmpty) return;
+
+    try {
+      // Get all proformas for this user
+      final proformaResponse = await ApiService.getProformas();
+
+      if (!mounted) return;
+
+      if (proformaResponse.success && proformaResponse.data != null) {
+        final proformas = proformaResponse.data!['proformas'] as List? ?? [];
+
+        // Find the latest proforma for this centre+variety
+        Map<String, dynamic>? latestProforma;
+        for (final proforma in proformas) {
+          if (proforma['centre'] == _selectedCentre &&
+              proforma['variety'] == _selectedVariety) {
+            if (latestProforma == null) {
+              latestProforma = proforma;
+            }
+          }
+        }
+
+        if (latestProforma != null) {
+          // Found a proforma - use its PROG AVG values
+          final quantity = latestProforma['quantity'] as num? ?? 0;
+          final bales = latestProforma['bales'] as num? ?? 0;
+          final padtha = latestProforma['padtha'] as num? ?? 0;
+          final avgRate = latestProforma['rate'] as num? ?? 0;
+
+          setState(() {
+            _progPurchaseQtlsController.text = quantity.toString();
+            _progPurchaseBalesController.text = bales.toString();
+            _progPadthaController.text = padtha.toStringAsFixed(2);
+            _progAvgRateController.text = avgRate.toStringAsFixed(2);
+          });
+
+          debugLog('✅ Progressive Purchase fetched from proforma for new entry: Qty=$quantity, Bales=$bales, Padtha=$padtha, Rate=$avgRate');
+        }
+      }
+    } catch (e) {
+      debugLog('❌ Error fetching proforma for new entry: $e');
+    }
+  }
+
   Future<void> _loadDefaultCentre() async {
     if (_selectedCentre != null) return;
     final prefs = await SharedPreferences.getInstance();
@@ -439,6 +530,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
   // ============================================================
   // FETCH PREVIOUS PROGRESSIVE - for new entry creation
+  // THIS LOGIC REMAINS UNCHANGED
   // ============================================================
   Future<void> _fetchPreviousProgressive() async {
     if (widget.isModify) return;
@@ -551,6 +643,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _loadExistingData(entry);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchLatestProgressiveForModify();
+        // Auto-fetch progressive purchase values from proforma
+        if (_docId != null) {
+          _fetchProgressivePurchaseFromProforma(_docId!);
+        }
       });
     } else {
       setState(() {
@@ -589,6 +685,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       setState(() => _selectedDate = picked);
       if (!widget.isModify) {
         await _fetchPreviousProgressive();
+        await _fetchProgressivePurchaseFromProformaForNewEntry();
       }
     }
   }
@@ -1063,6 +1160,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       setState(() => _isRegeneratingProforma = false);
 
       if (proformaResponse.success) {
+        // Fetch and fill progressive purchase values from the updated proforma
+        await _fetchProgressivePurchaseFromProforma(_docId!);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ Proforma regenerated with the latest values'),
@@ -1217,6 +1316,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         setState(() => _isSubmitting = false);
 
         if (proformaResponse.success) {
+          // Fetch and fill progressive purchase values from the generated proforma
+          await _fetchProgressivePurchaseFromProforma(entryId ?? '');
           _showProformaSuccessDialog(proformaData);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1299,6 +1400,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           debugLog('⚠️ Failed to sync proforma after update: ${syncResponse.message}');
         } else {
           debugLog('✅ Proforma synced after update');
+          // Fetch and fill progressive purchase values after sync
+          await _fetchProgressivePurchaseFromProforma(_docId!);
         }
       }
     }
@@ -1540,8 +1643,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     return Container(
       decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(12)),
       child: ScrollConfiguration(
-        // By default Flutter only allows touch/stylus to drag-scroll.
-        // Without this, dragging with a mouse or trackpad on web/desktop does nothing.
         behavior: ScrollConfiguration.of(context).copyWith(
           dragDevices: {
             PointerDeviceKind.touch,
@@ -1748,6 +1849,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                   _fetchLatestProgressiveForModify();
                                 } else {
                                   _fetchPreviousProgressive();
+                                  _fetchProgressivePurchaseFromProformaForNewEntry();
                                 }
                               }
                             }
@@ -1831,6 +1933,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 _fetchLatestProgressiveForModify();
                               } else {
                                 _fetchPreviousProgressive();
+                                _fetchProgressivePurchaseFromProformaForNewEntry();
                               }
                             }
                           },
@@ -2251,6 +2354,32 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             ),
                           ],
                         ),
+
+                        // Refresh Progressive Values Button (only shown when entry is saved)
+                        if (_isEntrySaved) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: (_savedDocId != null && _docId != null)
+                                      ? () => _fetchProgressivePurchaseFromProforma(_docId!)
+                                      : null,
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Refresh Progressive Values from Proforma'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF0F172A),
+                                    side: const BorderSide(color: Color(0xFF0F172A)),
+                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         const SizedBox(height: 14),
 
                         // Progressive Purchase
