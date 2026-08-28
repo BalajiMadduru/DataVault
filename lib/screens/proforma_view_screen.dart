@@ -8,11 +8,17 @@ import '../services/apiservice.dart';
 class ProformaViewScreen extends StatefulWidget {
   final String purchaseEntryId;
   final String proformaId;
+  // If provided (e.g. from a filtered list screen), this data is used
+  // directly instead of re-fetching the full, unfiltered document by ID —
+  // keeping the detail view and export consistent with whatever date
+  // range / centre / variety filter the user applied on the list screen.
+  final Map<String, dynamic>? initialData;
 
   const ProformaViewScreen({
     super.key,
     this.purchaseEntryId = '',
     this.proformaId = '',
+    this.initialData,
   });
 
   @override
@@ -39,6 +45,14 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
 
   Future<void> _loadProforma() async {
     setState(() => _isLoading = true);
+
+    if (widget.initialData != null) {
+      setState(() {
+        _proformaData = widget.initialData;
+        _isLoading = false;
+      });
+      return;
+    }
 
     ApiResponse response;
 

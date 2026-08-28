@@ -712,6 +712,49 @@ class ApiService {
     'rate', 'moisture', 'shortage', 'padtha', 'outTurn', 'seed',
   ];
 
+  /// Public wrapper so UI layers (list screen, view screen) can recompute
+  /// totals for any subset of entries — e.g. after filtering by date range —
+  /// instead of relying on the totals stored on the parent proforma doc,
+  /// which reflect ALL entries ever added for that centre/variety.
+  static Map<String, dynamic> recomputeProformaTotals(
+      Map<String, dynamic> entries,
+      ) =>
+      _recomputeProformaTotals(entries);
+
+  /// Filters an `entries` map down to only entries whose `entryDate` falls
+  /// within [start]..[end] (inclusive, date-only comparison). Pass null for
+  /// either bound to leave that side open. If both are null, returns the
+  /// entries unchanged.
+  static Map<String, dynamic> filterEntriesByDateRange(
+      Map<String, dynamic> entries, {
+        DateTime? start,
+        DateTime? end,
+      }) {
+    if (start == null && end == null) return entries;
+
+    final filtered = <String, dynamic>{};
+    entries.forEach((key, value) {
+      if (value is! Map) return;
+      final entry = Map<String, dynamic>.from(value);
+      final entryDate = DateTime.tryParse(entry['entryDate']?.toString() ?? '');
+      if (entryDate == null) return;
+
+      final normalized = DateTime(entryDate.year, entryDate.month, entryDate.day);
+
+      if (start != null) {
+        final s = DateTime(start.year, start.month, start.day);
+        if (normalized.isBefore(s)) return;
+      }
+      if (end != null) {
+        final e = DateTime(end.year, end.month, end.day);
+        if (normalized.isAfter(e)) return;
+      }
+
+      filtered[key] = value;
+    });
+    return filtered;
+  }
+
   static Map<String, dynamic> _recomputeProformaTotals(Map<String, dynamic> entries) {
     final sumFields = <String, num>{};
     final avgFields = <String, List<num>>{};

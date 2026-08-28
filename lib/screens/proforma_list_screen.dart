@@ -106,37 +106,52 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
 
   void _applyFilters() {
     setState(() {
-      _filteredProformas = _proformas.where((proforma) {
-        final rawDate = proforma['date']?.toString();
-        if (rawDate == null || rawDate.isEmpty) return false;
-
-        final proformaDate = _safeParseDate(rawDate);
-        if (proformaDate == null) return false;
-
-        final normalizedDate = DateTime(proformaDate.year, proformaDate.month, proformaDate.day);
-
-        if (_filterStartDate != null) {
-          final start = DateTime(_filterStartDate!.year, _filterStartDate!.month, _filterStartDate!.day);
-          if (normalizedDate.isBefore(start)) return false;
-        }
-
-        if (_filterEndDate != null) {
-          final end = DateTime(_filterEndDate!.year, _filterEndDate!.month, _filterEndDate!.day);
-          if (normalizedDate.isAfter(end)) return false;
-        }
-
+      _filteredProformas = _proformas
+          .map<Map<String, dynamic>?>((proforma) {
+        // Centre / variety filters apply to the whole doc, cheap to check first.
         if (_selectedCentreFilter != null && _selectedCentreFilter!.isNotEmpty) {
           final centre = proforma['centre']?.toString().toLowerCase() ?? '';
-          if (centre != _selectedCentreFilter!.toLowerCase()) return false;
+          if (centre != _selectedCentreFilter!.toLowerCase()) return null;
         }
 
         if (_selectedVarietyFilter != null && _selectedVarietyFilter!.isNotEmpty) {
           final variety = proforma['variety']?.toString().toLowerCase() ?? '';
-          if (variety != _selectedVarietyFilter!.toLowerCase()) return false;
+          if (variety != _selectedVarietyFilter!.toLowerCase()) return null;
         }
 
-        return true;
-      }).toList();
+        // A proforma doc accumulates ALL entries ever added for its
+        // centre/variety, so date filtering — and the totals shown on
+        // the card — must operate on individual entries, not on the
+        // doc's single `date` field (which is just the most recent
+        // entry's date and doesn't represent the whole doc's contents).
+        final entries = Map<String, dynamic>.from(
+          proforma['entries'] as Map? ?? {},
+        );
+
+        final relevantEntries = _isDateFilterActive
+            ? ApiService.filterEntriesByDateRange(
+          entries,
+          start: _filterStartDate,
+          end: _filterEndDate,
+        )
+            : entries;
+
+        if (relevantEntries.isEmpty) return null;
+
+        // Recompute quantity/bales/entryCount/date range etc. from only
+        // the entries that fall inside the selected range, so the card
+        // (and anything opened from it) reflects the filtered period
+        // instead of the doc's lifetime totals.
+        final recomputed = ApiService.recomputeProformaTotals(relevantEntries);
+
+        return {
+          ...proforma,
+          ...recomputed,
+          'entries': relevantEntries,
+        };
+      })
+          .whereType<Map<String, dynamic>>()
+          .toList();
     });
   }
 
@@ -261,6 +276,11 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
       MaterialPageRoute(
         builder: (context) => ProformaViewScreen(
           proformaId: proformaId,
+          // Pass the already date/centre/variety-filtered + recomputed data
+          // straight through, so the detail view and Excel export show the
+          // same filtered period the user selected on this screen instead
+          // of silently reloading the full, unfiltered document.
+          initialData: proforma,
         ),
       ),
     );
