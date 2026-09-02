@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "13185636801",
-    "project_id": "workflow-5ef11",
-    "storage_bucket": "workflow-5ef11.firebasestorage.app"
+    "project_number": "906609544893",
+    "project_id": "datavault-cf711",
+    "storage_bucket": "datavault-cf711.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:13185636801:android:218b754b7b50b0d7873740",
+        "mobilesdk_app_id": "1:906609544893:android:647726b76e206fed3371d4",
         "android_client_info": {
-          "package_name": "com.example.workflo"
+          "package_name": "com.balaji.datavault"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyChiXrwhG8BNozWZIrvlvrseElHesRwTq8"
+          "current_key": "AIzaSyCzBzHyyjtGdoGVs4r0bRm37iBMU1quIv8"
         }
       ],
       "services": {

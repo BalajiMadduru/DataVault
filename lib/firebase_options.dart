@@ -41,48 +41,46 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyA7SnBmxCLoQSVuqjAQ24eJAUQdG0vZ4Os',
-    appId: '1:13185636801:web:96ec14e7ca90caf0873740',
-    messagingSenderId: '13185636801',
-    projectId: 'workflow-5ef11',
-    authDomain: 'workflow-5ef11.firebaseapp.com',
-    storageBucket: 'workflow-5ef11.firebasestorage.app',
-    measurementId: 'G-4DPG0QQHJ2',
+    apiKey: 'AIzaSyDtqAYUnCTwUF7UGsW5DbMeTRvaqSK4QCE',
+    appId: '1:906609544893:web:70a87b2099540ef63371d4',
+    messagingSenderId: '906609544893',
+    projectId: 'datavault-cf711',
+    authDomain: 'datavault-cf711.firebaseapp.com',
+    storageBucket: 'datavault-cf711.firebasestorage.app',
+    measurementId: 'G-YBQDVJM4S6',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyChiXrwhG8BNozWZIrvlvrseElHesRwTq8',
-    appId: '1:13185636801:android:218b754b7b50b0d7873740',
-    messagingSenderId: '13185636801',
-    projectId: 'workflow-5ef11',
-    storageBucket: 'workflow-5ef11.firebasestorage.app',
+    apiKey: 'AIzaSyCzBzHyyjtGdoGVs4r0bRm37iBMU1quIv8',
+    appId: '1:906609544893:android:647726b76e206fed3371d4',
+    messagingSenderId: '906609544893',
+    projectId: 'datavault-cf711',
+    storageBucket: 'datavault-cf711.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAjA0jOJPlujak8VxtQan0VikO9b5tKQ0Y',
-    appId: '1:13185636801:ios:2f45b76356f3e0da873740',
-    messagingSenderId: '13185636801',
-    projectId: 'workflow-5ef11',
-    storageBucket: 'workflow-5ef11.firebasestorage.app',
-    iosBundleId: 'com.example.workflo',
+    apiKey: 'AIzaSyBPV8Ixjn8WtqoDjKVm_ri6dPkvyyC9OXU',
+    appId: '1:906609544893:ios:e7f599e7563ea71e3371d4',
+    messagingSenderId: '906609544893',
+    projectId: 'datavault-cf711',
+    storageBucket: 'datavault-cf711.firebasestorage.app',
+    iosBundleId: 'com.balaji.datavault',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAjA0jOJPlujak8VxtQan0VikO9b5tKQ0Y',
-    appId: '1:13185636801:ios:2f45b76356f3e0da873740',
-    messagingSenderId: '13185636801',
-    projectId: 'workflow-5ef11',
-    storageBucket: 'workflow-5ef11.firebasestorage.app',
+    apiKey: 'AIzaSyBPV8Ixjn8WtqoDjKVm_ri6dPkvyyC9OXU',
+    appId: '1:906609544893:ios:dd9ace107c6335213371d4',
+    messagingSenderId: '906609544893',
+    projectId: 'datavault-cf711',
+    storageBucket: 'datavault-cf711.firebasestorage.app',
     iosBundleId: 'com.example.workflo',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyA7SnBmxCLoQSVuqjAQ24eJAUQdG0vZ4Os',
-    appId: '1:13185636801:web:dbc63b9ac202ba82873740',
-    messagingSenderId: '13185636801',
-    projectId: 'workflow-5ef11',
-    authDomain: 'workflow-5ef11.firebaseapp.com',
-    storageBucket: 'workflow-5ef11.firebasestorage.app',
-    measurementId: 'G-VJZS06KE4D',
+    apiKey: 'AIzaSyDtqAYUnCTwUF7UGsW5DbMeTRvaqSK4QCE',
+    appId: '1:906609544893:web:51a4a07286b910c03371d4',
+    messagingSenderId: '906609544893',
+    projectId: 'datavault-cf711',
+    authDomain: 'datavault-cf711.firebaseapp.com',
+    storageBucket: 'datavault-cf711.firebasestorage.app',
+    measurementId: 'G-GZCHNLZ20D',
   );
 }

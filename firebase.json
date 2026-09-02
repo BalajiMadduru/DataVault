@@ -1,16 +1,1 @@
-{
-  "hosting": {
-    "public": "build/web",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  }
-}
+{"hosting":{"public":"build/web","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"**","destination":"/index.html"}]},"flutter":{"platforms":{"android":{"default":{"projectId":"datavault-cf711","appId":"1:906609544893:android:647726b76e206fed3371d4","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"datavault-cf711","appId":"1:906609544893:ios:e7f599e7563ea71e3371d4","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"macos":{"default":{"projectId":"datavault-cf711","appId":"1:906609544893:ios:dd9ace107c6335213371d4","uploadDebugSymbols":false,"fileOutput":"macos/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"datavault-cf711","configurations":{"android":"1:906609544893:android:647726b76e206fed3371d4","ios":"1:906609544893:ios:e7f599e7563ea71e3371d4","macos":"1:906609544893:ios:dd9ace107c6335213371d4","web":"1:906609544893:web:70a87b2099540ef63371d4","windows":"1:906609544893:web:51a4a07286b910c03371d4"}}}}}}
