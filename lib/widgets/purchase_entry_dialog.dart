@@ -52,82 +52,54 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   // Header fields
   String? _selectedCentre;
   final _reportNoController = TextEditingController();
-  final _moistureController = TextEditingController();
 
-  // Farmers Benefitted
-  final _farmersDayController = TextEditingController();
-  final _farmersProgressiveController = TextEditingController();
-  double _previousFarmersProg = 0;
-
-  // Arrivals
-  final _dayArrivalsApmcController = TextEditingController();
-  final _dayArrivalsOutsideController = TextEditingController();
-  final _progArrivalsApmcController = TextEditingController();
-  final _progArrivalsOutsideController = TextEditingController();
-  double _previousProgApmc = 0;
-  double _previousProgOutside = 0;
-
-  // Market Rates
-  final _marketRateHighestController = TextEditingController();
-  final _marketRateLowestController = TextEditingController();
-  final _marketRateAverageController = TextEditingController();
-  final _marketSeedRateHighestController = TextEditingController();
-  final _marketSeedRateLowestController = TextEditingController();
-
-  // CCI Purchase
-  final _cciPurchaseQtlsController = TextEditingController();
-  final _cciPurchaseBalesController = TextEditingController();
-  final _cciKapasMoistureController = TextEditingController();
-
-  // MSP Value
-  final _mspValueDayController = TextEditingController();
-  final _mspValueProgController = TextEditingController();
-  double _previousMspProg = 0;
-
-  // CCI Rates
-  final _cciRateHighestController = TextEditingController();
-  final _cciRateLowestController = TextEditingController();
-  final _cciRateAverageController = TextEditingController();
-
-  // CCI Details
-  final _cciSeedRateController = TextEditingController();
-  final _cciOutTurnController = TextEditingController();
-  final _cciShortageController = TextEditingController();
-  final _cciExpensesController = TextEditingController();
-  final _processingCycleController = TextEditingController();
-  final _cciPadthaController = TextEditingController();
-
-  // Progressive Purchase - READ ONLY
-  final _progPurchaseQtlsController = TextEditingController();
-  final _progPurchaseBalesController = TextEditingController();
-  final _progPadthaController = TextEditingController();
-  final _progAvgRateController = TextEditingController();
-
-  // Bales Pressed
-  final _balesPressedTodayController = TextEditingController();
-  final _balesPressedProgController = TextEditingController();
-  double _previousBalesProg = 0;
-  final _totalBalesShiftedController = TextEditingController();
-
-  // Other
-  final _sampleSentController = TextEditingController();
-  final _heapResultController = TextEditingController();
-
-  List<PurchaseFactoryData> _purchaseFactories = [];
-
-  DateTime _selectedDate = DateTime.now();
+  // Only 3 varieties as per Excel
+  final List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
   String? _selectedVariety;
 
+  // Fields from Excel template
+  final _farmersDayController = TextEditingController();
+  final _arrivalsBalesController = TextEditingController();
+  final _cciPurchaseQtlsController = TextEditingController();
+  final _cciPurchaseBalesController = TextEditingController();
+  final _avgKapasRateController = TextEditingController();
+  final _budgetedLintController = TextEditingController();
+  final _budgetedShortageController = TextEditingController();
+  final _cottonSeedRateController = TextEditingController();
+  final _processingCycleController = TextEditingController();
+  final _proformaExpensesController = TextEditingController();
+  final _budgetedPadthaController = TextEditingController();
+  final _dayPressedBalesController = TextEditingController();
+  final _marketHighestRateController = TextEditingController();
+  final _marketLowestRateController = TextEditingController();
+  final _cciHighestRateController = TextEditingController();
+  final _cciLowestRateController = TextEditingController();
+
+  // Progressive fields (auto-calculated or read-only)
+  final _progPressedBalesController = TextEditingController();
+  final _progPurchaseQtlsController = TextEditingController();
+  final _progPurchaseBalesController = TextEditingController();
+  final _progFarmersController = TextEditingController();
+
+  // Previous progressive values for calculation
+  double _previousProgPressedBales = 0;
+  double _previousProgPurchaseQtls = 0;
+  double _previousProgPurchaseBales = 0;
+  double _previousProgFarmers = 0;
+
+  // Store original values for modify mode
+  double _originalPressedBales = 0;
+  double _originalPurchaseQtls = 0;
+  double _originalPurchaseBales = 0;
+  double _originalFarmers = 0;
+
+  // Factory data with progressive purchase values
+  List<PurchaseFactoryProgData> _purchaseFactories = [];
+
+  DateTime _selectedDate = DateTime.now();
   bool _isLoadingPreviousProgressive = false;
   String _debugMessage = '';
   bool _isLoadingReportNo = false;
-
-  // Store original day values when in modify mode to calculate progressive correctly
-  double _originalDayApmc = 0;
-  double _originalDayOutside = 0;
-  int _originalFarmersDay = 0;
-  double _originalMspDay = 0;
-  int _originalBalesToday = 0;
 
   @override
   void initState() {
@@ -140,13 +112,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _isEntrySaved = true;
       _savedDocId = _docId;
 
-      // In modify mode, fetch the latest progressive values
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchLatestProgressiveForModify();
-        // Also fetch progressive purchase values from proforma
-        if (_docId != null) {
-          _fetchProgressivePurchaseFromProforma(_docId!);
-        }
       });
     } else if (!widget.isModify) {
       _entryFound = true;
@@ -160,25 +127,20 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             _selectedVariety != null &&
             _selectedVariety!.isNotEmpty) {
           await _fetchPreviousProgressive();
-          // Also try to fetch progressive purchase from proforma if exists
-          await _fetchProgressivePurchaseFromProformaForNewEntry();
         }
       });
     }
 
     if (!widget.isModify) {
-      _dayArrivalsApmcController.addListener(_recalculateProgApmc);
-      _dayArrivalsOutsideController.addListener(_recalculateProgOutside);
-      _farmersDayController.addListener(_recalculateFarmersProg);
-      _mspValueDayController.addListener(_recalculateMspProg);
-      _balesPressedTodayController.addListener(_recalculateBalesProg);
+      _dayPressedBalesController.addListener(_recalculateProgPressedBales);
+      _cciPurchaseQtlsController.addListener(_recalculateProgPurchaseQtls);
+      _cciPurchaseBalesController.addListener(_recalculateProgPurchaseBales);
+      _farmersDayController.addListener(_recalculateProgFarmers);
     } else {
-      // In modify mode, add listeners but with different logic
-      _dayArrivalsApmcController.addListener(_recalculateProgApmcModify);
-      _dayArrivalsOutsideController.addListener(_recalculateProgOutsideModify);
-      _farmersDayController.addListener(_recalculateFarmersProgModify);
-      _mspValueDayController.addListener(_recalculateMspProgModify);
-      _balesPressedTodayController.addListener(_recalculateBalesProgModify);
+      _dayPressedBalesController.addListener(_recalculateProgPressedBalesModify);
+      _cciPurchaseQtlsController.addListener(_recalculateProgPurchaseQtlsModify);
+      _cciPurchaseBalesController.addListener(_recalculateProgPurchaseBalesModify);
+      _farmersDayController.addListener(_recalculateProgFarmersModify);
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -192,142 +154,118 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     _factoryTableScrollController.dispose();
     _dialogFocusNode.dispose();
     _reportNoController.dispose();
-    _moistureController.dispose();
     _farmersDayController.dispose();
-    _farmersProgressiveController.dispose();
-    _dayArrivalsApmcController.dispose();
-    _dayArrivalsOutsideController.dispose();
-    _progArrivalsApmcController.dispose();
-    _progArrivalsOutsideController.dispose();
-    _marketRateHighestController.dispose();
-    _marketRateLowestController.dispose();
-    _marketRateAverageController.dispose();
-    _marketSeedRateHighestController.dispose();
-    _marketSeedRateLowestController.dispose();
+    _arrivalsBalesController.dispose();
     _cciPurchaseQtlsController.dispose();
     _cciPurchaseBalesController.dispose();
-    _cciKapasMoistureController.dispose();
-    _mspValueDayController.dispose();
-    _mspValueProgController.dispose();
-    _cciRateHighestController.dispose();
-    _cciRateLowestController.dispose();
-    _cciRateAverageController.dispose();
-    _cciSeedRateController.dispose();
-    _cciOutTurnController.dispose();
-    _cciShortageController.dispose();
-    _cciExpensesController.dispose();
+    _avgKapasRateController.dispose();
+    _budgetedLintController.dispose();
+    _budgetedShortageController.dispose();
+    _cottonSeedRateController.dispose();
     _processingCycleController.dispose();
-    _cciPadthaController.dispose();
+    _proformaExpensesController.dispose();
+    _budgetedPadthaController.dispose();
+    _dayPressedBalesController.dispose();
+    _marketHighestRateController.dispose();
+    _marketLowestRateController.dispose();
+    _cciHighestRateController.dispose();
+    _cciLowestRateController.dispose();
+    _progPressedBalesController.dispose();
     _progPurchaseQtlsController.dispose();
     _progPurchaseBalesController.dispose();
-    _progPadthaController.dispose();
-    _progAvgRateController.dispose();
-    _balesPressedTodayController.dispose();
-    _balesPressedProgController.dispose();
-    _totalBalesShiftedController.dispose();
-    _sampleSentController.dispose();
-    _heapResultController.dispose();
+    _progFarmersController.dispose();
     super.dispose();
   }
 
   // ============================================================
-  // RECALCULATION METHODS FOR MODIFY MODE
+  // RECALCULATION METHODS
   // ============================================================
 
-  void _recalculateProgApmcModify() {
-    final dayValue = double.tryParse(_dayArrivalsApmcController.text) ?? 0;
-    _progArrivalsApmcController.text = _formatNumber(_previousProgApmc + dayValue);
+  void _recalculateProgPressedBales() {
+    final dayValue = double.tryParse(_dayPressedBalesController.text) ?? 0;
+    _progPressedBalesController.text = _formatNumber(_previousProgPressedBales + dayValue);
   }
 
-  void _recalculateProgOutsideModify() {
-    final dayValue = double.tryParse(_dayArrivalsOutsideController.text) ?? 0;
-    _progArrivalsOutsideController.text = _formatNumber(_previousProgOutside + dayValue);
+  void _recalculateProgPurchaseQtls() {
+    final dayValue = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
+    _progPurchaseQtlsController.text = _formatNumber(_previousProgPurchaseQtls + dayValue);
   }
 
-  void _recalculateFarmersProgModify() {
+  void _recalculateProgPurchaseBales() {
+    final dayValue = double.tryParse(_cciPurchaseBalesController.text) ?? 0;
+    _progPurchaseBalesController.text = _formatNumber(_previousProgPurchaseBales + dayValue);
+  }
+
+  void _recalculateProgFarmers() {
     final dayValue = double.tryParse(_farmersDayController.text) ?? 0;
-    _farmersProgressiveController.text = _formatNumber(_previousFarmersProg + dayValue);
+    _progFarmersController.text = _formatNumber(_previousProgFarmers + dayValue);
   }
 
-  void _recalculateMspProgModify() {
-    final dayValue = double.tryParse(_mspValueDayController.text) ?? 0;
-    _mspValueProgController.text = _formatNumber(_previousMspProg + dayValue);
+  void _recalculateProgPressedBalesModify() {
+    final dayValue = double.tryParse(_dayPressedBalesController.text) ?? 0;
+    _progPressedBalesController.text = _formatNumber(_previousProgPressedBales + dayValue);
   }
 
-  void _recalculateBalesProgModify() {
-    final dayValue = double.tryParse(_balesPressedTodayController.text) ?? 0;
-    _balesPressedProgController.text = _formatNumber(_previousBalesProg + dayValue);
+  void _recalculateProgPurchaseQtlsModify() {
+    final dayValue = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
+    _progPurchaseQtlsController.text = _formatNumber(_previousProgPurchaseQtls + dayValue);
   }
 
+  void _recalculateProgPurchaseBalesModify() {
+    final dayValue = double.tryParse(_cciPurchaseBalesController.text) ?? 0;
+    _progPurchaseBalesController.text = _formatNumber(_previousProgPurchaseBales + dayValue);
+  }
+
+  void _recalculateProgFarmersModify() {
+    final dayValue = double.tryParse(_farmersDayController.text) ?? 0;
+    _progFarmersController.text = _formatNumber(_previousProgFarmers + dayValue);
+  }
+
+  // ============================================================
+  // LOAD EXISTING DATA
+  // ============================================================
   void _loadExistingData(Map<String, dynamic> data) {
     final centre = data['centre'] as String?;
     _selectedCentre = (centre != null && centre.isNotEmpty) ? centre : null;
     _reportNoController.text = data['reportNo']?.toString() ?? '';
-    _moistureController.text = data['moisture'] ?? '';
 
-    _originalDayApmc = double.tryParse(data['dayArrivalsApmc']?.toString() ?? '0') ?? 0;
-    _originalDayOutside = double.tryParse(data['dayArrivalsOutside']?.toString() ?? '0') ?? 0;
-    _originalFarmersDay = int.tryParse(data['farmersDay']?.toString() ?? '0') ?? 0;
-    _originalMspDay = double.tryParse(data['mspValueDay']?.toString() ?? '0') ?? 0;
-    _originalBalesToday = int.tryParse(data['balesPressedToday']?.toString() ?? '0') ?? 0;
-
-    _farmersDayController.text = data['farmersDay']?.toString() ?? '';
-    _farmersProgressiveController.text = data['farmersProgressive']?.toString() ?? '';
-    _dayArrivalsApmcController.text = data['dayArrivalsApmc']?.toString() ?? '';
-    _dayArrivalsOutsideController.text = data['dayArrivalsOutside']?.toString() ?? '';
-    _progArrivalsApmcController.text = data['progArrivalsApmc']?.toString() ?? '';
-    _progArrivalsOutsideController.text = data['progArrivalsOutside']?.toString() ?? '';
-    _marketRateHighestController.text = data['marketRateHighest']?.toString() ?? '';
-    _marketRateLowestController.text = data['marketRateLowest']?.toString() ?? '';
-    _marketRateAverageController.text = data['marketRateAverage']?.toString() ?? '';
-    _marketSeedRateHighestController.text = data['marketSeedRateHighest']?.toString() ?? '';
-    _marketSeedRateLowestController.text = data['marketSeedRateLowest']?.toString() ?? '';
-    _cciPurchaseQtlsController.text = data['cciPurchaseQtls']?.toString() ?? '';
-    _cciPurchaseBalesController.text = data['cciPurchaseBales']?.toString() ?? '';
-    _cciKapasMoistureController.text = data['cciKapasMoisture']?.toString() ?? '';
-    _mspValueDayController.text = data['mspValueDay']?.toString() ?? '';
-    _mspValueProgController.text = data['mspValueProg']?.toString() ?? '';
-    _cciRateHighestController.text = data['cciRateHighest']?.toString() ?? '';
-    _cciRateLowestController.text = data['cciRateLowest']?.toString() ?? '';
-    _cciRateAverageController.text = data['cciRateAverage']?.toString() ?? '';
-    _cciSeedRateController.text = data['cciSeedRate']?.toString() ?? '';
-    _cciOutTurnController.text = data['cciOutTurn']?.toString() ?? '';
-    _cciShortageController.text = data['cciShortage']?.toString() ?? '';
-    _cciExpensesController.text = data['cciExpenses']?.toString() ?? '';
-    _processingCycleController.text = data['processingCycle']?.toString() ?? '';
-    _cciPadthaController.text = data['cciPadtha']?.toString() ?? '';
-    _progPurchaseQtlsController.text = data['progPurchaseQtls']?.toString() ?? '';
-    _progPurchaseBalesController.text = data['progPurchaseBales']?.toString() ?? '';
-    _progPadthaController.text = data['progPadtha']?.toString() ?? '';
-    _progAvgRateController.text = data['progAvgRate']?.toString() ?? '';
-    _balesPressedTodayController.text = data['balesPressedToday']?.toString() ?? '';
-    _balesPressedProgController.text = data['balesPressedProg']?.toString() ?? '';
-    _totalBalesShiftedController.text = data['totalBalesShifted']?.toString() ?? '';
-    _sampleSentController.text = data['sampleSent'] ?? '';
-    _heapResultController.text = data['heapResult'] ?? '';
-
-    if (data['factories'] is List && (data['factories'] as List).isNotEmpty) {
-      _purchaseFactories = (data['factories'] as List)
-          .map((f) => PurchaseFactoryData.fromJson(Map<String, dynamic>.from(f as Map)))
-          .toList();
-    } else {
-      _purchaseFactories = [
-        PurchaseFactoryData(
-          factoryName: data['factoryName'] ?? '',
-          heapNo: data['heapNo'] ?? 0,
-          heapQty: (data['heapQty'] ?? 0).toDouble(),
-          seedFarmers: data['seedFarmers'] ?? 0,
-          seedRealisable: data['seed_realisable'] ?? 0,
-          readySeedSold: data['readySeedSold'] ?? 0,
-          readySeedUnsold: data['readySeedUnsold'] ?? 0,
-          baseRate: data['baseRate'] ?? 0,
-        )
-      ];
-    }
-
-    if (data['variety'] != null) {
+    if (data['variety'] != null && _varieties.contains(data['variety'])) {
       _selectedVariety = data['variety'];
     }
+
+    _originalPressedBales = double.tryParse(data['dayPressedBales']?.toString() ?? '0') ?? 0;
+    _originalPurchaseQtls = double.tryParse(data['cciPurchaseQtls']?.toString() ?? '0') ?? 0;
+    _originalPurchaseBales = double.tryParse(data['cciPurchaseBales']?.toString() ?? '0') ?? 0;
+    _originalFarmers = double.tryParse(data['farmersDay']?.toString() ?? '0') ?? 0;
+
+    _farmersDayController.text = data['farmersDay']?.toString() ?? '';
+    _arrivalsBalesController.text = data['arrivalsBales']?.toString() ?? '';
+    _cciPurchaseQtlsController.text = data['cciPurchaseQtls']?.toString() ?? '';
+    _cciPurchaseBalesController.text = data['cciPurchaseBales']?.toString() ?? '';
+    _avgKapasRateController.text = data['avgKapasRate']?.toString() ?? '';
+    _budgetedLintController.text = data['budgetedLint']?.toString() ?? '';
+    _budgetedShortageController.text = data['budgetedShortage']?.toString() ?? '';
+    _cottonSeedRateController.text = data['cottonSeedRate']?.toString() ?? '';
+    _processingCycleController.text = data['processingCycle']?.toString() ?? '';
+    _proformaExpensesController.text = data['proformaExpenses']?.toString() ?? '';
+    _budgetedPadthaController.text = data['budgetedPadtha']?.toString() ?? '';
+    _dayPressedBalesController.text = data['dayPressedBales']?.toString() ?? '';
+    _marketHighestRateController.text = data['marketHighestRate']?.toString() ?? '';
+    _marketLowestRateController.text = data['marketLowestRate']?.toString() ?? '';
+    _cciHighestRateController.text = data['cciHighestRate']?.toString() ?? '';
+    _cciLowestRateController.text = data['cciLowestRate']?.toString() ?? '';
+    _progPressedBalesController.text = data['progPressedBales']?.toString() ?? '';
+    _progPurchaseQtlsController.text = data['progPurchaseQtls']?.toString() ?? '';
+    _progPurchaseBalesController.text = data['progPurchaseBales']?.toString() ?? '';
+    _progFarmersController.text = data['progFarmers']?.toString() ?? '';
+
+    // Load factories with progressive data
+    if (data['factories'] is List && (data['factories'] as List).isNotEmpty) {
+      _purchaseFactories = (data['factories'] as List)
+          .map((f) => PurchaseFactoryProgData.fromJson(Map<String, dynamic>.from(f as Map)))
+          .toList();
+    }
+
     if (data['date'] != null) {
       _selectedDate = DateTime.parse(data['date']);
     }
@@ -359,28 +297,25 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _isLoadingPreviousProgressive = false;
 
         if (response.success && response.data != null) {
-          _previousProgApmc = (response.data!['progArrivalsApmc'] as num?)?.toDouble() ?? 0;
-          _previousProgOutside = (response.data!['progArrivalsOutside'] as num?)?.toDouble() ?? 0;
-          _previousFarmersProg = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
-          _previousMspProg = (response.data!['mspValueProg'] as num?)?.toDouble() ?? 0;
-          _previousBalesProg = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
-          _debugMessage = '✅ Loaded latest: APMC=$_previousProgApmc, Outside=$_previousProgOutside';
+          _previousProgPressedBales = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseQtls = (response.data!['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseBales = (response.data!['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+          _previousProgFarmers = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
+          _debugMessage = '✅ Loaded latest progressive values';
         } else {
-          _previousProgApmc = 0;
-          _previousProgOutside = 0;
-          _previousFarmersProg = 0;
-          _previousMspProg = 0;
-          _previousBalesProg = 0;
+          _previousProgPressedBales = 0;
+          _previousProgPurchaseQtls = 0;
+          _previousProgPurchaseBales = 0;
+          _previousProgFarmers = 0;
           _debugMessage = '⚠️ No previous entries found, starting from 0';
         }
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _recalculateProgApmcModify();
-        _recalculateProgOutsideModify();
-        _recalculateFarmersProgModify();
-        _recalculateMspProgModify();
-        _recalculateBalesProgModify();
+        _recalculateProgPressedBalesModify();
+        _recalculateProgPurchaseQtlsModify();
+        _recalculateProgPurchaseBalesModify();
+        _recalculateProgFarmersModify();
       });
     } catch (e) {
       if (mounted) {
@@ -393,144 +328,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 
   // ============================================================
-  // FETCH PROGRESSIVE PURCHASE VALUES FROM PROFORMA
-  // This method ONLY fetches the Progressive Purchase values from proforma
-  // It does NOT affect any other logic
-  // ============================================================
-  Future<void> _fetchProgressivePurchaseFromProforma(String purchaseEntryId) async {
-    try {
-      final response = await ApiService.getProformaByPurchaseEntry(purchaseEntryId);
-
-      if (!mounted) return;
-
-      if (response.success && response.data != null) {
-        final proforma = response.data!['proforma'] as Map<String, dynamic>;
-
-        // Extract PROG AVG values directly from proforma
-        final quantity = proforma['quantity'] as num? ?? 0;
-        final bales = proforma['bales'] as num? ?? 0;
-        final padtha = proforma['padtha'] as num? ?? 0;
-        final avgRate = proforma['rate'] as num? ?? 0;
-
-        setState(() {
-          _progPurchaseQtlsController.text = quantity.toString();
-          _progPurchaseBalesController.text = bales.toString();
-          _progPadthaController.text = padtha.toStringAsFixed(2);
-          _progAvgRateController.text = avgRate.toStringAsFixed(2);
-        });
-
-        debugLog('✅ Progressive Purchase fetched from proforma: Qty=$quantity, Bales=$bales, Padtha=$padtha, Rate=$avgRate');
-      } else {
-        debugLog('⚠️ No proforma found for progressive purchase values');
-      }
-    } catch (e) {
-      debugLog('❌ Error fetching proforma data: $e');
-    }
-  }
-
-  // ============================================================
-  // FETCH PROGRESSIVE PURCHASE FROM PROFORMA FOR NEW ENTRY
-  // ============================================================
-  Future<void> _fetchProgressivePurchaseFromProformaForNewEntry() async {
-    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
-    if (_selectedVariety == null || _selectedVariety!.isEmpty) return;
-
-    try {
-      // Get all proformas for this user
-      final proformaResponse = await ApiService.getProformas();
-
-      if (!mounted) return;
-
-      if (proformaResponse.success && proformaResponse.data != null) {
-        final proformas = proformaResponse.data!['proformas'] as List? ?? [];
-
-        // Find the latest proforma for this centre+variety
-        Map<String, dynamic>? latestProforma;
-        for (final proforma in proformas) {
-          if (proforma['centre'] == _selectedCentre &&
-              proforma['variety'] == _selectedVariety) {
-            if (latestProforma == null) {
-              latestProforma = proforma;
-            }
-          }
-        }
-
-        if (latestProforma != null) {
-          // Found a proforma - use its PROG AVG values
-          final quantity = latestProforma['quantity'] as num? ?? 0;
-          final bales = latestProforma['bales'] as num? ?? 0;
-          final padtha = latestProforma['padtha'] as num? ?? 0;
-          final avgRate = latestProforma['rate'] as num? ?? 0;
-
-          setState(() {
-            _progPurchaseQtlsController.text = quantity.toString();
-            _progPurchaseBalesController.text = bales.toString();
-            _progPadthaController.text = padtha.toStringAsFixed(2);
-            _progAvgRateController.text = avgRate.toStringAsFixed(2);
-          });
-
-          debugLog('✅ Progressive Purchase fetched from proforma for new entry: Qty=$quantity, Bales=$bales, Padtha=$padtha, Rate=$avgRate');
-        }
-      }
-    } catch (e) {
-      debugLog('❌ Error fetching proforma for new entry: $e');
-    }
-  }
-
-  Future<void> _loadDefaultCentre() async {
-    if (_selectedCentre != null) return;
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(ReportConstants.prefKeyLastCentre);
-    if (!mounted) return;
-    if (saved != null && ReportConstants.centres.contains(saved)) {
-      setState(() => _selectedCentre = saved);
-    }
-  }
-
-  Future<void> _rememberCentre(String centre) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(ReportConstants.prefKeyLastCentre, centre);
-  }
-
-  String _formatNumber(double value) {
-    if (value == value.roundToDouble()) {
-      return value.toInt().toString();
-    }
-    return value.toStringAsFixed(2);
-  }
-
-  void _resetReportNoToDefault() {
-    _reportNoController.text = '';
-  }
-
-  void _recalculateProgApmc() {
-    final dayValue = double.tryParse(_dayArrivalsApmcController.text) ?? 0;
-    _progArrivalsApmcController.text = _formatNumber(_previousProgApmc + dayValue);
-  }
-
-  void _recalculateProgOutside() {
-    final dayValue = double.tryParse(_dayArrivalsOutsideController.text) ?? 0;
-    _progArrivalsOutsideController.text = _formatNumber(_previousProgOutside + dayValue);
-  }
-
-  void _recalculateFarmersProg() {
-    final dayValue = double.tryParse(_farmersDayController.text) ?? 0;
-    _farmersProgressiveController.text = _formatNumber(_previousFarmersProg + dayValue);
-  }
-
-  void _recalculateMspProg() {
-    final dayValue = double.tryParse(_mspValueDayController.text) ?? 0;
-    _mspValueProgController.text = _formatNumber(_previousMspProg + dayValue);
-  }
-
-  void _recalculateBalesProg() {
-    final dayValue = double.tryParse(_balesPressedTodayController.text) ?? 0;
-    _balesPressedProgController.text = _formatNumber(_previousBalesProg + dayValue);
-  }
-
-  // ============================================================
   // FETCH PREVIOUS PROGRESSIVE - for new entry creation
-  // THIS LOGIC REMAINS UNCHANGED
   // ============================================================
   Future<void> _fetchPreviousProgressive() async {
     if (widget.isModify) return;
@@ -573,28 +371,25 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _isLoadingPreviousProgressive = false;
 
         if (response.success && response.data != null) {
-          _previousProgApmc = (response.data!['progArrivalsApmc'] as num?)?.toDouble() ?? 0;
-          _previousProgOutside = (response.data!['progArrivalsOutside'] as num?)?.toDouble() ?? 0;
-          _previousFarmersProg = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
-          _previousMspProg = (response.data!['mspValueProg'] as num?)?.toDouble() ?? 0;
-          _previousBalesProg = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
-          _debugMessage = '✅ Loaded: APMC=$_previousProgApmc, Outside=$_previousProgOutside';
+          _previousProgPressedBales = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseQtls = (response.data!['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseBales = (response.data!['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+          _previousProgFarmers = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
+          _debugMessage = '✅ Loaded progressive values';
         } else {
-          _previousProgApmc = 0;
-          _previousProgOutside = 0;
-          _previousFarmersProg = 0;
-          _previousMspProg = 0;
-          _previousBalesProg = 0;
+          _previousProgPressedBales = 0;
+          _previousProgPurchaseQtls = 0;
+          _previousProgPurchaseBales = 0;
+          _previousProgFarmers = 0;
           _debugMessage = '⚠️ No previous values found, starting from 0';
         }
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _recalculateProgApmc();
-        _recalculateProgOutside();
-        _recalculateFarmersProg();
-        _recalculateMspProg();
-        _recalculateBalesProg();
+        _recalculateProgPressedBales();
+        _recalculateProgPurchaseQtls();
+        _recalculateProgPurchaseBales();
+        _recalculateProgFarmers();
       });
     } catch (e) {
       if (mounted && requestedCentre == _selectedCentre && requestedVariety == _selectedVariety) {
@@ -606,6 +401,103 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
+  // ============================================================
+  // UTILITY METHODS
+  // ============================================================
+  Future<void> _loadDefaultCentre() async {
+    if (_selectedCentre != null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(ReportConstants.prefKeyLastCentre);
+    if (!mounted) return;
+    if (saved != null && ReportConstants.centres.contains(saved)) {
+      setState(() => _selectedCentre = saved);
+    }
+  }
+
+  Future<void> _rememberCentre(String centre) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(ReportConstants.prefKeyLastCentre, centre);
+  }
+
+  String _formatNumber(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toInt().toString();
+    }
+    return value.toStringAsFixed(2);
+  }
+
+  void _resetReportNoToDefault() {
+    _reportNoController.text = '';
+  }
+
+  Future<void> _autoGenerateReportNo() async {
+    if (widget.isModify) return;
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
+
+    setState(() {
+      _isLoadingReportNo = true;
+    });
+
+    final normalizedDate = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+    );
+    final requestedCentre = _selectedCentre;
+
+    try {
+      final response = await ApiService.getNextReportNo(
+        type: 'purchase',
+        centre: _selectedCentre!,
+        date: normalizedDate,
+      );
+
+      if (!mounted) return;
+      if (requestedCentre != _selectedCentre) return;
+
+      final nextReportNo = (response.success && response.data != null)
+          ? response.data!['nextReportNo'] as int?
+          : null;
+
+      if (nextReportNo != null) {
+        setState(() {
+          _reportNoController.text = nextReportNo.toString();
+        });
+      }
+    } catch (e) {
+      debugLog('❌ Error generating report number: $e');
+    } finally {
+      if (mounted) setState(() => _isLoadingReportNo = false);
+    }
+  }
+
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: Color(0xFF0F172A)),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+      if (!widget.isModify) {
+        await _fetchPreviousProgressive();
+      }
+      await _autoGenerateReportNo();
+    }
+  }
+
+  // ============================================================
+  // FIND ENTRY
+  // ============================================================
   Future<void> _findEntry() async {
     if (!_lookupFormKey.currentState!.validate()) return;
     if (_selectedCentre == null) return;
@@ -643,10 +535,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _loadExistingData(entry);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchLatestProgressiveForModify();
-        // Auto-fetch progressive purchase values from proforma
-        if (_docId != null) {
-          _fetchProgressivePurchaseFromProforma(_docId!);
-        }
       });
     } else {
       setState(() {
@@ -666,157 +554,38 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     });
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(primary: Color(0xFF0F172A)),
-          ),
-          child: child!,
-        );
-      },
+  // ============================================================
+  // CHECK FOR EXISTING ENTRY
+  // ============================================================
+  Future<bool> _checkEntryExists() async {
+    if (widget.isModify) return false;
+
+    final reportNo = int.tryParse(_reportNoController.text) ?? 0;
+    if (reportNo == 0) return false;
+
+    final normalizedDate = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
     );
-    if (picked != null && picked != _selectedDate) {
-      setState(() => _selectedDate = picked);
-      if (!widget.isModify) {
-        await _fetchPreviousProgressive();
-        await _fetchProgressivePurchaseFromProformaForNewEntry();
+
+    try {
+      final response = await ApiService.checkEntryExists(
+        type: 'purchase',
+        centre: _selectedCentre!,
+        reportNo: reportNo,
+        date: normalizedDate,
+        variety: _selectedVariety ?? '',
+      );
+
+      if (response.success && response.data != null) {
+        return response.data!['exists'] == true;
       }
+      return false;
+    } catch (e) {
+      debugLog('❌ Error checking entry: $e');
+      return false;
     }
-  }
-
-  void _showCelebration() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(color: Color(0xFFD1FAE5), shape: BoxShape.circle),
-              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 48),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.isModify ? 'Report Updated Successfully!' : 'Report Created Successfully!',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text('Redirecting to dashboard...', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
-            const SizedBox(height: 16),
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A))),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pop();
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    });
-  }
-
-  void _showProformaSuccessDialog(Map<String, dynamic> proformaData, {bool isUpdate = false}) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: Color(0xFFD1FAE5),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669)),
-            ),
-            const SizedBox(width: 12),
-            Text(isUpdate ? 'Proforma Updated!' : 'Proforma Generated!'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildProformaSummaryRow('Centre', proformaData['centre']),
-            _buildProformaSummaryRow('Variety', proformaData['variety'] ?? '-'),
-            _buildProformaSummaryRow('Date', DateFormat('dd/MM/yyyy').format(_selectedDate)),
-            _buildProformaSummaryRow('Quantity', '${proformaData['quantity']} Quintals'),
-            _buildProformaSummaryRow('Rate', '₹${proformaData['rate']}'),
-            _buildProformaSummaryRow('Amount', '₹${proformaData['amount'].toStringAsFixed(2)}'),
-            _buildProformaSummaryRow('Farmers', proformaData['farmers'].toString()),
-            _buildProformaSummaryRow('Moisture', '${proformaData['moisture']}%'),
-            _buildProformaSummaryRow('Seed', '${proformaData['seed'].toStringAsFixed(2)}%'),
-            const Divider(),
-            _buildProformaSummaryRow('Seed Value', '₹${proformaData['seedValue'].toStringAsFixed(2)}', isBold: true),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _viewProforma(proformaData['purchaseEntryId']);
-            },
-            icon: const Icon(Icons.picture_as_pdf),
-            label: const Text('View Full Proforma'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0F172A),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildProformaSummaryRow(String label, String value, {bool isBold = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Color(0xFF64748B))),
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-              fontSize: isBold ? 16 : 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _viewProforma(String purchaseEntryId) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProformaViewScreen(
-          purchaseEntryId: purchaseEntryId,
-        ),
-      ),
-    );
   }
 
   // ============================================================
@@ -953,39 +722,52 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 
   // ============================================================
-  // CHECK FOR EXISTING ENTRY
+  // SHOW CELEBRATION
   // ============================================================
-  Future<bool> _checkEntryExists() async {
-    if (widget.isModify) return false;
-
-    final reportNo = int.tryParse(_reportNoController.text) ?? 0;
-    if (reportNo == 0) return false;
-
-    final normalizedDate = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
+  void _showCelebration() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: const BoxDecoration(color: Color(0xFFD1FAE5), shape: BoxShape.circle),
+              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 48),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              widget.isModify ? 'Report Updated Successfully!' : 'Report Created Successfully!',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text('Redirecting to dashboard...', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+            const SizedBox(height: 16),
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A))),
+            ),
+          ],
+        ),
+      ),
     );
 
-    try {
-      final response = await ApiService.checkEntryExists(
-        type: 'purchase',
-        centre: _selectedCentre!,
-        reportNo: reportNo,
-        date: normalizedDate,
-        variety: _selectedVariety ?? '',
-      );
-
-      if (response.success && response.data != null) {
-        return response.data!['exists'] == true;
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
-      return false;
-    } catch (e) {
-      debugLog('❌ Error checking entry: $e');
-      return false;
-    }
+    });
   }
 
+  // ============================================================
+  // BUILD DATA
+  // ============================================================
   Map<String, dynamic> _buildPurchaseData() {
     return {
       'reportType': ReportType.dailyPurchase.label,
@@ -993,358 +775,28 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       'variety': _selectedVariety ?? '',
       'centre': _selectedCentre ?? '',
       'reportNo': int.tryParse(_reportNoController.text) ?? 0,
-      'moisture': _moistureController.text,
-      'farmersDay': int.tryParse(_farmersDayController.text) ?? 0,
-      'farmersProgressive': int.tryParse(_farmersProgressiveController.text) ?? 0,
-      'dayArrivalsApmc': double.tryParse(_dayArrivalsApmcController.text) ?? 0,
-      'dayArrivalsOutside': double.tryParse(_dayArrivalsOutsideController.text) ?? 0,
-      'progArrivalsApmc': double.tryParse(_progArrivalsApmcController.text) ?? 0,
-      'progArrivalsOutside': double.tryParse(_progArrivalsOutsideController.text) ?? 0,
-      'marketRateHighest': double.tryParse(_marketRateHighestController.text) ?? 0,
-      'marketRateLowest': double.tryParse(_marketRateLowestController.text) ?? 0,
-      'marketRateAverage': double.tryParse(_marketRateAverageController.text) ?? 0,
-      'marketSeedRateHighest': double.tryParse(_marketSeedRateHighestController.text) ?? 0,
-      'marketSeedRateLowest': double.tryParse(_marketSeedRateLowestController.text) ?? 0,
+      'farmersDay': double.tryParse(_farmersDayController.text) ?? 0,
+      'arrivalsBales': double.tryParse(_arrivalsBalesController.text) ?? 0,
       'cciPurchaseQtls': double.tryParse(_cciPurchaseQtlsController.text) ?? 0,
-      'cciPurchaseBales': int.tryParse(_cciPurchaseBalesController.text) ?? 0,
-      'cciKapasMoisture': double.tryParse(_cciKapasMoistureController.text) ?? 0,
-      'mspValueDay': double.tryParse(_mspValueDayController.text) ?? 0,
-      'mspValueProg': double.tryParse(_mspValueProgController.text) ?? 0,
-      'cciRateHighest': double.tryParse(_cciRateHighestController.text) ?? 0,
-      'cciRateLowest': double.tryParse(_cciRateLowestController.text) ?? 0,
-      'cciRateAverage': double.tryParse(_cciRateAverageController.text) ?? 0,
-      'cciSeedRate': int.tryParse(_cciSeedRateController.text) ?? 0,
-      'cciOutTurn': double.tryParse(_cciOutTurnController.text) ?? 0,
-      'cciShortage': double.tryParse(_cciShortageController.text) ?? 0,
-      'cciExpenses': int.tryParse(_cciExpensesController.text) ?? 0,
+      'cciPurchaseBales': double.tryParse(_cciPurchaseBalesController.text) ?? 0,
+      'avgKapasRate': double.tryParse(_avgKapasRateController.text) ?? 0,
+      'budgetedLint': double.tryParse(_budgetedLintController.text) ?? 0,
+      'budgetedShortage': double.tryParse(_budgetedShortageController.text) ?? 0,
+      'cottonSeedRate': double.tryParse(_cottonSeedRateController.text) ?? 0,
       'processingCycle': int.tryParse(_processingCycleController.text) ?? 0,
-      'cciPadtha': double.tryParse(_cciPadthaController.text) ?? 0,
+      'proformaExpenses': double.tryParse(_proformaExpensesController.text) ?? 0,
+      'budgetedPadtha': double.tryParse(_budgetedPadthaController.text) ?? 0,
+      'dayPressedBales': double.tryParse(_dayPressedBalesController.text) ?? 0,
+      'marketHighestRate': double.tryParse(_marketHighestRateController.text) ?? 0,
+      'marketLowestRate': double.tryParse(_marketLowestRateController.text) ?? 0,
+      'cciHighestRate': double.tryParse(_cciHighestRateController.text) ?? 0,
+      'cciLowestRate': double.tryParse(_cciLowestRateController.text) ?? 0,
+      'progPressedBales': double.tryParse(_progPressedBalesController.text) ?? 0,
       'progPurchaseQtls': double.tryParse(_progPurchaseQtlsController.text) ?? 0,
-      'progPurchaseBales': int.tryParse(_progPurchaseBalesController.text) ?? 0,
-      'progPadtha': int.tryParse(_progPadthaController.text) ?? 0,
-      'progAvgRate': int.tryParse(_progAvgRateController.text) ?? 0,
-      'balesPressedToday': int.tryParse(_balesPressedTodayController.text) ?? 0,
-      'balesPressedProg': int.tryParse(_balesPressedProgController.text) ?? 0,
-      'totalBalesShifted': int.tryParse(_totalBalesShiftedController.text) ?? 0,
-      'sampleSent': _sampleSentController.text,
-      'heapResult': _heapResultController.text,
+      'progPurchaseBales': double.tryParse(_progPurchaseBalesController.text) ?? 0,
+      'progFarmers': double.tryParse(_progFarmersController.text) ?? 0,
       'factories': _purchaseFactories.map((f) => f.toJson()).toList(),
     };
-  }
-
-  void _autoFillProgressive() {
-    final qtls = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
-    final bales = int.tryParse(_cciPurchaseBalesController.text) ?? 0;
-    final padtha = double.tryParse(_cciPadthaController.text) ?? 0;
-    final avgRate = double.tryParse(_cciRateAverageController.text) ?? 0;
-
-    setState(() {
-      _progPurchaseQtlsController.text = qtls.toString();
-      _progPurchaseBalesController.text = bales.toString();
-      _progPadthaController.text = padtha.toString();
-      _progAvgRateController.text = avgRate.toString();
-    });
-  }
-
-  // ============================================================
-  // Builds the proforma payload from the CURRENT form values.
-  // ============================================================
-  Map<String, dynamic>? _buildProformaPayload(String purchaseEntryId) {
-    final quantity = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
-    final rate = double.tryParse(_cciRateAverageController.text) ?? 0;
-    if (quantity <= 0 || rate <= 0) return null;
-    if (_selectedCentre == null || _selectedCentre!.isEmpty) return null;
-
-    final farmers = int.tryParse(_farmersDayController.text) ?? 0;
-    final moisture = double.tryParse(_cciKapasMoistureController.text) ?? 0;
-    final shortage = double.tryParse(_cciShortageController.text) ?? 0;
-    final padtha = double.tryParse(_cciPadthaController.text) ?? 0;
-    final outTurn = double.tryParse(_cciOutTurnController.text) ?? 0;
-
-    final bales = int.tryParse(_cciPurchaseBalesController.text) ?? 0;
-    double heap = 0;
-    for (final factory in _purchaseFactories) {
-      heap += factory.heapQty;
-    }
-
-    final amount = quantity * rate;
-    final moistureValue = moisture * quantity;
-    final shortageValue = shortage * quantity;
-    final padthaValue = padtha * quantity;
-    final outTurnValue = outTurn * quantity;
-    final seed = 100 - (outTurn + shortage);
-    final seedValue = seed * quantity;
-
-    return {
-      'centre': _selectedCentre!,
-      'variety': _selectedVariety ?? '',
-      'date': _selectedDate.toIso8601String(),
-      'purchaseEntryId': purchaseEntryId,
-      'quantity': quantity,
-      'rate': rate,
-      'amount': amount,
-      'farmers': farmers,
-      'moisture': moisture,
-      'moistureValue': moistureValue,
-      'shortage': shortage,
-      'shortageValue': shortageValue,
-      'padtha': padtha,
-      'padthaValue': padthaValue,
-      'outTurn': outTurn,
-      'outTurnValue': outTurnValue,
-      'seed': seed,
-      'seedValue': seedValue,
-      'bales': bales,
-      'heap': heap,
-    };
-  }
-
-  // ============================================================
-  // UPDATE & REGENERATE PROFORMA
-  // ============================================================
-  Future<void> _regenerateProforma() async {
-    if (_isSubmitting || _isRegeneratingProforma) return;
-
-    if (_docId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Save the entry first before regenerating the proforma'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    if (_selectedCentre == null || _selectedCentre!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a centre'), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
-    _autoFillProgressive();
-
-    final proformaData = _buildProformaPayload(_docId!);
-    if (proformaData == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter a valid quantity and average rate to regenerate the proforma'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isRegeneratingProforma = true);
-
-    try {
-      final entryResponse = await ApiService.updateEntry(_docId!, _buildPurchaseData());
-
-      if (!mounted) return;
-
-      if (!entryResponse.success) {
-        setState(() => _isRegeneratingProforma = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update entry: ${entryResponse.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-
-      final proformaResponse = await ApiService.saveProforma(proformaData);
-
-      if (!mounted) return;
-
-      setState(() => _isRegeneratingProforma = false);
-
-      if (proformaResponse.success) {
-        // Fetch and fill progressive purchase values from the updated proforma
-        await _fetchProgressivePurchaseFromProforma(_docId!);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Proforma regenerated with the latest values'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        _showProformaSuccessDialog(proformaData, isUpdate: true);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to regenerate proforma: ${proformaResponse.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isRegeneratingProforma = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error regenerating proforma: $e'), backgroundColor: Colors.red),
-      );
-    }
-  }
-
-  // ============================================================
-  // SAVE PROFORMA - Saves initial entry
-  // ============================================================
-  Future<void> _saveProforma() async {
-    final now = DateTime.now();
-    if (_lastSubmitTime != null &&
-        now.difference(_lastSubmitTime!).inMilliseconds < 2000) {
-      return;
-    }
-
-    if (_isEntrySaved) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Entry already saved! You can add details and click Submit to update.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    if (_selectedCentre == null || _selectedCentre!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a centre'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_reportNoController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter Report No.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (_selectedVariety == null || _selectedVariety!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a variety'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final quantity = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
-    if (quantity <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid quantity in CCI Purchase Quintals'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final rate = double.tryParse(_cciRateAverageController.text) ?? 0;
-    if (rate <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a valid average rate'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    _lastSubmitTime = now;
-
-    final exists = await _checkEntryExists();
-    if (exists) {
-      _showDuplicateErrorDialog();
-      _lastSubmitTime = null;
-      return;
-    }
-
-    _autoFillProgressive();
-
-    setState(() => _isSubmitting = true);
-
-    try {
-      final purchaseData = _buildPurchaseData();
-
-      final response = await ApiService.savePurchaseEntry(purchaseData);
-
-      if (!mounted) {
-        setState(() => _isSubmitting = false);
-        return;
-      }
-
-      if (response.success && response.data != null) {
-        final entryId = response.data!['id'] as String?;
-        _savedDocId = entryId;
-        _docId = entryId;
-
-        setState(() {
-          _isEntrySaved = true;
-        });
-
-        debugLog('✅ Purchase entry saved with ID: $entryId');
-
-        final proformaData = _buildProformaPayload(entryId ?? '');
-
-        if (proformaData == null) {
-          setState(() => _isSubmitting = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Entry saved, but the proforma could not be generated — check quantity/rate'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          return;
-        }
-
-        final proformaResponse = await ApiService.saveProforma(proformaData);
-
-        if (!mounted) {
-          setState(() => _isSubmitting = false);
-          return;
-        }
-
-        setState(() => _isSubmitting = false);
-
-        if (proformaResponse.success) {
-          // Fetch and fill progressive purchase values from the generated proforma
-          await _fetchProgressivePurchaseFromProforma(entryId ?? '');
-          _showProformaSuccessDialog(proformaData);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to save proforma: ${proformaResponse.message}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      } else {
-        setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save entry: ${response.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   // ============================================================
@@ -1372,10 +824,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     setState(() => _isSubmitting = true);
 
     final data = _buildPurchaseData();
-    final wasExistingEntry = (_isEntrySaved || widget.isModify) && _docId != null;
 
     final ApiResponse response;
-
     if (_isEntrySaved && _docId != null) {
       response = await ApiService.updateEntry(_docId!, data);
     } else if (widget.isModify && _docId != null) {
@@ -1388,22 +838,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         return;
       }
       response = await ApiService.savePurchaseEntry(data);
-    }
-
-    if (!mounted) return;
-
-    if (response.success && wasExistingEntry) {
-      final proformaSync = _buildProformaPayload(_docId!);
-      if (proformaSync != null) {
-        final syncResponse = await ApiService.saveProforma(proformaSync);
-        if (!syncResponse.success) {
-          debugLog('⚠️ Failed to sync proforma after update: ${syncResponse.message}');
-        } else {
-          debugLog('✅ Proforma synced after update');
-          // Fetch and fill progressive purchase values after sync
-          await _fetchProgressivePurchaseFromProforma(_docId!);
-        }
-      }
     }
 
     if (!mounted) return;
@@ -1440,20 +874,17 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     );
   }
 
-  // -------------------- Factory dialog helpers --------------------
+  // ============================================================
+  // FACTORY DIALOG HELPERS
+  // ============================================================
 
   void _openAddPurchaseFactoryDialog() => _showPurchaseFactoryFormDialog(null);
   void _openEditPurchaseFactoryDialog(int index) => _showPurchaseFactoryFormDialog(_purchaseFactories[index]);
 
-  void _showPurchaseFactoryFormDialog(PurchaseFactoryData? factoryData) {
+  void _showPurchaseFactoryFormDialog(PurchaseFactoryProgData? factoryData) {
     final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
-    final heapNoController = TextEditingController(text: factoryData?.heapNo.toString() ?? '');
-    final heapQtyController = TextEditingController(text: factoryData?.heapQty.toString() ?? '');
-    final farmersController = TextEditingController(text: factoryData?.seedFarmers.toString() ?? '');
-    final realisableController = TextEditingController(text: factoryData?.seedRealisable.toString() ?? '');
-    final soldController = TextEditingController(text: factoryData?.readySeedSold.toString() ?? '');
-    final unsoldController = TextEditingController(text: factoryData?.readySeedUnsold.toString() ?? '');
-    final baseRateController = TextEditingController(text: factoryData?.baseRate.toString() ?? '');
+    final progQtlsController = TextEditingController(text: factoryData?.progPurchaseQtls.toString() ?? '');
+    final progBalesController = TextEditingController(text: factoryData?.progPurchaseBales.toString() ?? '');
 
     final isEditing = factoryData != null;
 
@@ -1473,7 +904,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                   CommonFormWidgets.textField(
                     controller: nameController,
                     label: 'Factory Name',
-                    hint: 'e.g., A Yesh Patil Cotton Company',
+                    hint: 'e.g., M/s.Vijay Industries',
                     icon: Icons.factory,
                   ),
                   const SizedBox(height: 12),
@@ -1481,80 +912,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                     children: [
                       Expanded(
                         child: CommonFormWidgets.textField(
-                          controller: heapNoController,
-                          label: 'Heap No.',
-                          hint: 'e.g., 101',
-                          icon: Icons.numbers,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: heapQtyController,
-                          label: 'Heap Qty',
-                          hint: 'Quintals',
+                          controller: progQtlsController,
+                          label: 'Prog. Purchase (Qtls)',
+                          hint: 'e.g., 22708.95',
                           icon: Icons.scale,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: farmersController,
-                          label: 'Farmers Benefitted',
-                          hint: 'e.g., 2',
-                          icon: Icons.people,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: CommonFormWidgets.textField(
-                          controller: realisableController,
-                          label: 'Realisable',
-                          hint: 'e.g., 70',
-                          icon: Icons.attach_money,
+                          controller: progBalesController,
+                          label: 'Prog. Purchase (Bales)',
+                          hint: 'e.g., 4268',
+                          icon: Icons.inventory,
                           keyboardType: TextInputType.number,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: soldController,
-                          label: 'Ready Seed Sold',
-                          hint: 'e.g., 0',
-                          icon: Icons.sell,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: unsoldController,
-                          label: 'Ready Seed Unsold',
-                          hint: 'e.g., 0',
-                          icon: Icons.inbox,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  CommonFormWidgets.textField(
-                    controller: baseRateController,
-                    label: 'Base Rate',
-                    hint: 'e.g., 3700',
-                    icon: Icons.currency_rupee,
-                    keyboardType: TextInputType.number,
                   ),
                 ],
               ),
@@ -1566,15 +941,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           ElevatedButton(
             onPressed: () {
               if (_factoryFormKey.currentState!.validate()) {
-                final factory = PurchaseFactoryData(
+                final factory = PurchaseFactoryProgData(
                   factoryName: nameController.text,
-                  heapNo: int.tryParse(heapNoController.text) ?? 0,
-                  heapQty: double.tryParse(heapQtyController.text) ?? 0,
-                  seedFarmers: int.tryParse(farmersController.text) ?? 0,
-                  seedRealisable: int.tryParse(realisableController.text) ?? 0,
-                  readySeedSold: int.tryParse(soldController.text) ?? 0,
-                  readySeedUnsold: int.tryParse(unsoldController.text) ?? 0,
-                  baseRate: int.tryParse(baseRateController.text) ?? 0,
+                  progPurchaseQtls: double.tryParse(progQtlsController.text) ?? 0,
+                  progPurchaseBales: double.tryParse(progBalesController.text) ?? 0,
                 );
 
                 setState(() {
@@ -1589,7 +959,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                 Navigator.of(context).pop();
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
+            ),
             child: Text(isEditing ? 'Update' : 'Save'),
           ),
         ],
@@ -1641,7 +1013,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
 
     return Container(
-      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFE2E8F0)), borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: ScrollConfiguration(
         behavior: ScrollConfiguration.of(context).copyWith(
           dragDevices: {
@@ -1658,18 +1033,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             controller: _factoryTableScrollController,
             scrollDirection: Axis.horizontal,
             child: DataTable(
-              columnSpacing: 16,
+              columnSpacing: 20,
               headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
               columns: const [
                 DataColumn(label: Text('SNO', style: TextStyle(fontWeight: FontWeight.bold))),
                 DataColumn(label: Text('Factory Name', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Heap No.', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Heap Qty', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Farmers', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Realisable', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Seed Sold', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Seed Unsold', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Base Rate', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Prog. Pur. (Qtls)', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(label: Text('Prog. Pur. (Bales)', style: TextStyle(fontWeight: FontWeight.bold))),
                 DataColumn(label: Text('', style: TextStyle(fontWeight: FontWeight.bold))),
               ],
               rows: _purchaseFactories.asMap().entries.map((entry) {
@@ -1678,13 +1048,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                 return DataRow(cells: [
                   DataCell(Text('${index + 1}')),
                   DataCell(Text(factory.factoryName)),
-                  DataCell(Text(factory.heapNo.toString())),
-                  DataCell(Text(factory.heapQty.toString())),
-                  DataCell(Text(factory.seedFarmers.toString())),
-                  DataCell(Text(factory.seedRealisable.toString())),
-                  DataCell(Text(factory.readySeedSold.toString())),
-                  DataCell(Text(factory.readySeedUnsold.toString())),
-                  DataCell(Text(factory.baseRate.toString())),
+                  DataCell(Text(factory.progPurchaseQtls.toString())),
+                  DataCell(Text(factory.progPurchaseBales.toString())),
                   DataCell(Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1714,7 +1079,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     );
   }
 
-  // -------------------- Build --------------------
+  // ============================================================
+  // BUILD
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -1728,7 +1095,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         selectedCentre: _selectedCentre,
         onCentreChanged: (v) => setState(() => _selectedCentre = v),
         selectedVariety: _selectedVariety,
-        varietyOptions: ReportConstants.varieties,
+        varietyOptions: _varieties,
         onVarietyChanged: (v) => setState(() => _selectedVariety = v),
         reportNoController: _reportNoController,
         selectedDate: _selectedDate,
@@ -1800,7 +1167,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Main Content
+                        // Header Information Section
                         if (widget.isModify)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
@@ -1828,17 +1195,15 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           onChanged: (value) {
                             setState(() {
                               _selectedCentre = value;
-                              _previousProgApmc = 0;
-                              _previousProgOutside = 0;
-                              _previousFarmersProg = 0;
-                              _previousMspProg = 0;
-                              _previousBalesProg = 0;
+                              _previousProgPressedBales = 0;
+                              _previousProgPurchaseQtls = 0;
+                              _previousProgPurchaseBales = 0;
+                              _previousProgFarmers = 0;
                               _debugMessage = '';
-                              _progArrivalsApmcController.text = '';
-                              _progArrivalsOutsideController.text = '';
-                              _farmersProgressiveController.text = '';
-                              _mspValueProgController.text = '';
-                              _balesPressedProgController.text = '';
+                              _progPressedBalesController.text = '';
+                              _progPurchaseQtlsController.text = '';
+                              _progPurchaseBalesController.text = '';
+                              _progFarmersController.text = '';
                               _resetReportNoToDefault();
                               _isEntrySaved = false;
                             });
@@ -1849,7 +1214,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                   _fetchLatestProgressiveForModify();
                                 } else {
                                   _fetchPreviousProgressive();
-                                  _fetchProgressivePurchaseFromProformaForNewEntry();
                                 }
                               }
                             }
@@ -1896,8 +1260,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 10),
 
+                        // Variety dropdown - only 3 options
                         DropdownButtonFormField<String>(
-                          initialValue: _selectedVariety,
+                          value: _selectedVariety,
                           decoration: InputDecoration(
                             labelText: 'Variety',
                             hintText: 'Select variety',
@@ -1909,21 +1274,19 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             ),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           ),
-                          items: ReportConstants.varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                          items: _varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
                           onChanged: (value) {
                             setState(() {
                               _selectedVariety = value;
-                              _previousProgApmc = 0;
-                              _previousProgOutside = 0;
-                              _previousFarmersProg = 0;
-                              _previousMspProg = 0;
-                              _previousBalesProg = 0;
+                              _previousProgPressedBales = 0;
+                              _previousProgPurchaseQtls = 0;
+                              _previousProgPurchaseBales = 0;
+                              _previousProgFarmers = 0;
                               _debugMessage = '';
-                              _progArrivalsApmcController.text = '';
-                              _progArrivalsOutsideController.text = '';
-                              _farmersProgressiveController.text = '';
-                              _mspValueProgController.text = '';
-                              _balesPressedProgController.text = '';
+                              _progPressedBalesController.text = '';
+                              _progPurchaseQtlsController.text = '';
+                              _progPurchaseBalesController.text = '';
+                              _progFarmersController.text = '';
                               _isEntrySaved = false;
                             });
                             if (value != null &&
@@ -1933,178 +1296,65 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 _fetchLatestProgressiveForModify();
                               } else {
                                 _fetchPreviousProgressive();
-                                _fetchProgressivePurchaseFromProformaForNewEntry();
                               }
                             }
                           },
                           validator: (value) => value == null ? 'Please select a variety' : null,
                         ),
-                        const SizedBox(height: 10),
-
-                        CommonFormWidgets.textField(
-                          controller: _moistureController,
-                          label: 'Moisture Percentage (%)',
-                          hint: 'e.g., 8-20%',
-                          icon: Icons.water_drop,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) return 'Please enter moisture percentage';
-                            return null;
-                          },
-                        ),
                         const SizedBox(height: 14),
 
-                        // Arrivals Section
-                        CommonFormWidgets.sectionHeader('Arrivals'),
-                        if (!widget.isModify) ...[
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 4),
+                        // Purchase Details Section
+                        CommonFormWidgets.sectionHeader('Purchase Details'),
+                        if (!widget.isModify && _debugMessage.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
                             child: Text(
-                              'Progressive totals are calculated automatically from '
-                                  'the last entry for this centre + variety + today\'s values.',
-                              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                              _debugMessage,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: _debugMessage.contains('✅')
+                                    ? Colors.green
+                                    : _debugMessage.contains('⚠️')
+                                    ? Colors.orange
+                                    : _debugMessage.contains('❌')
+                                    ? Colors.red
+                                    : Colors.grey,
+                              ),
                             ),
                           ),
-                          if (_debugMessage.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
-                              child: Text(
-                                _debugMessage,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: _debugMessage.contains('✅')
-                                      ? Colors.green
-                                      : _debugMessage.contains('⚠️')
-                                      ? Colors.orange
-                                      : _debugMessage.contains('❌')
-                                      ? Colors.red
-                                      : Colors.grey,
-                                ),
-                              ),
-                            ),
-                        ],
-                        const SizedBox(height: 4),
+
                         Row(
                           children: [
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _dayArrivalsApmcController,
-                                label: 'Day APMC',
-                                hint: 'Quintals/Bales',
-                                icon: Icons.local_shipping,
+                                controller: _farmersDayController,
+                                label: "Day's Kapas Purchased from No. of Farmers",
+                                hint: 'e.g., 69',
+                                icon: Icons.people,
                                 keyboardType: TextInputType.number,
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _dayArrivalsOutsideController,
-                                label: 'Day Outside',
-                                hint: 'Quintals/Bales',
-                                icon: Icons.local_shipping_outlined,
+                                controller: _arrivalsBalesController,
+                                label: 'Arrivals (In Bales)',
+                                hint: 'e.g., 220',
+                                icon: Icons.inventory,
                                 keyboardType: TextInputType.number,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _progArrivalsApmcController,
-                                label: 'Prog APMC',
-                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'Quintals/Bales',
-                                icon: Icons.trending_up,
-                                keyboardType: TextInputType.number,
-                                readOnly: true,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _progArrivalsOutsideController,
-                                label: 'Prog Outside',
-                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'Quintals/Bales',
-                                icon: Icons.trending_up_outlined,
-                                keyboardType: TextInputType.number,
-                                readOnly: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
 
-                        // Market Rates
-                        CommonFormWidgets.sectionHeader('Market Rates (Kapas Rate in Quintals)'),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _marketRateHighestController,
-                                label: 'Highest',
-                                hint: 'e.g., 7785.6',
-                                icon: Icons.arrow_upward,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _marketRateAverageController,
-                                label: 'Average',
-                                hint: 'e.g., 7200',
-                                icon: Icons.linear_scale,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        CommonFormWidgets.textField(
-                          controller: _marketRateLowestController,
-                          label: 'Lowest',
-                          hint: 'e.g., 7000',
-                          icon: Icons.arrow_downward,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        ),
-                        const SizedBox(height: 10),
-
-                        const Text('Market Seed Rate', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _marketSeedRateHighestController,
-                                label: 'Highest',
-                                hint: 'e.g., 3700',
-                                icon: Icons.arrow_upward,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _marketSeedRateLowestController,
-                                label: 'Lowest',
-                                hint: 'e.g., 3600',
-                                icon: Icons.arrow_downward,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
-                        // CCI Purchase
-                        CommonFormWidgets.sectionHeader('CCI Purchase'),
                         Row(
                           children: [
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _cciPurchaseQtlsController,
-                                label: 'Quintals',
-                                hint: 'e.g., 109.2',
+                                label: 'CCI Purchases (In Qtls)',
+                                hint: 'e.g., 821.9',
                                 icon: Icons.scale,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                               ),
@@ -2113,140 +1363,57 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _cciPurchaseBalesController,
-                                label: 'Bales',
-                                hint: 'e.g., 22',
-                                icon: Icons.inventory,
+                                label: 'CCI Purchases (In Bales)',
+                                hint: 'e.g., 158',
+                                icon: Icons.inventory_2,
                                 keyboardType: TextInputType.number,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
+
                         CommonFormWidgets.textField(
-                          controller: _cciKapasMoistureController,
-                          label: 'Kapas Moisture %',
-                          hint: 'e.g., 12',
-                          icon: Icons.water_drop,
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 14),
-
-                        // MSP Value
-                        CommonFormWidgets.sectionHeader('MSP Value'),
-                        if (!widget.isModify)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              'Progressive MSP is auto-calculated from previous entry + today\'s MSP value',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _mspValueDayController,
-                                label: 'Day Wise',
-                                hint: 'e.g., 850187.52',
-                                icon: Icons.today,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _mspValueProgController,
-                                label: 'Progressive',
-                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 850187.52',
-                                icon: Icons.trending_up,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                readOnly: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Farmers Benefitted
-                        CommonFormWidgets.sectionHeader('Farmers Benefitted'),
-                        if (!widget.isModify)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              'Progressive Farmers is auto-calculated from previous entry + today\'s farmers',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _farmersDayController,
-                                label: 'Day Wise',
-                                hint: 'e.g., 2',
-                                icon: Icons.people,
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _farmersProgressiveController,
-                                label: 'Progressive',
-                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 2',
-                                icon: Icons.people_outline,
-                                keyboardType: TextInputType.number,
-                                readOnly: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
-                        // CCI Rates
-                        CommonFormWidgets.sectionHeader('CCI Rates (Kapas Rate in Quintals)'),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _cciRateHighestController,
-                                label: 'Highest',
-                                hint: 'e.g., 7785.6',
-                                icon: Icons.arrow_upward,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _cciRateAverageController,
-                                label: 'Average',
-                                hint: 'e.g., 7785.6',
-                                icon: Icons.linear_scale,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        CommonFormWidgets.textField(
-                          controller: _cciRateLowestController,
-                          label: 'Lowest',
-                          hint: 'e.g., 7785.6',
-                          icon: Icons.arrow_downward,
+                          controller: _avgKapasRateController,
+                          label: 'Average Kapas rate (In Rs. per qtl)',
+                          hint: 'e.g., 7928.68',
+                          icon: Icons.currency_rupee,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 10),
 
-                        // CCI Details
-                        CommonFormWidgets.sectionHeader('CCI Details'),
                         Row(
                           children: [
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _cciSeedRateController,
-                                label: 'Seed Rate',
-                                hint: 'e.g., 3700',
+                                controller: _budgetedLintController,
+                                label: 'Budgeted Lint Percentage (%)',
+                                hint: 'e.g., 0.321',
+                                icon: Icons.percent,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _budgetedShortageController,
+                                label: 'Budgeted Shortage Percentage (%)',
+                                hint: 'e.g., 0.027',
+                                icon: Icons.warning_amber_rounded,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cottonSeedRateController,
+                                label: 'Cotton seed rate (In Rs. per qtl)',
+                                hint: 'e.g., 3200',
                                 icon: Icons.attach_money,
                                 keyboardType: TextInputType.number,
                               ),
@@ -2254,140 +1421,122 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _cciOutTurnController,
-                                label: 'Out Turn',
-                                hint: 'e.g., 0.33',
-                                icon: Icons.percent,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _cciShortageController,
-                                label: 'Shortage',
-                                hint: 'e.g., 0.035',
-                                icon: Icons.warning_amber_rounded,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _cciExpensesController,
-                                label: 'Expenses',
-                                hint: 'e.g., 4050',
-                                icon: Icons.money_off,
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
                                 controller: _processingCycleController,
-                                label: 'Processing Cycle',
-                                hint: 'e.g., 7 days',
+                                label: "Processing cycle (In day's)",
+                                hint: 'e.g., 7',
                                 icon: Icons.autorenew,
                                 keyboardType: TextInputType.number,
                               ),
                             ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _proformaExpensesController,
+                                label: 'Proforma Expenses (In Rs. per Candy)',
+                                hint: 'e.g., 4709.88',
+                                icon: Icons.money_off,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _cciPadthaController,
-                                label: 'Padtha',
-                                hint: 'e.g., 62706',
+                                controller: _budgetedPadthaController,
+                                label: 'Budgeted Padtha (In Rs. per candy)',
+                                hint: 'e.g., 69502.94',
                                 icon: Icons.receipt,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        CommonFormWidgets.textField(
+                          controller: _dayPressedBalesController,
+                          label: "Day's pressed bales (In Bales)",
+                          hint: 'e.g., 100',
+                          icon: Icons.grass,
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Market & CCI Rates
+                        CommonFormWidgets.sectionHeader('Market & CCI Rates'),
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            'Market Rates (In Rs. per qtl)',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _marketHighestRateController,
+                                label: 'Market Highest',
+                                hint: 'e.g., 7000',
+                                icon: Icons.arrow_upward,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _marketLowestRateController,
+                                label: 'Market Lowest',
+                                hint: 'e.g., 6800',
+                                icon: Icons.arrow_downward,
                                 keyboardType: TextInputType.number,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
-
-                        // ============ SAVE / REGENERATE PROFORMA BUTTON ============
+                        const SizedBox(height: 8),
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            'CCI Rates (In Rs. per qtl)',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                          ),
+                        ),
                         Row(
                           children: [
                             Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: (_isSubmitting || _isRegeneratingProforma)
-                                    ? null
-                                    : (_isEntrySaved ? _regenerateProforma : _saveProforma),
-                                icon: _isRegeneratingProforma
-                                    ? const SizedBox(
-                                  height: 16,
-                                  width: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                                    : Icon(
-                                  _isEntrySaved ? Icons.refresh : Icons.save,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                                label: Text(
-                                  _isRegeneratingProforma
-                                      ? 'Regenerating...'
-                                      : (_isEntrySaved
-                                      ? 'Update & Regenerate Proforma'
-                                      : 'Save & Generate Proforma'),
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF059669),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
+                              child: CommonFormWidgets.textField(
+                                controller: _cciHighestRateController,
+                                label: 'CCI Highest',
+                                hint: 'e.g., 8010',
+                                icon: Icons.arrow_upward,
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
+                                controller: _cciLowestRateController,
+                                label: 'CCI Lowest',
+                                hint: 'e.g., 7689.6',
+                                icon: Icons.arrow_downward,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                               ),
                             ),
                           ],
                         ),
-
-                        // Refresh Progressive Values Button (only shown when entry is saved)
-                        if (_isEntrySaved) ...[
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: (_savedDocId != null && _docId != null)
-                                      ? () => _fetchProgressivePurchaseFromProforma(_docId!)
-                                      : null,
-                                  icon: const Icon(Icons.refresh, size: 16),
-                                  label: const Text('Refresh Progressive Values from Proforma'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: const Color(0xFF0F172A),
-                                    side: const BorderSide(color: Color(0xFF0F172A)),
-                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                         const SizedBox(height: 14),
 
-                        // Progressive Purchase
-                        CommonFormWidgets.sectionHeader('Progressive Purchase'),
+                        // Progressive Values Section
+                        CommonFormWidgets.sectionHeader('Progressive Values'),
                         const Padding(
                           padding: EdgeInsets.only(bottom: 4),
                           child: Text(
-                            'Values are auto-filled from CCI Purchase when generating Proforma',
+                            'Auto-calculated from previous entry + today\'s values',
                             style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                           ),
                         ),
@@ -2395,82 +1544,20 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           children: [
                             Expanded(
                               child: CommonFormWidgets.textField(
+                                controller: _progPressedBalesController,
+                                label: 'Prog. Pressed Bales',
+                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                icon: Icons.trending_up,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: CommonFormWidgets.textField(
                                 controller: _progPurchaseQtlsController,
-                                label: 'Quintals',
-                                hint: 'Auto-filled',
-                                icon: Icons.scale,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                readOnly: true,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _progPurchaseBalesController,
-                                label: 'Bales',
-                                hint: 'Auto-filled',
-                                icon: Icons.inventory,
-                                keyboardType: TextInputType.number,
-                                readOnly: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _progPadthaController,
-                                label: 'Padtha',
-                                hint: 'Auto-filled',
-                                icon: Icons.receipt_long,
-                                keyboardType: TextInputType.number,
-                                readOnly: true,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _progAvgRateController,
-                                label: 'Avg Rate',
-                                hint: 'Auto-filled',
-                                icon: Icons.calculate,
-                                keyboardType: TextInputType.number,
-                                readOnly: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Bales Pressed
-                        CommonFormWidgets.sectionHeader('Bales Pressed'),
-                        if (!widget.isModify)
-                          const Padding(
-                            padding: EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              'Progressive Bales is auto-calculated from previous entry + today\'s bales',
-                              style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                            ),
-                          ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _balesPressedTodayController,
-                                label: 'Today',
-                                hint: 'e.g., 0',
-                                icon: Icons.today,
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: CommonFormWidgets.textField(
-                                controller: _balesPressedProgController,
-                                label: 'Progressive',
-                                hint: _isLoadingPreviousProgressive ? 'Loading previous total...' : 'e.g., 0',
+                                label: 'Prog. Purchase (Qtls)',
+                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
                                 icon: Icons.trending_up,
                                 keyboardType: TextInputType.number,
                                 readOnly: true,
@@ -2479,35 +1566,27 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           ],
                         ),
                         const SizedBox(height: 10),
-
-                        CommonFormWidgets.textField(
-                          controller: _totalBalesShiftedController,
-                          label: 'Total Bales Shifted to Godown',
-                          hint: 'e.g., 0',
-                          icon: Icons.warehouse,
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Other Details
-                        CommonFormWidgets.sectionHeader('Other Details'),
                         Row(
                           children: [
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _sampleSentController,
-                                label: 'Sample Sent to B.O',
-                                hint: 'e.g., - or Yes',
-                                icon: Icons.send,
+                                controller: _progPurchaseBalesController,
+                                label: 'Prog. Purchase (Bales)',
+                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                icon: Icons.trending_up,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: CommonFormWidgets.textField(
-                                controller: _heapResultController,
-                                label: 'Heap Result Sent to B.O',
-                                hint: 'e.g., - or Yes',
-                                icon: Icons.check_circle_outline,
+                                controller: _progFarmersController,
+                                label: 'Prog. Kapas Purchased from No. of Farmers',
+                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                icon: Icons.trending_up,
+                                keyboardType: TextInputType.number,
+                                readOnly: true,
                               ),
                             ),
                           ],
@@ -2516,9 +1595,16 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
                         // Factory Details
                         CommonFormWidgets.sectionHeaderWithAction(
-                          'Factory Details',
+                          'Factory Wise Day Purchase Details',
                           actionLabel: 'Add Factory',
                           onAction: _openAddPurchaseFactoryDialog,
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            'Enter progressive purchase details for each factory',
+                            style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                          ),
                         ),
                         const SizedBox(height: 10),
                         _buildPurchaseFactoryListView(),
@@ -2544,7 +1630,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               child: ElevatedButton(
                                 onPressed: _isSubmitting ? null : _submitForm,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isEntrySaved ? const Color(0xFF0F172A) : const Color(0xFF0F172A),
+                                  backgroundColor: const Color(0xFF0F172A),
                                   padding: const EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -2582,4 +1668,31 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       ),
     );
   }
+}
+
+// ============================================================
+// FACTORY DATA MODEL FOR PURCHASE
+// ============================================================
+class PurchaseFactoryProgData {
+  String factoryName;
+  double progPurchaseQtls;
+  double progPurchaseBales;
+
+  PurchaseFactoryProgData({
+    required this.factoryName,
+    required this.progPurchaseQtls,
+    required this.progPurchaseBales,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'factoryName': factoryName,
+    'progPurchaseQtls': progPurchaseQtls,
+    'progPurchaseBales': progPurchaseBales,
+  };
+
+  factory PurchaseFactoryProgData.fromJson(Map<String, dynamic> json) => PurchaseFactoryProgData(
+    factoryName: json['factoryName'] as String? ?? '',
+    progPurchaseQtls: (json['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
+    progPurchaseBales: (json['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+  );
 }

@@ -36,38 +36,56 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFFD4A017), // Rich Gold
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Gold coin / data icon
             Container(
               width: 96,
               height: 96,
               decoration: BoxDecoration(
-                color: const Color(0xFF38BDF8),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 48),
+              child: const Icon(
+                Icons.storage_rounded,
+                color: Color(0xFFD4A017),
+                size: 48,
+              ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             const Text(
-              'Workflo',
+              'DataVault',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.w600,
+                fontSize: 32,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
               ),
             ),
             const SizedBox(height: 8),
             const Text(
-              'Loading...',
-              style: TextStyle(color: Colors.white60, fontSize: 14),
+              'Secure · Reliable · Fast',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.5,
+              ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 40),
             const CircularProgressIndicator(
               strokeWidth: 2.5,
-              color: Color(0xFF38BDF8),
+              color: Colors.white,
             ),
           ],
         ),

@@ -16,6 +16,8 @@ class ApiService {
     bool keepSignedIn = true,
   }) async {
     try {
+      print('🔄 Login attempt for: $email');
+
       if (kIsWeb) {
         await _auth.setPersistence(
           keepSignedIn ? Persistence.LOCAL : Persistence.SESSION,
@@ -27,14 +29,18 @@ class ApiService {
         password: password,
       );
 
-      return _saveDailyRecordAndRespond(credential, email, mobile, username);
+      print('✅ Login successful for: ${credential.user?.uid}');
+
+      return await _saveDailyRecordAndRespond(credential, email, mobile, username);
     } on FirebaseAuthException catch (e) {
+      print('❌ Login FirebaseAuth error: ${e.code} - ${e.message}');
       return ApiResponse(
         success: false,
         message: _mapAuthError(e.code),
         data: {'code': e.code},
       );
     } catch (e) {
+      print('❌ Login unexpected error: $e');
       return ApiResponse(
         success: false,
         message: 'Something went wrong. Please try again.',
@@ -50,17 +56,24 @@ class ApiService {
     bool keepSignedIn = true,
   }) async {
     try {
+      print('🔄 Registration attempt for: $email');
+      print('📝 Username: $username, Mobile: $mobile');
+
       if (kIsWeb) {
         await _auth.setPersistence(
           keepSignedIn ? Persistence.LOCAL : Persistence.SESSION,
         );
       }
 
+      print('🔄 Creating user with email/password...');
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      return _saveDailyRecordAndRespond(
+
+      print('✅ User created successfully with UID: ${credential.user?.uid}');
+
+      return await _saveDailyRecordAndRespond(
         credential,
         email,
         mobile,
@@ -68,6 +81,7 @@ class ApiService {
         isNewAccount: true,
       );
     } on FirebaseAuthException catch (e) {
+      print('❌ Registration FirebaseAuth error: ${e.code} - ${e.message}');
       if (e.code == 'email-already-in-use') {
         return ApiResponse(
           success: false,
@@ -81,9 +95,10 @@ class ApiService {
         data: {'code': e.code},
       );
     } catch (e) {
+      print('❌ Registration unexpected error: $e');
       return ApiResponse(
         success: false,
-        message: 'Something went wrong creating your account.',
+        message: 'Something went wrong creating your account: ${e.toString()}',
       );
     }
   }
@@ -95,35 +110,98 @@ class ApiService {
       String username, {
         bool isNewAccount = false,
       }) async {
-    final uid = credential.user!.uid;
+    try {
+      final uid = credential.user!.uid;
+      print('🔄 Saving user profile for UID: $uid');
 
-    await _db.collection('users').doc(uid).set({
-      'email': email,
-      'mobile': mobile,
-      'username': username,
-      'lastLogin': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      final userData = {
+        'email': email,
+        'mobile': mobile,
+        'username': username,
+        'lastLogin': FieldValue.serverTimestamp(),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
 
-    return ApiResponse(
-      success: true,
-      message: isNewAccount ? 'Account created — welcome!' : 'Login successful',
-      data: {'uid': uid},
-    );
+      print('📝 User data to save: $userData');
+
+      await _db.collection('users').doc(uid).set(
+        userData,
+        SetOptions(merge: true),
+      );
+
+      print('✅ User profile saved successfully to Firestore');
+
+      return ApiResponse(
+        success: true,
+        message: isNewAccount ? 'Account created — welcome!' : 'Login successful',
+        data: {'uid': uid},
+      );
+    } catch (e) {
+      print('❌ Failed to save user profile to Firestore: $e');
+      // The user is already created in Firebase Auth, but Firestore save failed
+      // Return success anyway since the auth part worked
+      return ApiResponse(
+        success: true,
+        message: isNewAccount
+            ? 'Account created successfully! Please sign in.'
+            : 'Login successful',
+        data: {'uid': credential.user!.uid},
+      );
+    }
   }
 
   static Future<void> logout() async {
-    await _auth.signOut();
+    try {
+      print('🔄 Logging out...');
+      await _auth.signOut();
+      print('✅ Logged out successfully');
+    } catch (e) {
+      print('❌ Logout error: $e');
+    }
   }
 
   static Future<ApiResponse> getCurrentUserProfile() async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
+        print('⚠️ getCurrentUserProfile: No user logged in');
         return ApiResponse(success: false, message: 'User not logged in');
       }
 
+      print('🔄 Fetching profile for UID: ${user.uid}');
       final doc = await _db.collection('users').doc(user.uid).get();
+
+      if (!doc.exists) {
+        print('⚠️ User document does not exist, creating one...');
+        // Create the user document if it doesn't exist
+        final userData = {
+          'email': user.email ?? '',
+          'username': user.email?.split('@').first ?? '',
+          'mobile': '',
+          'lastLogin': FieldValue.serverTimestamp(),
+          'createdAt': FieldValue.serverTimestamp(),
+        };
+
+        await _db.collection('users').doc(user.uid).set(
+          userData,
+          SetOptions(merge: true),
+        );
+        print('✅ Created user document for: ${user.uid}');
+
+        return ApiResponse(
+          success: true,
+          message: 'Profile fetched',
+          data: {
+            'uid': user.uid,
+            'username': user.email?.split('@').first ?? '',
+            'email': user.email ?? '',
+            'mobile': '',
+          },
+        );
+      }
+
       final data = doc.data() ?? {};
+      print('✅ Profile fetched for: ${user.uid}');
 
       return ApiResponse(
         success: true,
@@ -136,6 +214,7 @@ class ApiService {
         },
       );
     } catch (e) {
+      print('❌ Error fetching profile: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching profile: $e',
@@ -145,18 +224,22 @@ class ApiService {
 
   static Future<ApiResponse> sendPasswordReset({required String email}) async {
     try {
+      print('🔄 Sending password reset for: $email');
       await _auth.sendPasswordResetEmail(email: email);
+      print('✅ Password reset email sent to: $email');
       return ApiResponse(
         success: true,
         message: 'Password reset link sent to $email',
       );
     } on FirebaseAuthException catch (e) {
+      print('❌ Password reset error: ${e.code} - ${e.message}');
       return ApiResponse(
         success: false,
         message: _mapAuthError(e.code),
         data: {'code': e.code},
       );
     } catch (e) {
+      print('❌ Password reset unexpected error: $e');
       return ApiResponse(
         success: false,
         message: 'Something went wrong. Please try again.',
@@ -178,9 +261,11 @@ class ApiService {
       case 'too-many-requests':
         return 'Too many attempts. Try again later';
       case 'weak-password':
-        return 'Please choose a stronger password';
+        return 'Please choose a stronger password (min 8 chars)';
       case 'network-request-failed':
         return 'Network error. Check your connection and try again';
+      case 'email-already-in-use':
+        return 'An account already exists for that email';
       default:
         return 'Login failed. Please try again';
     }
@@ -202,6 +287,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Getting next report number for: $type at $centre');
       final normalizedCentre = centre.trim().toLowerCase();
 
       final querySnapshot = await _db
@@ -225,6 +311,7 @@ class ApiService {
       }
 
       final nextReportNo = maxReportNo + 1;
+      print('✅ Next report number: $nextReportNo');
 
       return ApiResponse(
         success: true,
@@ -232,6 +319,7 @@ class ApiService {
         data: {'nextReportNo': nextReportNo},
       );
     } catch (e) {
+      print('❌ Error getting next report no: $e');
       return ApiResponse(
         success: false,
         message: 'Failed to generate report number: $e',
@@ -257,6 +345,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Checking duplicate entry for: $type at $centre, Report #$reportNo');
       final normalizedCentre = centre.trim().toLowerCase();
       final normalizedVariety = variety.trim().toLowerCase();
 
@@ -294,20 +383,14 @@ class ApiService {
         }
       }
 
-      if (foundDuplicate) {
-        return ApiResponse(
-          success: true,
-          message: 'Duplicate entry found',
-          data: {'exists': true},
-        );
-      } else {
-        return ApiResponse(
-          success: true,
-          message: 'No duplicate found',
-          data: {'exists': false},
-        );
-      }
+      print('✅ Duplicate check result: ${foundDuplicate ? "Duplicate found" : "No duplicate"}');
+      return ApiResponse(
+        success: true,
+        message: foundDuplicate ? 'Duplicate entry found' : 'No duplicate found',
+        data: {'exists': foundDuplicate},
+      );
     } catch (e) {
+      print('❌ Error checking duplicate: $e');
       return ApiResponse(
         success: false,
         message: 'Error checking duplicate: $e',
@@ -327,11 +410,13 @@ class ApiService {
         );
       }
 
+      print('🔄 Saving purchase entry for: ${data['centre']}, Report #${data['reportNo']}');
       data['userId'] = user.uid;
       data['createdAt'] = FieldValue.serverTimestamp();
       data['type'] = 'purchase';
 
       final docRef = await _db.collection('purchases').add(data);
+      print('✅ Purchase entry saved with ID: ${docRef.id}');
 
       return ApiResponse(
         success: true,
@@ -339,6 +424,7 @@ class ApiService {
         data: {'id': docRef.id},
       );
     } catch (e) {
+      print('❌ Error saving purchase: $e');
       return ApiResponse(
         success: false,
         message: 'Error saving purchase: $e',
@@ -356,11 +442,13 @@ class ApiService {
         );
       }
 
+      print('🔄 Saving seed entry for: ${data['centre']}, Report #${data['reportNo']}');
       data['userId'] = user.uid;
       data['createdAt'] = FieldValue.serverTimestamp();
       data['type'] = 'seed';
 
       final docRef = await _db.collection('purchases').add(data);
+      print('✅ Seed entry saved with ID: ${docRef.id}');
 
       return ApiResponse(
         success: true,
@@ -368,6 +456,7 @@ class ApiService {
         data: {'id': docRef.id},
       );
     } catch (e) {
+      print('❌ Error saving seed: $e');
       return ApiResponse(
         success: false,
         message: 'Error saving seed: $e',
@@ -391,6 +480,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Finding entry: $type at $centre, Report #$reportNo');
       final normalizedCentre = centre.trim().toLowerCase();
       final normalizedVariety = variety?.trim().toLowerCase();
 
@@ -440,6 +530,7 @@ class ApiService {
       }
 
       if (match == null) {
+        print('⚠️ No entry found for: $type at $centre, Report #$reportNo');
         final varietyPart = (normalizedVariety != null && normalizedVariety.isNotEmpty)
             ? ', variety'
             : '';
@@ -450,6 +541,7 @@ class ApiService {
       }
 
       match['id'] = matchId;
+      print('✅ Entry found with ID: $matchId');
 
       return ApiResponse(
         success: true,
@@ -457,6 +549,7 @@ class ApiService {
         data: {'entry': match},
       );
     } catch (e) {
+      print('❌ Error finding entry: $e');
       return ApiResponse(
         success: false,
         message: 'Error finding entry: $e',
@@ -481,6 +574,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Fetching latest progressive for: $type at $centre, Variety: $variety');
       final normalizedCentre = centre.trim().toLowerCase();
       final normalizedVariety = variety.trim().toLowerCase();
 
@@ -512,6 +606,7 @@ class ApiService {
       }
 
       if (latestEntry == null) {
+        print('⚠️ No previous entry found, starting from 0');
         return ApiResponse(
           success: true,
           message: 'No previous entry found',
@@ -531,6 +626,8 @@ class ApiService {
       final mspProg = (latestEntry['mspValueProg'] as num?)?.toDouble() ?? 0;
       final balesProg = (latestEntry['balesPressedProg'] as num?)?.toDouble() ?? 0;
 
+      print('✅ Latest progressive values: APMC=$progApmc, Outside=$progOutside');
+
       return ApiResponse(
         success: true,
         message: 'Previous entry found',
@@ -543,6 +640,7 @@ class ApiService {
         },
       );
     } catch (e) {
+      print('❌ Error fetching previous entry: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching previous entry: $e',
@@ -560,6 +658,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Fetching purchase entries for user: ${user.uid}');
       final querySnapshot = await _db
           .collection('purchases')
           .where('userId', isEqualTo: user.uid)
@@ -573,12 +672,15 @@ class ApiService {
         return data;
       }).toList();
 
+      print('✅ Fetched ${entries.length} purchase entries');
+
       return ApiResponse(
         success: true,
         message: 'Entries fetched successfully',
         data: {'entries': entries},
       );
     } catch (e) {
+      print('❌ Error fetching purchase entries: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching entries: $e',
@@ -596,6 +698,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Fetching seed entries for user: ${user.uid}');
       final querySnapshot = await _db
           .collection('purchases')
           .where('userId', isEqualTo: user.uid)
@@ -609,12 +712,15 @@ class ApiService {
         return data;
       }).toList();
 
+      print('✅ Fetched ${entries.length} seed entries');
+
       return ApiResponse(
         success: true,
         message: 'Entries fetched successfully',
         data: {'entries': entries},
       );
     } catch (e) {
+      print('❌ Error fetching seed entries: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching entries: $e',
@@ -632,15 +738,18 @@ class ApiService {
         );
       }
 
+      print('🔄 Updating entry: $docId');
       data['updatedAt'] = FieldValue.serverTimestamp();
 
       await _db.collection('purchases').doc(docId).update(data);
+      print('✅ Entry updated: $docId');
 
       return ApiResponse(
         success: true,
         message: 'Entry updated successfully',
       );
     } catch (e) {
+      print('❌ Error updating entry: $e');
       return ApiResponse(
         success: false,
         message: 'Error updating entry: $e',
@@ -658,6 +767,8 @@ class ApiService {
         );
       }
 
+      print('🔄 Deleting entry: $docId');
+
       // First, check if this entry exists in any proforma
       final proformaQuery = await _db
           .collection('proformas')
@@ -674,6 +785,7 @@ class ApiService {
           if (updatedEntries.isEmpty) {
             // Delete the entire proforma if no entries left
             await proformaDoc.reference.delete();
+            print('🗑️ Deleted empty proforma: ${proformaDoc.id}');
           } else {
             // Update the proforma with remaining entries
             await proformaDoc.reference.update({
@@ -681,6 +793,7 @@ class ApiService {
               'entries': updatedEntries,
               'updatedAt': FieldValue.serverTimestamp(),
             });
+            print('🔄 Updated proforma after removing entry: ${proformaDoc.id}');
           }
           break;
         }
@@ -688,15 +801,88 @@ class ApiService {
 
       // Now delete the purchase entry itself
       await _db.collection('purchases').doc(docId).delete();
+      print('✅ Entry deleted: $docId');
 
       return ApiResponse(
         success: true,
         message: 'Entry deleted successfully',
       );
     } catch (e) {
+      print('❌ Error deleting entry: $e');
       return ApiResponse(
         success: false,
         message: 'Error deleting entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> checkEntryExists({
+    required String type,
+    required String centre,
+    required int reportNo,
+    required DateTime date,
+    required String variety,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(
+          success: false,
+          message: 'User not logged in',
+        );
+      }
+
+      print('🔄 Checking if entry exists: $type at $centre, Report #$reportNo');
+      final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedVariety = variety.trim().toLowerCase();
+
+      final querySnapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: type)
+          .get();
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (storedReportNo != reportNo) continue;
+
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null &&
+              parsed.year == date.year &&
+              parsed.month == date.month &&
+              parsed.day == date.day) {
+
+            final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+            if (storedVariety == normalizedVariety) {
+              print('✅ Entry exists with ID: ${doc.id}');
+              return ApiResponse(
+                success: true,
+                message: 'Entry exists',
+                data: {'exists': true, 'docId': doc.id},
+              );
+            }
+          }
+        }
+      }
+
+      print('✅ No entry found');
+      return ApiResponse(
+        success: true,
+        message: 'No entry found',
+        data: {'exists': false},
+      );
+    } catch (e) {
+      print('❌ Error checking entry: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error checking entry: $e',
       );
     }
   }
@@ -712,19 +898,11 @@ class ApiService {
     'rate', 'moisture', 'shortage', 'padtha', 'outTurn', 'seed',
   ];
 
-  /// Public wrapper so UI layers (list screen, view screen) can recompute
-  /// totals for any subset of entries — e.g. after filtering by date range —
-  /// instead of relying on the totals stored on the parent proforma doc,
-  /// which reflect ALL entries ever added for that centre/variety.
   static Map<String, dynamic> recomputeProformaTotals(
       Map<String, dynamic> entries,
       ) =>
       _recomputeProformaTotals(entries);
 
-  /// Filters an `entries` map down to only entries whose `entryDate` falls
-  /// within [start]..[end] (inclusive, date-only comparison). Pass null for
-  /// either bound to leave that side open. If both are null, returns the
-  /// entries unchanged.
   static Map<String, dynamic> filterEntriesByDateRange(
       Map<String, dynamic> entries, {
         DateTime? start,
@@ -765,7 +943,6 @@ class ApiService {
       final entry = Map<String, dynamic>.from(raw as Map);
       entryCount++;
 
-      // SUM these fields
       for (final field in _proformaSumFields) {
         final value = entry[field];
         if (value is num) {
@@ -778,7 +955,6 @@ class ApiService {
         }
       }
 
-      // Track for AVERAGE calculation (fallback if quantity is 0)
       for (final field in _proformaAvgFields) {
         final value = entry[field];
         if (value is num) {
@@ -794,40 +970,26 @@ class ApiService {
 
     final result = <String, dynamic>{...sumFields};
 
-    // Calculate averages using the formula:
-    // Rate = Amount total / Quantity total
-    // Moisture = Moisture value total / Quantity total
-    // Shortage = Shortage value total / Quantity total
-    // Padtha = Padtha value total / Quantity total
-    // Lint/OutTurn = Lint value total / Quantity total
-    // Seed = Seed value total / Quantity total
     final totalQuantity = sumFields['quantity'] as num? ?? 0;
     if (totalQuantity > 0) {
-      // Rate = Amount / Quantity
       final totalAmount = sumFields['amount'] as num? ?? 0;
       result['rate'] = totalAmount / totalQuantity;
 
-      // Moisture = Moisture Value / Quantity
       final totalMoistureValue = sumFields['moistureValue'] as num? ?? 0;
       result['moisture'] = totalMoistureValue / totalQuantity;
 
-      // Shortage = Shortage Value / Quantity
       final totalShortageValue = sumFields['shortageValue'] as num? ?? 0;
       result['shortage'] = totalShortageValue / totalQuantity;
 
-      // Padtha = Padtha Value / Quantity
       final totalPadthaValue = sumFields['padthaValue'] as num? ?? 0;
       result['padtha'] = totalPadthaValue / totalQuantity;
 
-      // Lint/OutTurn = OutTurn Value / Quantity
       final totalOutTurnValue = sumFields['outTurnValue'] as num? ?? 0;
       result['outTurn'] = totalOutTurnValue / totalQuantity;
 
-      // Seed = Seed Value / Quantity
       final totalSeedValue = sumFields['seedValue'] as num? ?? 0;
       result['seed'] = totalSeedValue / totalQuantity;
     } else {
-      // Fallback to average of individual entries if quantity is 0
       for (final entry in avgFields.entries) {
         final values = entry.value;
         if (values.isNotEmpty) {
@@ -837,7 +999,6 @@ class ApiService {
       }
     }
 
-    // Get date range from entries
     final entryDates = entries.values
         .map((e) => e['entryDate']?.toString())
         .whereType<String>()
@@ -913,6 +1074,8 @@ class ApiService {
         );
       }
 
+      print('🔄 Saving proforma for: $centre - $variety, Entry: $purchaseEntryId');
+
       final parsedDate = rawDate is String ? DateTime.parse(rawDate) : rawDate as DateTime;
       final normalizedDateStr = DateTime(parsedDate.year, parsedDate.month, parsedDate.day).toIso8601String();
 
@@ -953,6 +1116,7 @@ class ApiService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
+        print('✅ Proforma updated: ${doc.id}');
         return ApiResponse(
           success: true,
           message: 'Proforma updated',
@@ -971,12 +1135,14 @@ class ApiService {
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
+      print('✅ Proforma created: ${docRef.id}');
       return ApiResponse(
         success: true,
         message: 'Proforma saved successfully',
         data: {'id': docRef.id},
       );
     } catch (e) {
+      print('❌ Error saving proforma: $e');
       return ApiResponse(
         success: false,
         message: 'Error saving proforma: $e',
@@ -994,6 +1160,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Fetching proformas for user: ${user.uid}');
       final querySnapshot = await _db
           .collection('proformas')
           .where('userId', isEqualTo: user.uid)
@@ -1006,12 +1173,15 @@ class ApiService {
         return data;
       }).toList();
 
+      print('✅ Fetched ${proformas.length} proformas');
+
       return ApiResponse(
         success: true,
         message: 'Proformas fetched successfully',
         data: {'proformas': proformas},
       );
     } catch (e) {
+      print('❌ Error fetching proformas: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching proformas: $e',
@@ -1029,6 +1199,7 @@ class ApiService {
         );
       }
 
+      print('🔄 Fetching proforma for purchase entry: $purchaseEntryId');
       final query = await _db.collection('proformas').where('userId', isEqualTo: user.uid).get();
 
       for (final doc in query.docs) {
@@ -1039,6 +1210,7 @@ class ApiService {
           final entryData = Map<String, dynamic>.from(data);
           entryData['id'] = doc.id;
           entryData['selectedEntry'] = entries[purchaseEntryId];
+          print('✅ Proforma found for purchase entry: $purchaseEntryId');
           return ApiResponse(
             success: true,
             message: 'Proforma found',
@@ -1047,49 +1219,13 @@ class ApiService {
         }
       }
 
-      final legacyQuery = await _db
-          .collection('proformas')
-          .where('userId', isEqualTo: user.uid)
-          .get();
-
-      for (final doc in legacyQuery.docs) {
-        final data = doc.data();
-        final storedPurchaseEntryId = data['purchaseEntryId']?.toString();
-
-        if (storedPurchaseEntryId == purchaseEntryId) {
-          data['id'] = doc.id;
-          return ApiResponse(
-            success: true,
-            message: 'Proforma found (legacy format)',
-            data: {'proforma': data},
-          );
-        }
-      }
-
-      for (final doc in query.docs) {
-        final data = doc.data();
-        final entries = data['entries'];
-        if (entries is Map) {
-          for (final entry in entries.values) {
-            if (entry is Map && entry['purchaseEntryId']?.toString() == purchaseEntryId) {
-              final entryData = Map<String, dynamic>.from(data);
-              entryData['id'] = doc.id;
-              entryData['selectedEntry'] = entry;
-              return ApiResponse(
-                success: true,
-                message: 'Proforma found',
-                data: {'proforma': entryData},
-              );
-            }
-          }
-        }
-      }
-
+      print('⚠️ No proforma found for purchase entry: $purchaseEntryId');
       return ApiResponse(
         success: false,
         message: 'No proforma found for this entry',
       );
     } catch (e) {
+      print('❌ Error fetching proforma: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching proforma: $e',
@@ -1107,9 +1243,11 @@ class ApiService {
         );
       }
 
+      print('🔄 Fetching proforma by ID: $proformaId');
       final doc = await _db.collection('proformas').doc(proformaId).get();
 
       if (!doc.exists) {
+        print('⚠️ Proforma not found: $proformaId');
         return ApiResponse(
           success: false,
           message: 'Proforma not found',
@@ -1119,6 +1257,7 @@ class ApiService {
       final data = doc.data() ?? {};
 
       if (data['userId'] != user.uid) {
+        print('⚠️ Access denied to proforma: $proformaId');
         return ApiResponse(
           success: false,
           message: 'Access denied',
@@ -1126,12 +1265,15 @@ class ApiService {
       }
 
       data['id'] = doc.id;
+      print('✅ Proforma fetched: $proformaId');
+
       return ApiResponse(
         success: true,
         message: 'Proforma found',
         data: {'proforma': data},
       );
     } catch (e) {
+      print('❌ Error fetching proforma: $e');
       return ApiResponse(
         success: false,
         message: 'Error fetching proforma: $e',
@@ -1149,83 +1291,19 @@ class ApiService {
         );
       }
 
+      print('🔄 Deleting proforma: $docId');
       await _db.collection('proformas').doc(docId).delete();
+      print('✅ Proforma deleted: $docId');
 
       return ApiResponse(
         success: true,
         message: 'Proforma deleted successfully',
       );
     } catch (e) {
+      print('❌ Error deleting proforma: $e');
       return ApiResponse(
         success: false,
         message: 'Error deleting proforma: $e',
-      );
-    }
-  }
-
-  static Future<ApiResponse> checkEntryExists({
-    required String type,
-    required String centre,
-    required int reportNo,
-    required DateTime date,
-    required String variety,
-  }) async {
-    try {
-      final user = _auth.currentUser;
-      if (user == null) {
-        return ApiResponse(
-          success: false,
-          message: 'User not logged in',
-        );
-      }
-
-      final normalizedCentre = centre.trim().toLowerCase();
-      final normalizedVariety = variety.trim().toLowerCase();
-
-      final querySnapshot = await _db
-          .collection('purchases')
-          .where('userId', isEqualTo: user.uid)
-          .where('type', isEqualTo: type)
-          .get();
-
-      for (final doc in querySnapshot.docs) {
-        final data = doc.data();
-
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
-        if (storedCentre != normalizedCentre) continue;
-
-        final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
-        if (storedReportNo != reportNo) continue;
-
-        final rawDate = data['date'];
-        if (rawDate is String) {
-          final parsed = DateTime.tryParse(rawDate);
-          if (parsed != null &&
-              parsed.year == date.year &&
-              parsed.month == date.month &&
-              parsed.day == date.day) {
-
-            final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
-            if (storedVariety == normalizedVariety) {
-              return ApiResponse(
-                success: true,
-                message: 'Entry exists',
-                data: {'exists': true, 'docId': doc.id},
-              );
-            }
-          }
-        }
-      }
-
-      return ApiResponse(
-        success: true,
-        message: 'No entry found',
-        data: {'exists': false},
-      );
-    } catch (e) {
-      return ApiResponse(
-        success: false,
-        message: 'Error checking entry: $e',
       );
     }
   }
