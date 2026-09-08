@@ -37,7 +37,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   bool get _isFilterActive =>
       _isDateFilterActive || _selectedCentreFilter != null || _selectedVarietyFilter != null;
 
-  // Get the list of available centres from the reports
   List<String> get _availableCentres {
     final centres = <String>{};
     for (final report in _reports) {
@@ -49,7 +48,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     return centres.toList()..sort();
   }
 
-  // Get the list of available varieties from the reports (purchase only)
   List<String> get _availableVarieties {
     if (widget.reportType != 'purchase') return [];
     final varieties = <String>{};
@@ -67,6 +65,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     super.initState();
     _loadReports();
   }
+
+  // ========================================================================
+  // FILTER METHODS
+  // ========================================================================
 
   Future<void> _selectSingleDate() async {
     final picked = await showDatePicker(
@@ -179,7 +181,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   void _applyFilters() {
     setState(() {
       _filteredReports = _reports.where((report) {
-        // Date filter
         final rawDate = report['date']?.toString();
         if (rawDate == null || rawDate.isEmpty) return false;
 
@@ -198,13 +199,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           if (normalizedReportDate.isAfter(end)) return false;
         }
 
-        // Centre filter
         if (_selectedCentreFilter != null && _selectedCentreFilter!.isNotEmpty) {
           final reportCentre = report['centre']?.toString().toLowerCase() ?? '';
           if (reportCentre != _selectedCentreFilter!.toLowerCase()) return false;
         }
 
-        // Variety filter (for purchase reports only)
         if (_selectedVarietyFilter != null && _selectedVarietyFilter!.isNotEmpty) {
           final reportVariety = report['variety']?.toString().toLowerCase() ?? '';
           if (reportVariety != _selectedVarietyFilter!.toLowerCase()) return false;
@@ -251,7 +250,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       return;
     }
 
-    // Show confirmation dialog
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -369,7 +367,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       }
 
       if (response.success) {
-        // Remove the report from the list
         setState(() {
           _reports.removeAt(index);
           _isDeleting = false;
@@ -441,16 +438,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             sheet.appendRow(cells);
           }
 
-          // Row 1: Empty
           addRow([]);
-
-          // Row 2: Company Name
           addRow(['', 'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI', '', '', '', '', '', '', '', '', '', '']);
-
-          // Row 3: Empty
           addRow([]);
 
-          // Row 4: CENTRE and DATE
           String centre = report['centre']?.toString()?.toUpperCase() ?? 'DEVADURGA';
           String date = report['date']?.toString().split('T').first ?? '';
           String formattedDate = date.replaceAll('-', '.');
@@ -463,7 +454,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             '', '', ''
           ]);
 
-          // Row 5: Report No
           String reportNo = report['reportNo']?.toString() ?? '1';
           addRow([
             'DAILY MARKET/ PURCHASE REPORT NO.',
@@ -471,13 +461,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             reportNo, '', '', ''
           ]);
 
-          // Row 6: Variety
           String variety = report['variety']?.toString() ?? 'BB MOD';
           addRow([
             'SL NO', 'PARTICULARS', '', 'VARIETY:', variety, '', '', '', '', '', '', ''
           ]);
 
-          // Data Rows
           addRow([
             '1', "DAY'S ARRIVALS IN QTLS / BALES", '', 'APMC:',
             report['dayArrivalsApmc']?.toString() ?? '0', '', '', '', '', '', '', ''
@@ -637,7 +625,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             report['heapResult']?.toString() ?? '-', '', '', '', '', '', '', ''
           ]);
 
-          // Factory Details
           final factoriesData = report['factories'];
           List factories = [];
           if (factoriesData is List) {
@@ -678,7 +665,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             }
           }
 
-          // Save Individual File
           final fileBytes = excel.save();
           if (fileBytes != null) {
             String fileDate = formattedDate.replaceAll('-', '.');
@@ -763,7 +749,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           sheet.appendRow(cells);
         }
 
-        // Get factories data
         List<Map<String, dynamic>> factories = [];
         final factoriesData = report['seedFactories'] ?? report['factories'];
         if (factoriesData is List) {
@@ -777,11 +762,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           continue;
         }
 
-        // Company Name
         addRow(['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
         addRow([]);
 
-        // Centre and Date
         String centre = report['centre']?.toString()?.toUpperCase() ?? 'DEVADURGA';
         String date = report['date']?.toString().split('T').first ?? '';
         String formattedDate = date.replaceAll('-', '.');
@@ -789,7 +772,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         addRow(['REPORT NO.:', report['reportNo']?.toString() ?? '1']);
         addRow([]);
 
-        // Table Header
         addRow([
           'S.No.',
           'Ginning & pressing factory name',
@@ -803,7 +785,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           'Base Rate'
         ]);
 
-        // Data Rows
         for (int i = 0; i < factories.length; i++) {
           final factory = factories[i];
           final progressiveRealisable = factory['progressiveRealisable'] ?? 0;
@@ -891,6 +872,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     }
   }
 
+  // ========================================================================
+  // VIEW REPORT - WITH 3-VARIETY FORMAT
+  // ========================================================================
+
   void _viewReport(Map<String, dynamic> report) {
     final isPurchase = widget.reportType == 'purchase';
 
@@ -902,7 +887,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         ),
         child: Container(
           width: double.maxFinite,
-          constraints: const BoxConstraints(maxHeight: 700, maxWidth: 900),
+          constraints: const BoxConstraints(
+            maxHeight: 700,
+            maxWidth: 1100,
+          ),
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -951,14 +939,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                               color: Color(0xFF64748B),
                             ),
                           ),
-                        if (!isPurchase && report['factoryName'] != null)
-                          Text(
-                            'Factory: ${report['factoryName']}',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
                       ],
                     ),
                   ),
@@ -966,12 +946,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Excel-style table
+              // Excel-style table with 3 varieties
               Expanded(
-                child: SingleChildScrollView(
-                  child: isPurchase
-                      ? _buildPurchaseReportView(report)
-                      : _buildSeedReportView(report),
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minHeight: 200,
+                    maxHeight: 500,
+                  ),
+                  child: SingleChildScrollView(
+                    child: isPurchase
+                        ? _buildPurchaseReportView3Variety(report)
+                        : _buildSeedReportView(report),
+                  ),
                 ),
               ),
 
@@ -1009,7 +995,20 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     );
   }
 
-  Widget _buildPurchaseReportView(Map<String, dynamic> report) {
+  // ========================================================================
+  // 3-VARIETY PURCHASE PREVIEW
+  // ========================================================================
+
+  Widget _buildPurchaseReportView3Variety(Map<String, dynamic> report) {
+    final currentVariety = report['variety']?.toString() ?? 'BB MOD';
+
+    String getValue(String variety, String field) {
+      if (report['variety'] == variety) {
+        return report[field]?.toString() ?? '0';
+      }
+      return '0';
+    }
+
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
@@ -1020,7 +1019,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         children: [
           // Company Name
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: const BoxDecoration(
               color: Color(0xFFF8FAFC),
@@ -1037,10 +1035,25 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 4),
 
-          // Centre & Date
+          // Title
           Container(
-            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: const Text(
+              'DAILY PURCHASE REPORT',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+
+          // Header: Centre & Date
+          Container(
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -1050,15 +1063,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ),
             child: Row(
               children: [
-                Container(
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                    ),
-                  ),
-                  padding: const EdgeInsets.only(right: 8),
-                  child: const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                ),
+                const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -1066,28 +1071,20 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                   ),
                 ),
-                Container(
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                ),
+                const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 const SizedBox(width: 4),
                 Text(
-                  report['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+                  _formatDateDisplay(report['date']),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 4),
 
-          // Report No & Variety
+          // Report No
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
             decoration: const BoxDecoration(
               color: Color(0xFFF8FAFC),
               border: Border(
@@ -1096,77 +1093,575 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ),
             child: Row(
               children: [
-                Container(
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                    ),
-                  ),
-                  padding: const EdgeInsets.only(right: 8),
-                  child: const Text('DAILY MARKET/ PURCHASE REPORT NO.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                ),
+                const Text('DAILY MARKET/ PURCHASE REPORT NO.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 const Spacer(),
                 Text(
                   report['reportNo']?.toString() ?? '1',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(width: 8),
-                const Text('VARIETY:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                const SizedBox(width: 4),
-                Text(
-                  report['variety']?.toString() ?? 'BB MOD',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                ),
               ],
             ),
           ),
+          const SizedBox(height: 6),
 
-          // Data rows
-          _buildReportRow('1', "DAY'S ARRIVALS IN QTLS / BALES", 'APMC:', report['dayArrivalsApmc']?.toString() ?? '0'),
-          _buildReportRow('', '', 'OUTSIDE APMC:', report['dayArrivalsOutside']?.toString() ?? '0'),
-          _buildReportRow('2', 'PROG. ARRIVALS IN QTLS / BALES', 'APMC:', report['progArrivalsApmc']?.toString() ?? '0'),
-          _buildReportRow('', '', 'OUTSIDE APMC:', report['progArrivalsOutside']?.toString() ?? '0'),
-          _buildReportRow('3', 'MOISTURE PERCENTAGE (%)', '', report['moisture']?.toString() ?? '8-20%'),
-          _buildReportRow('4', 'MARKET RATE (KAPAS RATE IN QTLS)', 'HIGHEST', report['marketRateHighest']?.toString() ?? '0'),
-          _buildReportRow('', '', 'LOWEST', report['marketRateLowest']?.toString() ?? '0'),
-          _buildReportRow('', '', 'AVERAGE', report['marketRateAverage']?.toString() ?? '0'),
-          _buildReportRow('5', 'MARKET OUT TURN', '', '-'),
-          _buildReportRow('6', 'MARKET EXPENSES', '', '-'),
-          _buildReportRow('7', 'MARKET SHORTAGE', '', '-'),
-          _buildReportRow('8', 'MARKET PADTHA', '', '-'),
-          _buildReportRow('9', 'MARKET COTTON SEED RATE (PER QTLS)', 'HIGHEST', report['marketSeedRateHighest']?.toString() ?? '0'),
-          _buildReportRow('', '', 'LOWEST', report['marketSeedRateLowest']?.toString() ?? '0'),
-          _buildReportRow('10', 'CCI PURCHASE IN', 'QTLS', report['cciPurchaseQtls']?.toString() ?? '0'),
-          _buildReportRow('', '', 'BALES', report['cciPurchaseBales']?.toString() ?? '0'),
-          _buildReportRow('', '', 'Kapas Mositure %', report['cciKapasMoisture']?.toString() ?? '0'),
-          _buildReportRow('11', 'MSP VALUE (IN LAKHS)', 'DAY WISE', report['mspValueDay']?.toString() ?? '0'),
-          _buildReportRow('', '', 'PROGRESSIVE', report['mspValueProg']?.toString() ?? '0'),
-          _buildReportRow('12', 'No. OF FARMERS BENEFITTED', 'DAY WISE', report['farmersDay']?.toString() ?? '0'),
-          _buildReportRow('', '', 'PROGRESSIVE', report['farmersProgressive']?.toString() ?? '0'),
-          _buildReportRow('13', 'CCI RATE (KAPAS RATE IN QTLS)', 'HIGHEST', report['cciRateHighest']?.toString() ?? '0'),
-          _buildReportRow('', '', 'LOWEST', report['cciRateLowest']?.toString() ?? '0'),
-          _buildReportRow('', '', 'AVERAGE', report['cciRateAverage']?.toString() ?? '0'),
-          _buildReportRow('14', 'CCI COTTON SEED RATE', '', report['cciSeedRate']?.toString() ?? '0'),
-          _buildReportRow('15', 'CCI OUT TURN', '', report['cciOutTurn']?.toString() ?? '0'),
-          _buildReportRow('16', 'CCI SHORTAGE', '', report['cciShortage']?.toString() ?? '0'),
-          _buildReportRow('17', 'CCI EXPENSES', '', report['cciExpenses']?.toString() ?? '0'),
-          _buildReportRow('18', "PROCESSING CYCLE DAY'S", '', report['processingCycle']?.toString() ?? '0'),
-          _buildReportRow('19', 'CCI PADTHA', '', report['cciPadtha']?.toString() ?? '0'),
-          _buildReportRow('20', 'PROGRESSIVE PURCHASE', 'QTLS', report['progPurchaseQtls']?.toString() ?? '0'),
-          _buildReportRow('', '', 'BALES', report['progPurchaseBales']?.toString() ?? '0'),
-          _buildReportRow('21', 'PROGRESSIVE', 'PADTHA', report['progPadtha']?.toString() ?? '0'),
-          _buildReportRow('', '', 'AVG. RATE', report['progAvgRate']?.toString() ?? '0'),
-          _buildReportRow('22', 'BALES PRESSED DETAILS', 'TODAYS', report['balesPressedToday']?.toString() ?? '0'),
-          _buildReportRow('', '', 'PROGRESSIVE', report['balesPressedProg']?.toString() ?? '0'),
-          _buildReportRow('23', 'TOTAL BALES SHIFTED TO GODOWN', '', report['totalBalesShifted']?.toString() ?? '0'),
-          _buildReportRow('24', 'SAMPLE SENT TO B.O FOR TESTING', '', report['sampleSent']?.toString() ?? '-'),
-          _buildReportRow('25', 'HEAP RESULT SENT TO B.O', '', report['heapResult']?.toString() ?? '-'),
+          // 3-Variety Header
+          Row(
+            children: [
+              const SizedBox(width: 30),
+              _buildVarietyHeader('BB MOD', currentVariety == 'BB MOD'),
+              const SizedBox(width: 20),
+              _buildVarietyHeader('BB SPL MOD', currentVariety == 'BB SPL MOD'),
+              const SizedBox(width: 20),
+              _buildVarietyHeader('MECH', currentVariety == 'MECH'),
+            ],
+          ),
+          const SizedBox(height: 4),
 
-          _buildFactoryDetails(report),
+          // Data Rows
+          _buildRowWithThreeValues(
+            "Day's Kapas Purchased from No. of Farmers",
+            getValue('BB MOD', 'farmersDay'),
+            getValue('BB SPL MOD', 'farmersDay'),
+            getValue('MECH', 'farmersDay'),
+          ),
+          _buildRowWithThreeValues(
+            'Arrivals (In Bales)',
+            getValue('BB MOD', 'arrivalsBales'),
+            getValue('BB SPL MOD', 'arrivalsBales'),
+            getValue('MECH', 'arrivalsBales'),
+          ),
+          _buildRowWithThreeValues(
+            'CCI Purchases (In Qtls)',
+            getValue('BB MOD', 'cciPurchaseQtls'),
+            getValue('BB SPL MOD', 'cciPurchaseQtls'),
+            getValue('MECH', 'cciPurchaseQtls'),
+          ),
+          _buildRowWithThreeValues(
+            'CCI Purchases (In Bales)',
+            getValue('BB MOD', 'cciPurchaseBales'),
+            getValue('BB SPL MOD', 'cciPurchaseBales'),
+            getValue('MECH', 'cciPurchaseBales'),
+          ),
+          _buildRowWithThreeValues(
+            'Average Kapas rate (In Rs. per qtl)',
+            getValue('BB MOD', 'avgKapasRate'),
+            getValue('BB SPL MOD', 'avgKapasRate'),
+            getValue('MECH', 'avgKapasRate'),
+          ),
+          _buildRowWithThreeValues(
+            'Budgeted Lint Percentage (%)',
+            getValue('BB MOD', 'budgetedLint'),
+            getValue('BB SPL MOD', 'budgetedLint'),
+            getValue('MECH', 'budgetedLint'),
+          ),
+          _buildRowWithThreeValues(
+            'Budgeted Shortage Percentage (%)',
+            getValue('BB MOD', 'budgetedShortage'),
+            getValue('BB SPL MOD', 'budgetedShortage'),
+            getValue('MECH', 'budgetedShortage'),
+          ),
+          _buildRowWithThreeValues(
+            'Cotton seed rate (In Rs. per qtl)',
+            getValue('BB MOD', 'cottonSeedRate'),
+            getValue('BB SPL MOD', 'cottonSeedRate'),
+            getValue('MECH', 'cottonSeedRate'),
+          ),
+          _buildRowWithThreeValues(
+            "Processing cycle (In day's)",
+            getValue('BB MOD', 'processingCycle'),
+            getValue('BB SPL MOD', 'processingCycle'),
+            getValue('MECH', 'processingCycle'),
+          ),
+          _buildRowWithThreeValues(
+            'Proforma Expenses (In Rs. per Candy)',
+            getValue('BB MOD', 'proformaExpenses'),
+            getValue('BB SPL MOD', 'proformaExpenses'),
+            getValue('MECH', 'proformaExpenses'),
+          ),
+          _buildRowWithThreeValues(
+            'Budgeted Padtha (In Rs. per candy)',
+            getValue('BB MOD', 'budgetedPadtha'),
+            getValue('BB SPL MOD', 'budgetedPadtha'),
+            getValue('MECH', 'budgetedPadtha'),
+          ),
+          _buildRowWithThreeValues(
+            "Day's pressed bales (In Bales)",
+            getValue('BB MOD', 'dayPressedBales'),
+            getValue('BB SPL MOD', 'dayPressedBales'),
+            getValue('MECH', 'dayPressedBales'),
+          ),
+          const SizedBox(height: 6),
+
+          // Market & CCI Rates
+          const Divider(thickness: 1),
+          const Text(
+            'MARKET & CCI RATES',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          _buildRowWithThreeValues(
+            'Market Highest Rate (In Rs. per qtl)',
+            getValue('BB MOD', 'marketHighestRate'),
+            getValue('BB SPL MOD', 'marketHighestRate'),
+            getValue('MECH', 'marketHighestRate'),
+          ),
+          _buildRowWithThreeValues(
+            'Market Lowest Rate (In Rs. per qtl)',
+            getValue('BB MOD', 'marketLowestRate'),
+            getValue('BB SPL MOD', 'marketLowestRate'),
+            getValue('MECH', 'marketLowestRate'),
+          ),
+          _buildRowWithThreeValues(
+            'CCI Highest Rate (In Rs. per qtl)',
+            getValue('BB MOD', 'cciHighestRate'),
+            getValue('BB SPL MOD', 'cciHighestRate'),
+            getValue('MECH', 'cciHighestRate'),
+          ),
+          _buildRowWithThreeValues(
+            'CCI Lowest Rate (In Rs. per qtl)',
+            getValue('BB MOD', 'cciLowestRate'),
+            getValue('BB SPL MOD', 'cciLowestRate'),
+            getValue('MECH', 'cciLowestRate'),
+          ),
+          const SizedBox(height: 6),
+
+          // Progressive Values
+          const Divider(thickness: 1),
+          const Text(
+            'PROGRESSIVE VALUES',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          _buildRowWithThreeValues(
+            'Prog. Pressed Bales',
+            getValue('BB MOD', 'progPressedBales'),
+            getValue('BB SPL MOD', 'progPressedBales'),
+            getValue('MECH', 'progPressedBales'),
+          ),
+          _buildRowWithThreeValues(
+            'Prog. Purchase (Qtls)',
+            getValue('BB MOD', 'progPurchaseQtls'),
+            getValue('BB SPL MOD', 'progPurchaseQtls'),
+            getValue('MECH', 'progPurchaseQtls'),
+          ),
+          _buildRowWithThreeValues(
+            'Prog. Purchase (Bales)',
+            getValue('BB MOD', 'progPurchaseBales'),
+            getValue('BB SPL MOD', 'progPurchaseBales'),
+            getValue('MECH', 'progPurchaseBales'),
+          ),
+          _buildRowWithThreeValues(
+            'Prog. Kapas Purchased from No. of Farmers',
+            getValue('BB MOD', 'progFarmers'),
+            getValue('BB SPL MOD', 'progFarmers'),
+            getValue('MECH', 'progFarmers'),
+          ),
+          const SizedBox(height: 6),
+
+          // Factory Details
+          const Divider(thickness: 1),
+          const Text(
+            'FACTORY WISE DAY PURCHASE DETAILS',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          _buildFactoryTable3Variety(report),
         ],
       ),
     );
   }
+
+  Widget _buildVarietyHeader(String title, bool isActive) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          title,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRowWithThreeValues(String label, String v1, String v2, String v3) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1.5),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 230,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              v1,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Text(
+              v2,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Text(
+              v3,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ========================================================================
+  // FACTORY TABLE - 3 VARIETY (FIXED)
+  // ========================================================================
+
+  Widget _buildFactoryTable3Variety(Map<String, dynamic> report) {
+    List<Map<String, dynamic>> factories = [];
+    final factoriesData = report['factories'];
+    if (factoriesData is List) {
+      factories = List<Map<String, dynamic>>.from(factoriesData);
+    }
+
+    if (factories.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Center(
+          child: Text(
+            'No factory data available',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+          ),
+        ),
+      );
+    }
+
+    final currentVariety = report['variety']?.toString() ?? 'BB MOD';
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Row - FIXED: No width: double.infinity
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE2E8F0),
+                border: Border(
+                  bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 30, child: Text('SNO', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10))),
+                  const SizedBox(width: 150, child: Text('Factory Name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10))),
+                  const SizedBox(width: 20),
+                  _buildTableHeader3('BB MOD', currentVariety == 'BB MOD'),
+                  const SizedBox(width: 10),
+                  _buildTableHeader3('BB SPL MOD', currentVariety == 'BB SPL MOD'),
+                  const SizedBox(width: 10),
+                  _buildTableHeader3('MECH', currentVariety == 'MECH'),
+                ],
+              ),
+            ),
+            // Data Rows
+            ...factories.asMap().entries.map((entry) {
+              final index = entry.key;
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
+                  border: const Border(
+                    bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(width: 30, child: Text('${index + 1}', style: const TextStyle(fontSize: 10))),
+                    SizedBox(
+                      width: 150,
+                      child: Text(
+                        factories[index]['factoryName']?.toString() ?? '',
+                        style: const TextStyle(fontSize: 10),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    _buildFactoryValueCell3(report, 'BB MOD', index),
+                    const SizedBox(width: 10),
+                    _buildFactoryValueCell3(report, 'BB SPL MOD', index),
+                    const SizedBox(width: 10),
+                    _buildFactoryValueCell3(report, 'MECH', index),
+                  ],
+                ),
+              );
+            }),
+            // Total Row
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+              decoration: const BoxDecoration(
+                color: Color(0xFFE2E8F0),
+                border: Border(
+                  top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 30),
+                  const SizedBox(
+                    width: 150,
+                    child: Text(
+                      'TOTAL',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                  _buildTotalCell3(report, 'BB MOD'),
+                  const SizedBox(width: 10),
+                  _buildTotalCell3(report, 'BB SPL MOD'),
+                  const SizedBox(width: 10),
+                  _buildTotalCell3(report, 'MECH'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableHeader3(String title, bool isActive) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            'Prog Pur\n(Qtls)',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 8,
+              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 70,
+          child: Text(
+            'Prog Pur\n(Bales)',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 8,
+              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFactoryValueCell3(Map<String, dynamic> report, String targetVariety, int factoryIndex) {
+    if (report['variety'] != targetVariety) {
+      return Row(
+        children: [
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+          const SizedBox(width: 4),
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+        ],
+      );
+    }
+
+    final factories = report['factories'];
+    if (factories is! List || factoryIndex >= factories.length) {
+      return Row(
+        children: [
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+          const SizedBox(width: 4),
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+        ],
+      );
+    }
+
+    final factory = factories[factoryIndex];
+    if (factory is! Map) {
+      return Row(
+        children: [
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+          const SizedBox(width: 4),
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            factory['progPurchaseQtls']?.toString() ?? '0',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 9),
+          ),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 70,
+          child: Text(
+            factory['progPurchaseBales']?.toString() ?? '0',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 9),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTotalCell3(Map<String, dynamic> report, String targetVariety) {
+    if (report['variety'] != targetVariety) {
+      return Row(
+        children: [
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+          const SizedBox(width: 4),
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+        ],
+      );
+    }
+
+    final factories = report['factories'];
+    if (factories is! List) {
+      return Row(
+        children: [
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+          const SizedBox(width: 4),
+          SizedBox(width: 70, child: const Text('', textAlign: TextAlign.center)),
+        ],
+      );
+    }
+
+    double totalQtls = 0;
+    double totalBales = 0;
+    for (final factory in factories) {
+      if (factory is Map) {
+        totalQtls += (factory['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+        totalBales += (factory['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+      }
+    }
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 70,
+          child: Text(
+            totalQtls.toStringAsFixed(2),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 70,
+          child: Text(
+            totalBales.toStringAsFixed(0),
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDateDisplay(dynamic dateValue) {
+    if (dateValue == null) return '';
+    try {
+      DateTime date;
+      if (dateValue is String) {
+        date = DateTime.parse(dateValue);
+      } else if (dateValue is DateTime) {
+        date = dateValue;
+      } else {
+        return '';
+      }
+      final day = date.day.toString().padLeft(2, '0');
+      final month = date.month.toString().padLeft(2, '0');
+      final year = date.year.toString();
+      return '$day.$month.$year';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // ========================================================================
+  // SEED REPORT VIEW
+  // ========================================================================
 
   Widget _buildSeedReportView(Map<String, dynamic> report) {
     List<Map<String, dynamic>> factories = [];
@@ -1197,9 +1692,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: const BoxDecoration(
               color: Color(0xFF0F172A),
@@ -1216,10 +1709,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               textAlign: TextAlign.center,
             ),
           ),
-
-          // Centre & Date
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -1240,16 +1730,13 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                 const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                 const SizedBox(width: 4),
                 Text(
-                  report['date']?.toString().split('T').first.replaceAll('-', '.') ?? '',
+                  _formatDateDisplay(report['date']),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                 ),
               ],
             ),
           ),
-
-          // Report No
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
             decoration: const BoxDecoration(
               color: Color(0xFFF8FAFC),
@@ -1269,10 +1756,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ),
           ),
           const SizedBox(height: 4),
-
-          // Table Header
           Container(
-            width: double.infinity,
             decoration: const BoxDecoration(
               color: Color(0xFFE2E8F0),
               border: Border(
@@ -1296,15 +1780,12 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               ],
             ),
           ),
-
-          // Data Rows
           ...factories.asMap().entries.map((entry) {
             final index = entry.key;
             final factory = entry.value;
             final total = factory['total'] ??
                 (factory['kapasForm'] ?? 0) + (factory['readyForm'] ?? 0);
             return Container(
-              width: double.infinity,
               decoration: BoxDecoration(
                 color: index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
                 border: const Border(
@@ -1356,430 +1837,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     );
   }
 
-  Widget _buildReportRow(String slNo, String particulars, String subLabel, String value) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: slNo.isNotEmpty ? const Color(0xFFF8FAFC) : Colors.white,
-        border: const Border(
-          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            decoration: const BoxDecoration(
-              border: Border(
-                right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-              ),
-            ),
-            child: Text(
-              slNo,
-              style: TextStyle(
-                fontWeight: slNo.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                fontSize: 11,
-                color: slNo.isNotEmpty ? const Color(0xFF0F172A) : const Color(0xFF64748B),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(
-                particulars,
-                style: TextStyle(
-                  fontWeight: slNo.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
-                  fontSize: 11,
-                  color: slNo.isNotEmpty ? const Color(0xFF0F172A) : const Color(0xFF64748B),
-                ),
-              ),
-            ),
-          ),
-          if (subLabel.isNotEmpty) ...[
-            Container(
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: const Color(0xFFE2E8F0), width: 0.5),
-                  right: BorderSide(color: const Color(0xFFE2E8F0), width: 0.5),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text(
-                subLabel,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 11,
-                  color: Color(0xFF0F172A),
-                ),
-              ),
-            ),
-          ],
-          Container(
-            width: 80,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 11,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFactoryDetails(Map<String, dynamic> report) {
-    final factoriesData = report['factories'];
-
-    List factories = [];
-    if (factoriesData is List) {
-      factories = factoriesData;
-    } else if (factoriesData is Map<String, dynamic>) {
-      factories = [factoriesData];
-    }
-
-    if (factories.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    List<Widget> children = [
-      const Divider(height: 16, thickness: 1),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-        decoration: const BoxDecoration(
-          color: Color(0xFF0F172A),
-        ),
-        child: const Text(
-          'FACTORY DETAILS',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-            color: Colors.white,
-          ),
-        ),
-      ),
-      Container(
-        width: double.infinity,
-        decoration: const BoxDecoration(
-          color: Color(0xFFE2E8F0),
-          border: Border(
-            top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-            bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('SL NO',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Container(
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                  ),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: const Text('FACTORY NAME',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 10,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 35,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('HEAP NO.',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 35,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('HEAP QTY.',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 35,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('FARMERS',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 40,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('REAL.',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 30,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('SOLD',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 30,
-              decoration: const BoxDecoration(
-                border: Border(
-                  right: BorderSide(color: Color(0xFFCBD5E1), width: 0.5),
-                ),
-              ),
-              child: const Text('UNSOLD',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Container(
-              width: 35,
-              child: const Text('BASE RATE',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 10,
-                  color: Color(0xFF0F172A),
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ];
-
-    for (int i = 0; i < factories.length; i++) {
-      final factory = factories[i] as Map<String, dynamic>;
-      children.add(
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: i % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
-            border: const Border(
-              bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 16),
-          child: Row(
-            children: [
-              Container(
-                width: 30,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text((i + 1).toString(),
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    border: Border(
-                      right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                    ),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(factory['factoryName']?.toString() ?? '',
-                    style: const TextStyle(fontSize: 10),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 35,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text(factory['heapNo']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 35,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text(factory['heapQty']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 35,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text(factory['seedFarmers']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 40,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text(factory['seed_realisable']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 30,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text(factory['readySeedSold']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 30,
-                decoration: const BoxDecoration(
-                  border: Border(
-                    right: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                child: Text(factory['readySeedUnsold']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Container(
-                width: 35,
-                child: Text(factory['baseRate']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 10),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    children.add(
-      Container(
-        height: 1,
-        color: const Color(0xFFCBD5E1),
-      ),
-    );
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: children,
-    );
-  }
+  // ========================================================================
+  // BUILD
+  // ========================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -1803,8 +1863,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       ),
       body: Column(
         children: [
+          // Filter Bar
           Container(
-            width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -1813,7 +1873,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Filter Mode Chips
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -1832,18 +1891,66 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Centre Filter Dropdown
                 if (availableCentres.isNotEmpty) ...[
                   Row(
                     children: [
                       Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedCentreFilter,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            hintText: 'All Centres',
+                            hintStyle: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF1F5F9),
+                            isDense: true,
+                            suffixIcon: _selectedCentreFilter != null
+                                ? IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              onPressed: _clearCentreFilter,
+                              padding: EdgeInsets.zero,
+                            )
+                                : null,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('All Centres'),
+                            ),
+                            ...availableCentres.map((centre) {
+                              return DropdownMenuItem<String>(
+                                value: centre,
+                                child: Text(centre),
+                              );
+                            }),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedCentreFilter = value;
+                            });
+                            _applyFilters();
+                          },
+                        ),
+                      ),
+                      if (isPurchase && availableVarieties.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _selectedCentreFilter,
+                            value: _selectedVarietyFilter,
                             isExpanded: true,
                             decoration: InputDecoration(
-                              hintText: 'All Centres',
+                              hintText: 'All Varieties',
                               hintStyle: const TextStyle(
                                 fontSize: 12,
                                 color: Color(0xFF64748B),
@@ -1859,10 +1966,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                               filled: true,
                               fillColor: const Color(0xFFF1F5F9),
                               isDense: true,
-                              suffixIcon: _selectedCentreFilter != null
+                              suffixIcon: _selectedVarietyFilter != null
                                   ? IconButton(
                                 icon: const Icon(Icons.close, size: 16),
-                                onPressed: _clearCentreFilter,
+                                onPressed: _clearVarietyFilter,
                                 padding: EdgeInsets.zero,
                               )
                                   : null,
@@ -1870,77 +1977,21 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                             items: [
                               const DropdownMenuItem<String>(
                                 value: null,
-                                child: Text('All Centres'),
+                                child: Text('All Varieties'),
                               ),
-                              ...availableCentres.map((centre) {
+                              ...availableVarieties.map((variety) {
                                 return DropdownMenuItem<String>(
-                                  value: centre,
-                                  child: Text(centre),
+                                  value: variety,
+                                  child: Text(variety),
                                 );
                               }),
                             ],
                             onChanged: (value) {
                               setState(() {
-                                _selectedCentreFilter = value;
+                                _selectedVarietyFilter = value;
                               });
                               _applyFilters();
                             },
-                          ),
-                        ),
-                      ),
-                      // Variety filter for purchase reports
-                      if (isPurchase && availableVarieties.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: DropdownButtonFormField<String>(
-                              value: _selectedVarietyFilter,
-                              isExpanded: true,
-                              decoration: InputDecoration(
-                                hintText: 'All Varieties',
-                                hintStyle: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: const Color(0xFFF1F5F9),
-                                isDense: true,
-                                suffixIcon: _selectedVarietyFilter != null
-                                    ? IconButton(
-                                  icon: const Icon(Icons.close, size: 16),
-                                  onPressed: _clearVarietyFilter,
-                                  padding: EdgeInsets.zero,
-                                )
-                                    : null,
-                              ),
-                              items: [
-                                const DropdownMenuItem<String>(
-                                  value: null,
-                                  child: Text('All Varieties'),
-                                ),
-                                ...availableVarieties.map((variety) {
-                                  return DropdownMenuItem<String>(
-                                    value: variety,
-                                    child: Text(variety),
-                                  );
-                                }),
-                              ],
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedVarietyFilter = value;
-                                });
-                                _applyFilters();
-                              },
-                            ),
                           ),
                         ),
                       ],
@@ -2012,7 +2063,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   ],
                 ),
 
-                // Active filters summary
                 if (_isFilterActive) ...[
                   const SizedBox(height: 8),
                   Wrap(
@@ -2047,6 +2097,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               ],
             ),
           ),
+          // List
           Expanded(
             child: _isLoading
                 ? const Center(
