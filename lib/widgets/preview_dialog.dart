@@ -11,6 +11,49 @@ class PreviewDialog extends StatelessWidget {
     this.data,
   });
 
+  static const List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
+
+  /// Reads a field for a specific variety.
+  /// - Own variety → reads top-level field directly.
+  /// - Other two   → reads from `otherVarietiesProgressive[<variety>][field]`.
+  String _v(Map<String, dynamic>? doc, String targetVariety, String field) {
+    if (doc == null) return '0';
+    final ownVariety = (doc['variety'] ?? '').toString();
+    if (ownVariety == targetVariety) {
+      final v = doc[field];
+      return v?.toString() ?? '0';
+    }
+    final others = doc['otherVarietiesProgressive'];
+    if (others is Map) {
+      final other = others[targetVariety];
+      if (other is Map) {
+        final v = other[field];
+        return v?.toString() ?? '0';
+      }
+    }
+    return '0';
+  }
+
+  String _formatDate(dynamic dateValue) {
+    if (dateValue == null) return '';
+    try {
+      DateTime date;
+      if (dateValue is String) {
+        date = DateTime.parse(dateValue);
+      } else if (dateValue is DateTime) {
+        date = dateValue;
+      } else {
+        return '';
+      }
+      final day = date.day.toString().padLeft(2, '0');
+      final month = date.month.toString().padLeft(2, '0');
+      final year = date.year.toString();
+      return '$day.$month.$year';
+    } catch (e) {
+      return '';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isPurchase = type == ReportType.dailyPurchase;
@@ -19,7 +62,7 @@ class PreviewDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
         padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 1100, maxHeight: 650),
+        constraints: const BoxConstraints(maxWidth: 1200, maxHeight: 700),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -29,11 +72,14 @@ class PreviewDialog extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: isPurchase ? const Color(0xFFE0F2FE) : const Color(0xFFD1FAE5),
+                    color: isPurchase
+                        ? const Color(0xFFE0F2FE)
+                        : const Color(0xFFD1FAE5),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    isPurchase ? Icons.shopping_basket_rounded : Icons.eco_rounded,
+                    isPurchase ? Icons.shopping_basket_rounded : Icons
+                        .eco_rounded,
                     color: const Color(0xFF0F172A),
                     size: 24,
                   ),
@@ -70,7 +116,6 @@ class PreviewDialog extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-
             Expanded(
               child: Container(
                 padding: const EdgeInsets.all(16),
@@ -79,13 +124,14 @@ class PreviewDialog extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: isPurchase
-                    ? _buildPurchasePreview(data)
-                    : _buildSeedPreview(data),
+                child: SingleChildScrollView(
+                  child: isPurchase
+                      ? _buildPurchasePreview(data)
+                      : _buildSeedPreview(data),
+                ),
               ),
             ),
             const SizedBox(height: 16),
-
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -121,817 +167,191 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-  String _safeString(dynamic value, {String defaultValue = '0'}) {
-    if (value == null) return defaultValue;
-    return value.toString();
-  }
-
-  String _formatDate(dynamic dateValue) {
-    if (dateValue == null) return '';
-    try {
-      DateTime date;
-      if (dateValue is String) {
-        date = DateTime.parse(dateValue);
-      } else if (dateValue is DateTime) {
-        date = dateValue;
-      } else {
-        return '';
-      }
-      final day = date.day.toString().padLeft(2, '0');
-      final month = date.month.toString().padLeft(2, '0');
-      final year = date.year.toString();
-      return '$day.$month.$year';
-    } catch (e) {
-      return '';
-    }
-  }
-
-  // Helper to get value for a specific variety
-  String _getValueForVariety(Map<String, dynamic>? data, String targetVariety, String field) {
-    if (data == null) return '0';
-
-    // If the current entry's variety matches, return the value
-    if (data['variety'] == targetVariety) {
-      final value = data[field];
-      return value?.toString() ?? '0';
-    }
-
-    // For other varieties, return '0' (they don't exist in this entry)
-    return '0';
-  }
-
-  // Helper to get factory value for a specific variety
-  String _getFactoryValueForVariety(Map<String, dynamic>? data, String targetVariety, int factoryIndex, String field) {
-    if (data == null) return '0';
-
-    // If the current entry's variety matches, get the factory value
-    if (data['variety'] == targetVariety) {
-      final factories = data['factories'];
-      if (factories is List && factoryIndex < factories.length) {
-        final factory = factories[factoryIndex];
-        if (factory is Map) {
-          return factory[field]?.toString() ?? '0';
-        }
-      }
-      return '0';
-    }
-
-    // For other varieties, return '0'
-    return '0';
-  }
-
-  // ============================================================
-  // PURCHASE PREVIEW
-  // ============================================================
+// ============================================================
+// PURCHASE PREVIEW
+// ============================================================
 
   Widget _buildPurchasePreview(Map<String, dynamic>? data) {
     final dateStr = _formatDate(data?['date']);
-    final centre = _safeString(data?['centre'], defaultValue: 'DEVADURGA');
-    final currentVariety = _safeString(data?['variety'], defaultValue: 'BB MOD');
+    final centre =
+    (data?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
+    final reportNo = (data?['reportNo'] ?? '1').toString();
+    final cropSeason = (data?['cropSeason'] ?? '2025-26').toString();
+    final branchOffice =
+    (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
 
-    return SingleChildScrollView(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Company Header
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
+    final rows = <List<String>>[
+      ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
+        _v(data, 'BB MOD', 'farmersDay'),
+        _v(data, 'BB SPL MOD', 'farmersDay'),
+        _v(data, 'MECH', 'farmersDay')],
+      ['5', 'Arrivals (In Bales)',
+        _v(data, 'BB MOD', 'arrivalsBales'),
+        _v(data, 'BB SPL MOD', 'arrivalsBales'),
+        _v(data, 'MECH', 'arrivalsBales')],
+      ['6', 'CCI Purchases (In Qtls)',
+        _v(data, 'BB MOD', 'cciPurchaseQtls'),
+        _v(data, 'BB SPL MOD', 'cciPurchaseQtls'),
+        _v(data, 'MECH', 'cciPurchaseQtls')],
+      ['7', 'CCI Purchases (In Bales)',
+        _v(data, 'BB MOD', 'cciPurchaseBales'),
+        _v(data, 'BB SPL MOD', 'cciPurchaseBales'),
+        _v(data, 'MECH', 'cciPurchaseBales')],
+      ['8', 'Avarage Kapas rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'avgKapasRate'),
+        _v(data, 'BB SPL MOD', 'avgKapasRate'),
+        _v(data, 'MECH', 'avgKapasRate')],
+      ['9', 'Budgeted Lint Percetage (%)',
+        _v(data, 'BB MOD', 'budgetedLint'),
+        _v(data, 'BB SPL MOD', 'budgetedLint'),
+        _v(data, 'MECH', 'budgetedLint')],
+      ['10', 'Budgeted Shortage Percetage (%)',
+        _v(data, 'BB MOD', 'budgetedShortage'),
+        _v(data, 'BB SPL MOD', 'budgetedShortage'),
+        _v(data, 'MECH', 'budgetedShortage')],
+      ['11', 'Cotton seed Percetage (%)',
+        _v(data, 'BB MOD', 'cottonSeedPct'),
+        _v(data, 'BB SPL MOD', 'cottonSeedPct'),
+        _v(data, 'MECH', 'cottonSeedPct')],
+      ['12', 'Cotton seed rate  (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'cottonSeedRate'),
+        _v(data, 'BB SPL MOD', 'cottonSeedRate'),
+        _v(data, 'MECH', 'cottonSeedRate')],
+      ['13', "Processing cycle (In day's)",
+        _v(data, 'BB MOD', 'processingCycle'),
+        _v(data, 'BB SPL MOD', 'processingCycle'),
+        _v(data, 'MECH', 'processingCycle')],
+      ['14', 'Proforma Expenses (In Rs. per Candy)',
+        _v(data, 'BB MOD', 'proformaExpenses'),
+        _v(data, 'BB SPL MOD', 'proformaExpenses'),
+        _v(data, 'MECH', 'proformaExpenses')],
+      ['15', 'Budgeted Padtha (In Rs. per candy)',
+        _v(data, 'BB MOD', 'budgetedPadtha'),
+        _v(data, 'BB SPL MOD', 'budgetedPadtha'),
+        _v(data, 'MECH', 'budgetedPadtha')],
+      ['16', "Day's pressed bales (In Bales)",
+        _v(data, 'BB MOD', 'dayPressedBales'),
+        _v(data, 'BB SPL MOD', 'dayPressedBales'),
+        _v(data, 'MECH', 'dayPressedBales')],
+      ['17', 'Market Highest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'marketHighestRate'),
+        _v(data, 'BB SPL MOD', 'marketHighestRate'),
+        _v(data, 'MECH', 'marketHighestRate')],
+      ['18', 'Market Lowest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'marketLowestRate'),
+        _v(data, 'BB SPL MOD', 'marketLowestRate'),
+        _v(data, 'MECH', 'marketLowestRate')],
+      ['19', 'CCI Highest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'cciHighestRate'),
+        _v(data, 'BB SPL MOD', 'cciHighestRate'),
+        _v(data, 'MECH', 'cciHighestRate')],
+      ['20', 'CCI Lowest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'cciLowestRate'),
+        _v(data, 'BB SPL MOD', 'cciLowestRate'),
+        _v(data, 'MECH', 'cciLowestRate')],
 
-          // Title
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: const Text(
-              'DAILY PURCHASE REPORT',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
+// ⭐ Progressive rows — other varieties read from otherVarietiesProgressive
+      ['21', 'Prog. Pressed Bales',
+        _v(data, 'BB MOD', 'progPressedBales'),
+        _v(data, 'BB SPL MOD', 'progPressedBales'),
+        _v(data, 'MECH', 'progPressedBales')],
+      ['22', 'Prog. Purchase in qtls',
+        _v(data, 'BB MOD', 'progPurchaseQtls'),
+        _v(data, 'BB SPL MOD', 'progPurchaseQtls'),
+        _v(data, 'MECH', 'progPurchaseQtls')],
+      ['23', 'Prog. Purchase Bales',
+        _v(data, 'BB MOD', 'progPurchaseBales'),
+        _v(data, 'BB SPL MOD', 'progPurchaseBales'),
+        _v(data, 'MECH', 'progPurchaseBales')],
+      [
+        '24',
+        'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
+        _v(data, 'BB MOD', 'progFarmers'),
+        _v(data, 'BB SPL MOD', 'progFarmers'),
+        _v(data, 'MECH', 'progFarmers')
+      ],
+    ];
 
-          // Header: Purchase Date, Centre (like Excel rows 1-2)
-          Row(
-            children: [
-              const Text('Purchase Date', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-              const Text(' : ', style: TextStyle(fontSize: 11)),
-              Text(dateStr, style: const TextStyle(fontSize: 11)),
-              const SizedBox(width: 30),
-              const Text('Centre', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-              const Text(' : ', style: TextStyle(fontSize: 11)),
-              Text(centre, style: const TextStyle(fontSize: 11)),
-            ],
-          ),
-          const SizedBox(height: 6),
-
-          // Row 3: Variety Header (like Excel row 3)
-          Row(
-            children: [
-              const SizedBox(width: 30),
-              _buildVarietyHeader('BB MOD', currentVariety == 'BB MOD'),
-              const SizedBox(width: 20),
-              _buildVarietyHeader('BB SPL MOD', currentVariety == 'BB SPL MOD'),
-              const SizedBox(width: 20),
-              _buildVarietyHeader('MECH', currentVariety == 'MECH'),
-            ],
-          ),
-          const SizedBox(height: 4),
-
-          // Data Rows (4-16 like Excel)
-          _buildRowWithThreeValues(
-            "Day's Kapas Purchased from No. of Farmers",
-            _getValueForVariety(data, 'BB MOD', 'farmersDay'),
-            _getValueForVariety(data, 'BB SPL MOD', 'farmersDay'),
-            _getValueForVariety(data, 'MECH', 'farmersDay'),
-          ),
-          _buildRowWithThreeValues(
-            'Arrivals (In Bales)',
-            _getValueForVariety(data, 'BB MOD', 'arrivalsBales'),
-            _getValueForVariety(data, 'BB SPL MOD', 'arrivalsBales'),
-            _getValueForVariety(data, 'MECH', 'arrivalsBales'),
-          ),
-          _buildRowWithThreeValues(
-            'CCI Purchases (In Qtls)',
-            _getValueForVariety(data, 'BB MOD', 'cciPurchaseQtls'),
-            _getValueForVariety(data, 'BB SPL MOD', 'cciPurchaseQtls'),
-            _getValueForVariety(data, 'MECH', 'cciPurchaseQtls'),
-          ),
-          _buildRowWithThreeValues(
-            'CCI Purchases (In Bales)',
-            _getValueForVariety(data, 'BB MOD', 'cciPurchaseBales'),
-            _getValueForVariety(data, 'BB SPL MOD', 'cciPurchaseBales'),
-            _getValueForVariety(data, 'MECH', 'cciPurchaseBales'),
-          ),
-          _buildRowWithThreeValues(
-            'Average Kapas rate (In Rs. per qtl)',
-            _getValueForVariety(data, 'BB MOD', 'avgKapasRate'),
-            _getValueForVariety(data, 'BB SPL MOD', 'avgKapasRate'),
-            _getValueForVariety(data, 'MECH', 'avgKapasRate'),
-          ),
-          _buildRowWithThreeValues(
-            'Budgeted Lint Percentage (%)',
-            _getValueForVariety(data, 'BB MOD', 'budgetedLint'),
-            _getValueForVariety(data, 'BB SPL MOD', 'budgetedLint'),
-            _getValueForVariety(data, 'MECH', 'budgetedLint'),
-          ),
-          _buildRowWithThreeValues(
-            'Budgeted Shortage Percentage (%)',
-            _getValueForVariety(data, 'BB MOD', 'budgetedShortage'),
-            _getValueForVariety(data, 'BB SPL MOD', 'budgetedShortage'),
-            _getValueForVariety(data, 'MECH', 'budgetedShortage'),
-          ),
-          _buildRowWithThreeValues(
-            'Cotton seed rate (In Rs. per qtl)',
-            _getValueForVariety(data, 'BB MOD', 'cottonSeedRate'),
-            _getValueForVariety(data, 'BB SPL MOD', 'cottonSeedRate'),
-            _getValueForVariety(data, 'MECH', 'cottonSeedRate'),
-          ),
-          _buildRowWithThreeValues(
-            "Processing cycle (In day's)",
-            _getValueForVariety(data, 'BB MOD', 'processingCycle'),
-            _getValueForVariety(data, 'BB SPL MOD', 'processingCycle'),
-            _getValueForVariety(data, 'MECH', 'processingCycle'),
-          ),
-          _buildRowWithThreeValues(
-            'Proforma Expenses (In Rs. per Candy)',
-            _getValueForVariety(data, 'BB MOD', 'proformaExpenses'),
-            _getValueForVariety(data, 'BB SPL MOD', 'proformaExpenses'),
-            _getValueForVariety(data, 'MECH', 'proformaExpenses'),
-          ),
-          _buildRowWithThreeValues(
-            'Budgeted Padtha (In Rs. per candy)',
-            _getValueForVariety(data, 'BB MOD', 'budgetedPadtha'),
-            _getValueForVariety(data, 'BB SPL MOD', 'budgetedPadtha'),
-            _getValueForVariety(data, 'MECH', 'budgetedPadtha'),
-          ),
-          _buildRowWithThreeValues(
-            "Day's pressed bales (In Bales)",
-            _getValueForVariety(data, 'BB MOD', 'dayPressedBales'),
-            _getValueForVariety(data, 'BB SPL MOD', 'dayPressedBales'),
-            _getValueForVariety(data, 'MECH', 'dayPressedBales'),
-          ),
-          const SizedBox(height: 6),
-
-          // Market & CCI Rates (rows 17-20 like Excel)
-          const Divider(thickness: 1),
-          const Text(
-            'MARKET & CCI RATES',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 4),
-          _buildRowWithThreeValues(
-            'Market Highest Rate (In Rs. per qtl)',
-            _getValueForVariety(data, 'BB MOD', 'marketHighestRate'),
-            _getValueForVariety(data, 'BB SPL MOD', 'marketHighestRate'),
-            _getValueForVariety(data, 'MECH', 'marketHighestRate'),
-          ),
-          _buildRowWithThreeValues(
-            'Market Lowest Rate (In Rs. per qtl)',
-            _getValueForVariety(data, 'BB MOD', 'marketLowestRate'),
-            _getValueForVariety(data, 'BB SPL MOD', 'marketLowestRate'),
-            _getValueForVariety(data, 'MECH', 'marketLowestRate'),
-          ),
-          _buildRowWithThreeValues(
-            'CCI Highest Rate (In Rs. per qtl)',
-            _getValueForVariety(data, 'BB MOD', 'cciHighestRate'),
-            _getValueForVariety(data, 'BB SPL MOD', 'cciHighestRate'),
-            _getValueForVariety(data, 'MECH', 'cciHighestRate'),
-          ),
-          _buildRowWithThreeValues(
-            'CCI Lowest Rate (In Rs. per qtl)',
-            _getValueForVariety(data, 'BB MOD', 'cciLowestRate'),
-            _getValueForVariety(data, 'BB SPL MOD', 'cciLowestRate'),
-            _getValueForVariety(data, 'MECH', 'cciLowestRate'),
-          ),
-          const SizedBox(height: 6),
-
-          // Progressive Values (rows 21-24 like Excel)
-          const Divider(thickness: 1),
-          const Text(
-            'PROGRESSIVE VALUES',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 4),
-          _buildRowWithThreeValues(
-            'Prog. Pressed Bales',
-            _getValueForVariety(data, 'BB MOD', 'progPressedBales'),
-            _getValueForVariety(data, 'BB SPL MOD', 'progPressedBales'),
-            _getValueForVariety(data, 'MECH', 'progPressedBales'),
-          ),
-          _buildRowWithThreeValues(
-            'Prog. Purchase (Qtls)',
-            _getValueForVariety(data, 'BB MOD', 'progPurchaseQtls'),
-            _getValueForVariety(data, 'BB SPL MOD', 'progPurchaseQtls'),
-            _getValueForVariety(data, 'MECH', 'progPurchaseQtls'),
-          ),
-          _buildRowWithThreeValues(
-            'Prog. Purchase (Bales)',
-            _getValueForVariety(data, 'BB MOD', 'progPurchaseBales'),
-            _getValueForVariety(data, 'BB SPL MOD', 'progPurchaseBales'),
-            _getValueForVariety(data, 'MECH', 'progPurchaseBales'),
-          ),
-          _buildRowWithThreeValues(
-            'Prog. Kapas Purchased from No. of Farmers',
-            _getValueForVariety(data, 'BB MOD', 'progFarmers'),
-            _getValueForVariety(data, 'BB SPL MOD', 'progFarmers'),
-            _getValueForVariety(data, 'MECH', 'progFarmers'),
-          ),
-          const SizedBox(height: 6),
-
-          // Factory Details (rows 25+ like Excel)
-          const Divider(thickness: 1),
-          const Text(
-            'FACTORY WISE DAY PURCHASE DETAILS',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 4),
-          _buildFactoryTable(data),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVarietyHeader(String title, bool isActive) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          title,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRowWithThreeValues(String label, String v1, String v2, String v3) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 230,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 10,
-                color: Color(0xFF334155),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              v1,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Text(
-              v2,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Text(
-              v3,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFactoryTable(Map<String, dynamic>? data) {
-    // Get factories from the current data
     List<Map<String, dynamic>> factories = [];
-    final factoriesData = data?['factories'];
-    if (factoriesData is List) {
-      factories = List<Map<String, dynamic>>.from(factoriesData);
-    }
-
-    if (factories.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Center(
-          child: Text(
-            'No factory data available',
-            style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-          ),
-        ),
-      );
-    }
-
-    final currentVariety = _safeString(data?['variety'], defaultValue: 'BB MOD');
+    final src = data?['factories'];
+    if (src is List) factories = List<Map<String, dynamic>>.from(src);
 
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFCBD5E1)),
-        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: const Color(0xFF94A3B8)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header Row (like Excel row 26)
-            Container(
-              width: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE2E8F0),
-                border: Border(
-                  bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-              child: Row(
-                children: [
-                  const SizedBox(width: 30, child: Text('SNO', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10))),
-                  const SizedBox(width: 150, child: Text('Factory Name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 10))),
-                  const SizedBox(width: 20),
-                  _buildTableHeader('BB MOD', currentVariety == 'BB MOD'),
-                  const SizedBox(width: 10),
-                  _buildTableHeader('BB SPL MOD', currentVariety == 'BB SPL MOD'),
-                  const SizedBox(width: 10),
-                  _buildTableHeader('MECH', currentVariety == 'MECH'),
-                ],
-              ),
-            ),
-            // Data Rows (like Excel rows 27-29)
-            ...factories.asMap().entries.map((entry) {
-              final index = entry.key;
-              return Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
-                  border: const Border(
-                    bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                  ),
-                ),
-                padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 30,
-                      child: Text(
-                        '${index + 1}',
-                        style: const TextStyle(fontSize: 10),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 150,
-                      child: Text(
-                        factories[index]['factoryName']?.toString() ?? '',
-                        style: const TextStyle(fontSize: 10),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 20),
-                    // BB MOD values
-                    _buildFactoryValueCell(data, 'BB MOD', index),
-                    const SizedBox(width: 10),
-                    // BB SPL MOD values
-                    _buildFactoryValueCell(data, 'BB SPL MOD', index),
-                    const SizedBox(width: 10),
-                    // MECH values
-                    _buildFactoryValueCell(data, 'MECH', index),
-                  ],
-                ),
-              );
-            }),
-            // Total Row (like Excel row 30)
-            Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE2E8F0),
-                border: const Border(
-                  top: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                ),
-              ),
-              padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
-              child: Row(
-                children: [
-                  const SizedBox(width: 30),
-                  const SizedBox(
-                    width: 150,
-                    child: Text(
-                      'TOTAL',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  _buildTotalCell(data, 'BB MOD'),
-                  const SizedBox(width: 10),
-                  _buildTotalCell(data, 'BB SPL MOD'),
-                  const SizedBox(width: 10),
-                  _buildTotalCell(data, 'MECH'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTableHeader(String title, bool isActive) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: Text(
-            'Prog Pur\n(Qtls)',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 8,
-              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 70,
-          child: Text(
-            'Prog Pur\n(Bales)',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 8,
-              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFactoryValueCell(Map<String, dynamic>? data, String targetVariety, int factoryIndex) {
-    if (data == null) return _buildEmptyFactoryCell();
-
-    if (data['variety'] == targetVariety) {
-      final factories = data['factories'];
-      if (factories is List && factoryIndex < factories.length) {
-        final factory = factories[factoryIndex];
-        if (factory is Map) {
-          return Row(
-            children: [
-              SizedBox(
-                width: 70,
-                child: Text(
-                  factory['progPurchaseQtls']?.toString() ?? '0',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 9),
-                ),
-              ),
-              const SizedBox(width: 4),
-              SizedBox(
-                width: 70,
-                child: Text(
-                  factory['progPurchaseBales']?.toString() ?? '0',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 9),
-                ),
-              ),
-            ],
-          );
-        }
-      }
-    }
-
-    return _buildEmptyFactoryCell();
-  }
-
-  Widget _buildEmptyFactoryCell() {
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: const Text('', textAlign: TextAlign.center),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 70,
-          child: const Text('', textAlign: TextAlign.center),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTotalCell(Map<String, dynamic>? data, String targetVariety) {
-    if (data == null || data['variety'] != targetVariety) {
-      return Row(
-        children: [
-          SizedBox(
-            width: 70,
-            child: const Text('', textAlign: TextAlign.center),
-          ),
-          const SizedBox(width: 4),
-          SizedBox(
-            width: 70,
-            child: const Text('', textAlign: TextAlign.center),
-          ),
-        ],
-      );
-    }
-
-    final factories = data['factories'];
-    if (factories is! List) {
-      return _buildEmptyFactoryCell();
-    }
-
-    double totalQtls = 0;
-    double totalBales = 0;
-    for (final factory in factories) {
-      if (factory is Map) {
-        totalQtls += (factory['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
-        totalBales += (factory['progPurchaseBales'] as num?)?.toDouble() ?? 0;
-      }
-    }
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 70,
-          child: Text(
-            totalQtls.toStringAsFixed(2),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 70,
-          child: Text(
-            totalBales.toStringAsFixed(0),
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ============================================================
-  // SEED PREVIEW
-  // ============================================================
-
-  Widget _buildSeedPreview(Map<String, dynamic>? data) {
-    final dateStr = _formatDate(data?['date']);
-    final centre = _safeString(data?['centre'], defaultValue: 'DEVADURGA');
-    final reportNo = _safeString(data?['reportNo'], defaultValue: '1');
-    final currentVariety = _safeString(data?['variety'], defaultValue: 'BB MOD');
-
-    List<Map<String, dynamic>> factories = [];
-    final factoriesData = data?['seedFactories'] ?? data?['factories'];
-    if (factoriesData is List) {
-      factories = List<Map<String, dynamic>>.from(factoriesData);
-    }
-
-    return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            decoration: const BoxDecoration(
-              color: Color(0xFF0F172A),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
-            ),
-            child: const Text(
-              'SEED REPORT',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 14,
-                letterSpacing: 1,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 12),
+          _plainRow('THE COTTON CORPORATION OF INDIA LTD', bold: true),
+          _plainRow('BRANCH OFFICE :: $branchOffice.', bold: true),
+          _plainRow('DAILY PURCHASE REPORT', bold: true),
+          _plainRow('CROP SEASON $cropSeason', bold: true, trailing: 'MSP'),
+          const Divider(height: 1, thickness: 1, color: Color(0xFF94A3B8)),
 
-          // Centre, Date, Report No
-          Row(
-            children: [
-              const Text('CENTRE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  centre.toUpperCase(),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                ),
-              ),
-              const Text('DATE:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-              const SizedBox(width: 4),
-              Text(
-                dateStr,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(width: 16),
-              const Text('REPORT NO.:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-              const SizedBox(width: 4),
-              Text(
-                reportNo,
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          _numRow('1', 'Purchase Date', dateStr, dateStr, dateStr),
+          _numRow('2', 'Centre', centre, centre, centre),
+          _numRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
+
+          ...rows.map((r) => _numRow(r[0], r[1], r[2], r[3], r[4])),
+
+          _numRow('25', 'Factory wise day purchase details',
+              'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
+          _factorySubHeader(),
 
           if (factories.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(20),
-                child: Text(
-                  'No factory data available',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
-                ),
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'No factory data available',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
               ),
             )
           else
-            Container(
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFCBD5E1)),
-                borderRadius: BorderRadius.circular(4),
+            ...factories
+                .asMap()
+                .entries
+                .map((e) {
+              final i = e.key;
+              final f = e.value;
+              return _factoryRow(
+                '${i + 1}',
+                f['factoryName']?.toString() ?? '',
+                f['progPurchaseQtls']?.toString() ?? '0',
+                f['progPurchaseBales']?.toString() ?? '0',
+              );
+            }),
+
+          _totalRow(data),
+        ],
+      ),
+    );
+  }
+
+  Widget _plainRow(String text, {bool bold = false, String? trailing}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                color: const Color(0xFF0F172A),
               ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header Row
-                    Container(
-                      width: double.infinity,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFE2E8F0),
-                        border: Border(
-                          bottom: BorderSide(color: Color(0xFFCBD5E1), width: 1),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 35, child: Text('S.No.', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9))),
-                          const SizedBox(width: 150, child: Text('Ginning & pressing factory name', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 9))),
-                          const SizedBox(width: 20),
-                          _buildSeedVarietyHeader('BB MOD', currentVariety == 'BB MOD'),
-                          const SizedBox(width: 10),
-                          _buildSeedVarietyHeader('BB SPL MOD', currentVariety == 'BB SPL MOD'),
-                          const SizedBox(width: 10),
-                          _buildSeedVarietyHeader('MECH', currentVariety == 'MECH'),
-                        ],
-                      ),
-                    ),
-                    // Data Rows
-                    ...factories.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final factory = entry.value;
-                      return Container(
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: index % 2 == 0 ? Colors.white : const Color(0xFFF8FAFC),
-                          border: const Border(
-                            bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-                          ),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
-                        child: Row(
-                          children: [
-                            SizedBox(width: 35, child: Text('${index + 1}', style: const TextStyle(fontSize: 9))),
-                            SizedBox(
-                              width: 150,
-                              child: Text(
-                                factory['factoryName']?.toString() ?? '',
-                                style: const TextStyle(fontSize: 9),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 20),
-                            _buildSeedFactoryCell(data, 'BB MOD', index, factory),
-                            const SizedBox(width: 10),
-                            _buildSeedFactoryCell(data, 'BB SPL MOD', index, factory),
-                            const SizedBox(width: 10),
-                            _buildSeedFactoryCell(data, 'MECH', index, factory),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
               ),
             ),
         ],
@@ -939,114 +359,288 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildSeedVarietyHeader(String title, bool isActive) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 60,
-          child: Text(
-            'Prog\nRealisable',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 7,
-              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 55,
-          child: Text(
-            'Prog\nSold',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 7,
-              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 55,
-          child: Text(
-            "Day's\nUnsold",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 7,
-              color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSeedFactoryCell(Map<String, dynamic>? data, String targetVariety, int factoryIndex, Map<String, dynamic> defaultFactory) {
-    if (data == null || data['variety'] != targetVariety) {
-      return Row(
+  Widget _numRow(String n, String label, String v1, String v2, String v3,
+      {bool bold = false}) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
         children: [
-          SizedBox(width: 60, child: const Text('', textAlign: TextAlign.center)),
-          const SizedBox(width: 4),
-          SizedBox(width: 55, child: const Text('', textAlign: TextAlign.center)),
-          const SizedBox(width: 4),
-          SizedBox(width: 55, child: const Text('', textAlign: TextAlign.center)),
+          SizedBox(
+            width: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                n,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                  color: const Color(0xFF334155),
+                ),
+              ),
+            ),
+          ),
+          _cell(v1, bold: bold),
+          _cell(v2, bold: bold),
+          _cell(v3, bold: bold),
         ],
-      );
-    }
-
-    final factories = data['seedFactories'] ?? data['factories'];
-    if (factories is! List || factoryIndex >= factories.length) {
-      return _buildEmptySeedFactoryCell();
-    }
-
-    final factory = factories[factoryIndex];
-    if (factory is! Map) {
-      return _buildEmptySeedFactoryCell();
-    }
-
-    return Row(
-      children: [
-        SizedBox(
-          width: 60,
-          child: Text(
-            factory['progressiveRealisable']?.toString() ?? '0',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 9),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 55,
-          child: Text(
-            factory['progressiveSold']?.toString() ?? '0',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 9),
-          ),
-        ),
-        const SizedBox(width: 4),
-        SizedBox(
-          width: 55,
-          child: Text(
-            factory['dayUnsold']?.toString() ?? '0',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 9),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildEmptySeedFactoryCell() {
-    return Row(
+  Widget _cell(String value, {bool bold = false}) {
+    return Expanded(
+      flex: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+        child: Text(
+          value,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _factorySubHeader() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF1F5F9),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          const Expanded(
+            flex: 4,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text('Factory Name',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          _subCell('Prog. Pur.\nin qtls'),
+          _subCell('Prog. Pur.\nin Bales'),
+        ],
+      ),
+    );
+  }
+
+  Widget _subCell(String text) {
+    return Expanded(
+      flex: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _factoryRow(String sno, String name, String qtls, String bales) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                sno,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                name,
+                style: const TextStyle(fontSize: 11),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          _cell(qtls),
+          _cell(bales),
+        ],
+      ),
+    );
+  }
+
+  Widget _totalRow(Map<String, dynamic>? data) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF1F5F9),
+        border: Border(top: BorderSide(color: Color(0xFF94A3B8), width: 1)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          const Expanded(
+            flex: 4,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                'TOTAL',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          _cell(_v(data, 'BB MOD', 'progPurchaseQtls'), bold: true),
+          _cell(_v(data, 'BB MOD', 'progPurchaseBales'), bold: true),
+          _cell(_v(data, 'BB SPL MOD', 'progPurchaseQtls'), bold: true),
+          _cell(_v(data, 'BB SPL MOD', 'progPurchaseBales'), bold: true),
+          _cell(_v(data, 'MECH', 'progPurchaseQtls'), bold: true),
+          _cell(_v(data, 'MECH', 'progPurchaseBales'), bold: true),
+        ],
+      ),
+    );
+  }
+
+// ============================================================
+// SEED PREVIEW
+// ============================================================
+
+  Widget _buildSeedPreview(Map<String, dynamic>? data) {
+    final dateStr = _formatDate(data?['date']);
+    final centre = (data?['centre'] ?? 'DEVADURGA').toString();
+    final reportNo = (data?['reportNo'] ?? '1').toString();
+    final currentVariety = (data?['variety'] ?? 'BB MOD').toString();
+
+    List<Map<String, dynamic>> factories = [];
+    final src = data?['seedFactories'] ?? data?['factories'];
+    if (src is List) {
+      factories = List<Map<String, dynamic>>.from(src);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(width: 60, child: const Text('', textAlign: TextAlign.center)),
-        const SizedBox(width: 4),
-        SizedBox(width: 55, child: const Text('', textAlign: TextAlign.center)),
-        const SizedBox(width: 4),
-        SizedBox(width: 55, child: const Text('', textAlign: TextAlign.center)),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+          ),
+          child: const Text(
+            'SEED REPORT',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              letterSpacing: 1,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Text('CENTRE:',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(centre.toUpperCase(),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w500)),
+            ),
+            const Text('DATE:',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(dateStr, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 16),
+            const Text('REPORT NO.:',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(reportNo, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (factories.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('No factory data available',
+                  style:
+                  TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor:
+              WidgetStateProperty.all(const Color(0xFFE2E8F0)),
+              columns: const [
+                DataColumn(label: Text('S.No.')),
+                DataColumn(label: Text('Factory Name')),
+                DataColumn(label: Text('Variety')),
+                DataColumn(label: Text('Prog. Realisable')),
+                DataColumn(label: Text('Prog. Sold')),
+                DataColumn(label: Text("Day's Unsold")),
+                DataColumn(label: Text('Kapas Form')),
+                DataColumn(label: Text('Ready Form')),
+                DataColumn(label: Text('Total')),
+                DataColumn(label: Text('Base Rate')),
+              ],
+              rows: factories
+                  .asMap()
+                  .entries
+                  .map((e) {
+                final i = e.key;
+                final f = e.value;
+                final total = f['total'] ??
+                    ((f['kapasForm'] ?? 0) + (f['readyForm'] ?? 0));
+                return DataRow(cells: [
+                  DataCell(Text('${i + 1}')),
+                  DataCell(Text(f['factoryName']?.toString() ?? '')),
+                  DataCell(Text(f['variety']?.toString() ?? currentVariety)),
+                  DataCell(Text(f['progressiveRealisable']?.toString() ?? '0')),
+                  DataCell(Text(f['progressiveSold']?.toString() ?? '0')),
+                  DataCell(Text(f['dayUnsold']?.toString() ?? '0')),
+                  DataCell(Text(f['kapasForm']?.toString() ?? '0')),
+                  DataCell(Text(f['readyForm']?.toString() ?? '0')),
+                  DataCell(Text(total.toString())),
+                  DataCell(Text(f['baseRate']?.toString() ?? '0')),
+                ]);
+              }).toList(),
+            ),
+          ),
       ],
     );
   }

@@ -87,6 +87,12 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   double _previousProgPurchaseBales = 0;
   double _previousProgFarmers = 0;
 
+  // ⭐ NEW: Progressive values for the OTHER two varieties.
+  // Saved into the document as `otherVarietiesProgressive` so the
+  // preview & export can render all three columns even when the user
+  // only filled in data for their own variety.
+  Map<String, Map<String, double>> _otherVarietiesProgressive = {};
+
   // Store original values for modify mode
   double _originalPressedBales = 0;
   double _originalPurchaseQtls = 0;
@@ -114,6 +120,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchLatestProgressiveForModify();
+        _fetchOtherVarietiesProgressive();
       });
     } else if (!widget.isModify) {
       _entryFound = true;
@@ -127,6 +134,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             _selectedVariety != null &&
             _selectedVariety!.isNotEmpty) {
           await _fetchPreviousProgressive();
+          await _fetchOtherVarietiesProgressive();
         }
       });
     }
@@ -222,6 +230,40 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 
   // ============================================================
+  // ⭐ NEW: FETCH PROGRESSIVE VALUES FOR THE OTHER TWO VARIETIES
+  // ============================================================
+  Future<void> _fetchOtherVarietiesProgressive() async {
+    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
+
+    try {
+      final all = await ApiService.getProgressiveForAllVarieties(
+        type: 'purchase',
+        centre: _selectedCentre!,
+      );
+
+      final others = <String, Map<String, double>>{};
+      for (final entry in all.entries) {
+        if (entry.key == _selectedVariety) continue; // skip own variety
+        others[entry.key] = {
+          'progPressedBales': entry.value['progPressedBales'] ?? 0,
+          'progPurchaseQtls': entry.value['progPurchaseQtls'] ?? 0,
+          'progPurchaseBales': entry.value['progPurchaseBales'] ?? 0,
+          'progFarmers': entry.value['progFarmers'] ?? 0,
+        };
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _otherVarietiesProgressive = others;
+      });
+
+      debugLog('✅ Loaded otherVarietiesProgressive: $others');
+    } catch (e) {
+      debugLog('❌ Failed to fetch other varieties progressive: $e');
+    }
+  }
+
+  // ============================================================
   // LOAD EXISTING DATA
   // ============================================================
   void _loadExistingData(Map<String, dynamic> data) {
@@ -264,6 +306,22 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _purchaseFactories = (data['factories'] as List)
           .map((f) => PurchaseFactoryProgData.fromJson(Map<String, dynamic>.from(f as Map)))
           .toList();
+    }
+
+    // ⭐ Preserve otherVarietiesProgressive if it already exists on the doc
+    final existingOthers = data['otherVarietiesProgressive'];
+    if (existingOthers is Map) {
+      _otherVarietiesProgressive = {};
+      existingOthers.forEach((key, value) {
+        if (value is Map) {
+          _otherVarietiesProgressive[key.toString()] = {
+            'progPressedBales': (value['progPressedBales'] as num?)?.toDouble() ?? 0,
+            'progPurchaseQtls': (value['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
+            'progPurchaseBales': (value['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+            'progFarmers': (value['progFarmers'] as num?)?.toDouble() ?? 0,
+          };
+        }
+      });
     }
 
     if (data['date'] != null) {
@@ -535,6 +593,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _loadExistingData(entry);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _fetchLatestProgressiveForModify();
+        _fetchOtherVarietiesProgressive();
       });
     } else {
       setState(() {
@@ -795,6 +854,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       'progPurchaseQtls': double.tryParse(_progPurchaseQtlsController.text) ?? 0,
       'progPurchaseBales': double.tryParse(_progPurchaseBalesController.text) ?? 0,
       'progFarmers': double.tryParse(_progFarmersController.text) ?? 0,
+      // ⭐ Save the other varieties' progressive values in the document
+      'otherVarietiesProgressive': _otherVarietiesProgressive,
       'factories': _purchaseFactories.map((f) => f.toJson()).toList(),
     };
   }
@@ -822,6 +883,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     _lastSubmitTime = now;
 
     setState(() => _isSubmitting = true);
+
+    // Make sure otherVarietiesProgressive is up-to-date before saving.
+    if (_otherVarietiesProgressive.isEmpty &&
+        _selectedCentre != null &&
+        _selectedCentre!.isNotEmpty) {
+      await _fetchOtherVarietiesProgressive();
+    }
 
     final data = _buildPurchaseData();
 
@@ -1215,6 +1283,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 } else {
                                   _fetchPreviousProgressive();
                                 }
+                                _fetchOtherVarietiesProgressive();
                               }
                             }
                           },
@@ -1297,6 +1366,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               } else {
                                 _fetchPreviousProgressive();
                               }
+                              _fetchOtherVarietiesProgressive();
                             }
                           },
                           validator: (value) => value == null ? 'Please select a variety' : null,

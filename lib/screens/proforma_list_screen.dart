@@ -1,158 +1,165 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as excel_lib;
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
 import '../services/apiservice.dart';
-import '../models/report_modals.dart';
-import 'proforma_view_screen.dart';
 
-class ProformaListScreen extends StatefulWidget {
-  const ProformaListScreen({super.key});
+class ReportsListScreen extends StatefulWidget {
+  final String reportType;
+
+  const ReportsListScreen({
+    super.key,
+    required this.reportType,
+  });
 
   @override
-  State<ProformaListScreen> createState() => _ProformaListScreenState();
+  State<ReportsListScreen> createState() => _ReportsListScreenState();
 }
 
 enum _DateFilterMode { single, range }
 
-class _ProformaListScreenState extends State<ProformaListScreen> {
+class _ReportsListScreenState extends State<ReportsListScreen> {
+  List<Map<String, dynamic>> _reports = [];
+  List<Map<String, dynamic>> _filteredReports = [];
   bool _isLoading = true;
-  List<Map<String, dynamic>> _proformas = [];
-  List<Map<String, dynamic>> _filteredProformas = [];
-  String? _error;
+  bool _isDeleting = false;
 
-  // Filters
   DateTime? _filterStartDate;
   DateTime? _filterEndDate;
   _DateFilterMode _filterMode = _DateFilterMode.single;
   String? _selectedCentreFilter;
   String? _selectedVarietyFilter;
 
-  bool get _isDateFilterActive => _filterStartDate != null || _filterEndDate != null;
+  static const List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
+
+  bool get _isDateFilterActive =>
+      _filterStartDate != null || _filterEndDate != null;
 
   bool get _isFilterActive =>
-      _isDateFilterActive || _selectedCentreFilter != null || _selectedVarietyFilter != null;
+      _isDateFilterActive ||
+          _selectedCentreFilter != null ||
+          _selectedVarietyFilter != null;
+
+  List<String> get _availableCentres {
+    final centres = <String>{};
+    for (final r in _reports) {
+      final c = r['centre']?.toString();
+      if (c != null && c.isNotEmpty) centres.add(c);
+    }
+    return centres.toList()..sort();
+  }
+
+  List<String> get _availableVarieties {
+    if (widget.reportType != 'purchase') return [];
+    final v = <String>{};
+    for (final r in _reports) {
+      final s = r['variety']?.toString();
+      if (s != null && s.isNotEmpty) v.add(s);
+    }
+    return v.toList()..sort();
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadProformas();
+    _loadReports();
   }
 
-  Future<void> _loadProformas() async {
-    setState(() => _isLoading = true);
+  // ============================================================
+  // Reading helpers
+  // ============================================================
 
-    final response = await ApiService.getProformas();
-
-    if (!mounted) return;
-
-    if (response.success && response.data != null) {
-      setState(() {
-        _proformas = List<Map<String, dynamic>>.from(
-          response.data!['proformas'] as List,
-        );
-        _isLoading = false;
-      });
-      _applyFilters();
-    } else {
-      setState(() {
-        _error = response.message;
-        _isLoading = false;
-      });
+  /// Reads a field for a specific variety.
+  /// - Own variety → reads top-level field directly.
+  /// - Other two   → reads from `otherVarietiesProgressive[<variety>][field]`.
+  String _v(Map<String, dynamic>? doc, String targetVariety, String field) {
+    if (doc == null) return '0';
+    final ownVariety = (doc['variety'] ?? '').toString();
+    if (ownVariety == targetVariety) {
+      final v = doc[field];
+      return v?.toString() ?? '0';
     }
-  }
-
-  // ========================================================================
-  // HELPER METHODS
-  // ========================================================================
-
-  String? _getProformaId(Map<String, dynamic> proforma) {
-    return proforma['id']?.toString();
-  }
-
-  DateTime? _safeParseDate(String? dateStr) {
-    if (dateStr == null || dateStr.isEmpty) return null;
-    try {
-      return DateTime.parse(dateStr);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  String _formatFilterDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  String _formatDateRange(Map<String, dynamic> proforma) {
-    final start = proforma['dateRangeStart']?.toString();
-    final end = proforma['dateRangeEnd']?.toString();
-
-    if (start != null && end != null) {
-      final startDate = _safeParseDate(start);
-      final endDate = _safeParseDate(end);
-      if (startDate != null && endDate != null) {
-        if (startDate.year == endDate.year &&
-            startDate.month == endDate.month &&
-            startDate.day == endDate.day) {
-          return DateFormat('dd/MM/yyyy').format(startDate);
-        }
-        return '${DateFormat('dd/MM/yyyy').format(startDate)} - ${DateFormat('dd/MM/yyyy').format(endDate)}';
+    final others = doc['otherVarietiesProgressive'];
+    if (others is Map) {
+      final other = others[targetVariety];
+      if (other is Map) {
+        final v = other[field];
+        return v?.toString() ?? '0';
       }
     }
-    return 'Multiple dates';
+    return '0';
   }
 
-  // ========================================================================
-  // FILTER METHODS
-  // ========================================================================
+  String _fmtDateDisplay(dynamic d) {
+    if (d == null) return '';
+    try {
+      final date = d is String ? DateTime.parse(d) : d as DateTime;
+      return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
+    } catch (_) {
+      return '';
+    }
+  }
 
-  void _applyFilters() {
+  // ============================================================
+  // Filter methods
+  // ============================================================
+
+  Future<void> _selectSingleDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: _filterStartDate ?? DateTime.now(),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context)
+              .colorScheme
+              .copyWith(primary: const Color(0xFF0F172A)),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        _filterStartDate = picked;
+        _filterEndDate = picked;
+      });
+      _applyFilters();
+    }
+  }
+
+  Future<void> _selectDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: _filterStartDate != null && _filterEndDate != null
+          ? DateTimeRange(start: _filterStartDate!, end: _filterEndDate!)
+          : null,
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context)
+              .colorScheme
+              .copyWith(primary: const Color(0xFF0F172A)),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        _filterStartDate = picked.start;
+        _filterEndDate = picked.end;
+      });
+      _applyFilters();
+    }
+  }
+
+  void _clearDateFilter() {
     setState(() {
-      _filteredProformas = _proformas
-          .map<Map<String, dynamic>?>((proforma) {
-        // Centre / variety filters apply to the whole doc, cheap to check first.
-        if (_selectedCentreFilter != null && _selectedCentreFilter!.isNotEmpty) {
-          final centre = proforma['centre']?.toString().toLowerCase() ?? '';
-          if (centre != _selectedCentreFilter!.toLowerCase()) return null;
-        }
-
-        if (_selectedVarietyFilter != null && _selectedVarietyFilter!.isNotEmpty) {
-          final variety = proforma['variety']?.toString().toLowerCase() ?? '';
-          if (variety != _selectedVarietyFilter!.toLowerCase()) return null;
-        }
-
-        // A proforma doc accumulates ALL entries ever added for its
-        // centre/variety, so date filtering — and the totals shown on
-        // the card — must operate on individual entries, not on the
-        // doc's single `date` field (which is just the most recent
-        // entry's date and doesn't represent the whole doc's contents).
-        final entries = Map<String, dynamic>.from(
-          proforma['entries'] as Map? ?? {},
-        );
-
-        final relevantEntries = _isDateFilterActive
-            ? ApiService.filterEntriesByDateRange(
-          entries,
-          start: _filterStartDate,
-          end: _filterEndDate,
-        )
-            : entries;
-
-        if (relevantEntries.isEmpty) return null;
-
-        // Recompute quantity/bales/entryCount/date range etc. from only
-        // the entries that fall inside the selected range, so the card
-        // (and anything opened from it) reflects the filtered period
-        // instead of the doc's lifetime totals.
-        final recomputed = ApiService.recomputeProformaTotals(relevantEntries);
-
-        return {
-          ...proforma,
-          ...recomputed,
-          'entries': relevantEntries,
-        };
-      })
-          .whereType<Map<String, dynamic>>()
-          .toList();
+      _filterStartDate = null;
+      _filterEndDate = null;
     });
+    _applyFilters();
   }
 
   void _setFilterMode(_DateFilterMode mode) {
@@ -165,12 +172,12 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     _applyFilters();
   }
 
-  void _clearDateFilter() {
-    setState(() {
-      _filterStartDate = null;
-      _filterEndDate = null;
-    });
-    _applyFilters();
+  void _openDatePicker() {
+    if (_filterMode == _DateFilterMode.single) {
+      _selectSingleDate();
+    } else {
+      _selectDateRange();
+    }
   }
 
   void _clearCentreFilter() {
@@ -193,158 +200,1096 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     _applyFilters();
   }
 
-  Future<void> _selectSingleDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      initialDate: _filterStartDate ?? DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: const Color(0xFF0F172A),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
+  String _formatFilterDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
-    if (picked != null) {
+  void _applyFilters() {
+    setState(() {
+      _filteredReports = _reports.where((report) {
+        final rawDate = report['date']?.toString();
+        if (rawDate == null || rawDate.isEmpty) return false;
+        final reportDate = DateTime.tryParse(rawDate);
+        if (reportDate == null) return false;
+        final n = DateTime(reportDate.year, reportDate.month, reportDate.day);
+
+        if (_filterStartDate != null) {
+          final s = DateTime(_filterStartDate!.year, _filterStartDate!.month,
+              _filterStartDate!.day);
+          if (n.isBefore(s)) return false;
+        }
+        if (_filterEndDate != null) {
+          final e = DateTime(_filterEndDate!.year, _filterEndDate!.month,
+              _filterEndDate!.day);
+          if (n.isAfter(e)) return false;
+        }
+        if (_selectedCentreFilter != null && _selectedCentreFilter!.isNotEmpty) {
+          final c = report['centre']?.toString().toLowerCase() ?? '';
+          if (c != _selectedCentreFilter!.toLowerCase()) return false;
+        }
+        if (_selectedVarietyFilter != null &&
+            _selectedVarietyFilter!.isNotEmpty) {
+          final v = report['variety']?.toString().toLowerCase() ?? '';
+          if (v != _selectedVarietyFilter!.toLowerCase()) return false;
+        }
+        return true;
+      }).toList();
+    });
+  }
+
+  void _loadReports() async {
+    setState(() => _isLoading = true);
+    final response = widget.reportType == 'purchase'
+        ? await ApiService.getPurchaseEntries()
+        : await ApiService.getSeedEntries();
+    if (mounted) {
       setState(() {
-        _filterStartDate = picked;
-        _filterEndDate = picked;
+        if (response.success && response.data != null) {
+          _reports = List<Map<String, dynamic>>.from(
+              response.data!['entries'] ?? []);
+        } else {
+          _reports = [];
+        }
+        _isLoading = false;
       });
       _applyFilters();
     }
   }
 
-  Future<void> _selectDateRange() async {
-    final initialRange = _filterStartDate != null && _filterEndDate != null
-        ? DateTimeRange(start: _filterStartDate!, end: _filterEndDate!)
-        : null;
+  // ============================================================
+  // Delete
+  // ============================================================
 
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      initialDateRange: initialRange,
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: const Color(0xFF0F172A),
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() {
-        _filterStartDate = picked.start;
-        _filterEndDate = picked.end;
-      });
-      _applyFilters();
-    }
-  }
-
-  void _openDatePicker() {
-    if (_filterMode == _DateFilterMode.single) {
-      _selectSingleDate();
-    } else {
-      _selectDateRange();
-    }
-  }
-
-  void _viewProforma(Map<String, dynamic> proforma) {
-    final proformaId = proforma['id']?.toString();
-    if (proformaId == null || proformaId.isEmpty) {
+  Future<void> _deleteReport(Map<String, dynamic> report, int index) async {
+    final docId = report['id']?.toString();
+    if (docId == null || docId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Invalid proforma data'),
+          content: Text('Cannot delete: Report ID not found'),
           backgroundColor: Colors.orange,
         ),
       );
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProformaViewScreen(
-          proformaId: proformaId,
-          // Pass the already date/centre/variety-filtered + recomputed data
-          // straight through, so the detail view and Excel export show the
-          // same filtered period the user selected on this screen instead
-          // of silently reloading the full, unfiltered document.
-          initialData: proforma,
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Report'),
+        content: Text(
+          'Delete this report?\n'
+              'Centre: ${report['centre']}\n'
+              'Variety: ${report['variety']}\n'
+              'Report #${report['reportNo']}\n\n'
+              'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+    setState(() => _isDeleting = true);
+    try {
+      final response = await ApiService.deleteEntry(docId);
+      if (!mounted) return;
+      if (response.success) {
+        setState(() {
+          _reports.removeWhere((r) => r['id'] == docId);
+          _isDeleting = false;
+        });
+        _applyFilters();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Report deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ ${response.message}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isDeleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  // ============================================================
+  // EXPORT
+  // ============================================================
+
+  Future<void> _exportToExcel() async {
+    if (_filteredReports.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No reports to export'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (widget.reportType == 'purchase') {
+      await _exportPurchaseReportsExcelStyle();
+    } else {
+      await _exportSeedReports();
+    }
+  }
+
+  Future<void> _exportPurchaseReportsExcelStyle() async {
+    try {
+      int success = 0;
+      int fail = 0;
+
+      for (final report in _filteredReports) {
+        try {
+          final excel = excel_lib.Excel.createExcel();
+
+          final dateStr = _fmtDateDisplay(report['date']);
+          String sheetName = dateStr.isNotEmpty ? dateStr.replaceAll('.', '-') : 'Report';
+          final sheet = excel[sheetName];
+
+          if (excel.tables.containsKey('Sheet1') && sheetName != 'Sheet1') {
+            excel.delete('Sheet1');
+          }
+
+          void row(List<dynamic> cells) => sheet.appendRow(cells);
+
+          row(['', 'THE COTTON CORPORATION OF INDIA LTD']);
+          row(['', 'BRANCH OFFICE :: MAHABUBNAGAR.']);
+          row(['', 'DAILY PURCHASE REPORT']);
+          row(['', 'CROP SEASON 2025-26', '', '', 'MSP']);
+
+          final centre = (report['centre'] ?? '').toString().toUpperCase();
+          row(['1', 'Purchase Date', ':', dateStr, '', dateStr, '', dateStr]);
+          row(['2', 'Centre', ':', centre, '', centre, '', centre]);
+          row(['3', 'Variety', ':', 'BB MOD', '', 'BB SPL MOD', '', 'MECH']);
+
+          void dataRow(String n, String label, String field) {
+            row([
+              n, label, ':',
+              _v(report, 'BB MOD', field), '',
+              _v(report, 'BB SPL MOD', field), '',
+              _v(report, 'MECH', field),
+            ]);
+          }
+
+          dataRow('4',
+              "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
+              'farmersDay');
+          dataRow('5', 'Arrivals (In Bales)', 'arrivalsBales');
+          dataRow('6', 'CCI Purchases (In Qtls)', 'cciPurchaseQtls');
+          dataRow('7', 'CCI Purchases (In Bales)', 'cciPurchaseBales');
+          dataRow('8', 'Avarage Kapas rate (In Rs. per qtl)', 'avgKapasRate');
+          dataRow('9', 'Budgeted Lint Percetage (%)', 'budgetedLint');
+          dataRow('10', 'Budgeted Shortage Percetage (%)', 'budgetedShortage');
+          dataRow('11', 'Cotton seed Percetage (%)', 'cottonSeedPct');
+          dataRow('12', 'Cotton seed rate  (In Rs. per qtl)', 'cottonSeedRate');
+          dataRow('13', "Processing cycle (In day's)", 'processingCycle');
+          dataRow('14', 'Proforma Expenses (In Rs. per Candy)', 'proformaExpenses');
+          dataRow('15', 'Budgeted Padtha (In Rs. per candy)', 'budgetedPadtha');
+          dataRow('16', "Day's pressed bales (In Bales)", 'dayPressedBales');
+          dataRow('17', 'Market Highest Rate (In Rs. per qtl)', 'marketHighestRate');
+          dataRow('18', 'Market Lowest Rate (In Rs. per qtl)', 'marketLowestRate');
+          dataRow('19', 'CCI Highest Rate (In Rs. per qtl)', 'cciHighestRate');
+          dataRow('20', 'CCI Lowest Rate (In Rs. per qtl)', 'cciLowestRate');
+          dataRow('21', 'Prog. Pressed Bales', 'progPressedBales');
+          dataRow('22', 'Prog. Purchase in qtls', 'progPurchaseQtls');
+          dataRow('23', 'Prog. Purchase Bales', 'progPurchaseBales');
+          dataRow('24',
+              'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
+              'progFarmers');
+
+          row(['25', 'Factory wise day purchase details', ':',
+            'BB MOD', '', 'BB SPL MOD', '', 'MECH']);
+          row(['', '', '', 'Prog. Pur. in qtls', 'Prog. Pur. in Bales',
+            'Prog. Pur. in qtls', 'Prog. Pur. in Bales',
+            'Prog. Pur. in qtls', 'Prog. Pur. in Bales']);
+
+          List<Map<String, dynamic>> factories = [];
+          final src = report['factories'];
+          if (src is List) {
+            factories = List<Map<String, dynamic>>.from(src);
+          }
+
+          int excelRow = 31;
+          for (int i = 0; i < factories.length; i++) {
+            final f = factories[i];
+            row([
+              '', '${i + 1}', f['factoryName']?.toString() ?? '', ':',
+              _v(report, 'BB MOD', 'progPurchaseQtls'),
+              _v(report, 'BB MOD', 'progPurchaseBales'),
+              _v(report, 'BB SPL MOD', 'progPurchaseQtls'),
+              _v(report, 'BB SPL MOD', 'progPurchaseBales'),
+              _v(report, 'MECH', 'progPurchaseQtls'),
+              _v(report, 'MECH', 'progPurchaseBales'),
+            ]);
+            excelRow++;
+          }
+
+          row([
+            '', 'TOTAL', '', ':',
+            '=SUM(E31:E$excelRow)', '=SUM(F31:F$excelRow)',
+            '=SUM(G31:G$excelRow)', '=SUM(H31:H$excelRow)',
+            '=SUM(I31:I$excelRow)', '=SUM(J31:J$excelRow)',
+          ]);
+
+          final fileBytes = excel.save();
+          if (fileBytes != null) {
+            final fileDate = dateStr.replaceAll('.', '-');
+            final parts2 = fileDate.split('-');
+            String shortDate = fileDate;
+            if (parts2.length == 3) {
+              final y = parts2[2].length > 2 ? parts2[2].substring(2) : parts2[2];
+              shortDate = '${parts2[0]}.${parts2[1]}.$y';
+            }
+            final fileName =
+                'Daily Purchase Report 2025-26 ($centre) - $shortDate.xlsx';
+
+            String? savePath;
+            if (Platform.isAndroid || Platform.isIOS) {
+              final dir = await getExternalStorageDirectory();
+              if (dir != null) savePath = '${dir.path}/$fileName';
+            } else {
+              final dir = await getApplicationDocumentsDirectory();
+              savePath = '${dir.path}/$fileName';
+            }
+            if (savePath != null) {
+              await File(savePath).writeAsBytes(fileBytes);
+              success++;
+            }
+          }
+        } catch (_) {
+          fail++;
+        }
+      }
+
+      if (mounted) {
+        String msg = '✅ Exported $success report(s)';
+        if (fail > 0) msg += ', $fail failed';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: fail > 0 ? Colors.orange : Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Export failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _exportSeedReports() async {
+    int success = 0;
+    int fail = 0;
+
+    for (final report in _filteredReports) {
+      try {
+        final excel = excel_lib.Excel.createExcel();
+        final sheet = excel['Sheet1'];
+
+        List<Map<String, dynamic>> factories = [];
+        final src = report['seedFactories'] ?? report['factories'];
+        if (src is List) {
+          factories = List<Map<String, dynamic>>.from(src);
+        }
+        if (factories.isEmpty) {
+          fail++;
+          continue;
+        }
+
+        sheet.appendRow(
+            ['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
+        sheet.appendRow([]);
+
+        final centre = (report['centre'] ?? 'DEVADURGA').toString().toUpperCase();
+        final dateStr = _fmtDateDisplay(report['date']);
+        sheet.appendRow(['CENTRE:', centre, '', 'DATE:', dateStr]);
+        sheet.appendRow(['REPORT NO.:', report['reportNo']?.toString() ?? '1']);
+        sheet.appendRow([]);
+
+        sheet.appendRow([
+          'S.No.', 'Factory Name', 'Variety',
+          'Prog. Realisable', 'Prog. Sold', "Day's Unsold",
+          'Kapas Form', 'Ready Form', 'Total', 'Base Rate',
+        ]);
+
+        for (int i = 0; i < factories.length; i++) {
+          final f = factories[i];
+          final kapas = f['kapasForm'] ?? 0;
+          final ready = f['readyForm'] ?? 0;
+          final total = f['total'] ?? (kapas + ready);
+          sheet.appendRow([
+            '${i + 1}',
+            f['factoryName']?.toString() ?? '',
+            f['variety']?.toString() ?? '',
+            f['progressiveRealisable']?.toString() ?? '0',
+            f['progressiveSold']?.toString() ?? '0',
+            f['dayUnsold']?.toString() ?? '0',
+            kapas.toString(),
+            ready.toString(),
+            total.toString(),
+            f['baseRate']?.toString() ?? '0',
+          ]);
+        }
+
+        final bytes = excel.save();
+        if (bytes != null) {
+          final fileName = 'Seed_Report_${dateStr.replaceAll('.', '-')}.xlsx';
+          String? savePath;
+          if (Platform.isAndroid || Platform.isIOS) {
+            final dir = await getExternalStorageDirectory();
+            if (dir != null) savePath = '${dir.path}/$fileName';
+          } else {
+            final dir = await getApplicationDocumentsDirectory();
+            savePath = '${dir.path}/$fileName';
+          }
+          if (savePath != null) {
+            await File(savePath).writeAsBytes(bytes);
+            success++;
+          }
+        }
+      } catch (_) {
+        fail++;
+      }
+    }
+
+    if (mounted) {
+      String msg = '✅ Exported $success seed report(s)';
+      if (fail > 0) msg += ', $fail failed';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(msg),
+          backgroundColor: fail > 0 ? Colors.orange : Colors.green,
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // Preview dialog
+  // ============================================================
+
+  void _viewReport(Map<String, dynamic> report) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 1200, maxHeight: 720),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE0F2FE),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.shopping_basket_rounded,
+                        color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Purchase Report - ${report['centre'] ?? ''}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildExcelStylePurchasePreview(report),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Close'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _exportToExcel();
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Export'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildExcelStylePurchasePreview(Map<String, dynamic> report) {
+    final dateStr = _fmtDateDisplay(report['date']);
+    final centre = (report['centre'] ?? '').toString().toUpperCase();
+
+    final rows = <List<String>>[
+      ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
+        _v(report, 'BB MOD', 'farmersDay'),
+        _v(report, 'BB SPL MOD', 'farmersDay'),
+        _v(report, 'MECH', 'farmersDay')],
+      ['5', 'Arrivals (In Bales)',
+        _v(report, 'BB MOD', 'arrivalsBales'),
+        _v(report, 'BB SPL MOD', 'arrivalsBales'),
+        _v(report, 'MECH', 'arrivalsBales')],
+      ['6', 'CCI Purchases (In Qtls)',
+        _v(report, 'BB MOD', 'cciPurchaseQtls'),
+        _v(report, 'BB SPL MOD', 'cciPurchaseQtls'),
+        _v(report, 'MECH', 'cciPurchaseQtls')],
+      ['7', 'CCI Purchases (In Bales)',
+        _v(report, 'BB MOD', 'cciPurchaseBales'),
+        _v(report, 'BB SPL MOD', 'cciPurchaseBales'),
+        _v(report, 'MECH', 'cciPurchaseBales')],
+      ['8', 'Avarage Kapas rate (In Rs. per qtl)',
+        _v(report, 'BB MOD', 'avgKapasRate'),
+        _v(report, 'BB SPL MOD', 'avgKapasRate'),
+        _v(report, 'MECH', 'avgKapasRate')],
+      ['9', 'Budgeted Lint Percetage (%)',
+        _v(report, 'BB MOD', 'budgetedLint'),
+        _v(report, 'BB SPL MOD', 'budgetedLint'),
+        _v(report, 'MECH', 'budgetedLint')],
+      ['10', 'Budgeted Shortage Percetage (%)',
+        _v(report, 'BB MOD', 'budgetedShortage'),
+        _v(report, 'BB SPL MOD', 'budgetedShortage'),
+        _v(report, 'MECH', 'budgetedShortage')],
+      ['11', 'Cotton seed Percetage (%)',
+        _v(report, 'BB MOD', 'cottonSeedPct'),
+        _v(report, 'BB SPL MOD', 'cottonSeedPct'),
+        _v(report, 'MECH', 'cottonSeedPct')],
+      ['12', 'Cotton seed rate  (In Rs. per qtl)',
+        _v(report, 'BB MOD', 'cottonSeedRate'),
+        _v(report, 'BB SPL MOD', 'cottonSeedRate'),
+        _v(report, 'MECH', 'cottonSeedRate')],
+      ['13', "Processing cycle (In day's)",
+        _v(report, 'BB MOD', 'processingCycle'),
+        _v(report, 'BB SPL MOD', 'processingCycle'),
+        _v(report, 'MECH', 'processingCycle')],
+      ['14', 'Proforma Expenses (In Rs. per Candy)',
+        _v(report, 'BB MOD', 'proformaExpenses'),
+        _v(report, 'BB SPL MOD', 'proformaExpenses'),
+        _v(report, 'MECH', 'proformaExpenses')],
+      ['15', 'Budgeted Padtha (In Rs. per candy)',
+        _v(report, 'BB MOD', 'budgetedPadtha'),
+        _v(report, 'BB SPL MOD', 'budgetedPadtha'),
+        _v(report, 'MECH', 'budgetedPadtha')],
+      ['16', "Day's pressed bales (In Bales)",
+        _v(report, 'BB MOD', 'dayPressedBales'),
+        _v(report, 'BB SPL MOD', 'dayPressedBales'),
+        _v(report, 'MECH', 'dayPressedBales')],
+      ['17', 'Market Highest Rate (In Rs. per qtl)',
+        _v(report, 'BB MOD', 'marketHighestRate'),
+        _v(report, 'BB SPL MOD', 'marketHighestRate'),
+        _v(report, 'MECH', 'marketHighestRate')],
+      ['18', 'Market Lowest Rate (In Rs. per qtl)',
+        _v(report, 'BB MOD', 'marketLowestRate'),
+        _v(report, 'BB SPL MOD', 'marketLowestRate'),
+        _v(report, 'MECH', 'marketLowestRate')],
+      ['19', 'CCI Highest Rate (In Rs. per qtl)',
+        _v(report, 'BB MOD', 'cciHighestRate'),
+        _v(report, 'BB SPL MOD', 'cciHighestRate'),
+        _v(report, 'MECH', 'cciHighestRate')],
+      ['20', 'CCI Lowest Rate (In Rs. per qtl)',
+        _v(report, 'BB MOD', 'cciLowestRate'),
+        _v(report, 'BB SPL MOD', 'cciLowestRate'),
+        _v(report, 'MECH', 'cciLowestRate')],
+      ['21', 'Prog. Pressed Bales',
+        _v(report, 'BB MOD', 'progPressedBales'),
+        _v(report, 'BB SPL MOD', 'progPressedBales'),
+        _v(report, 'MECH', 'progPressedBales')],
+      ['22', 'Prog. Purchase in qtls',
+        _v(report, 'BB MOD', 'progPurchaseQtls'),
+        _v(report, 'BB SPL MOD', 'progPurchaseQtls'),
+        _v(report, 'MECH', 'progPurchaseQtls')],
+      ['23', 'Prog. Purchase Bales',
+        _v(report, 'BB MOD', 'progPurchaseBales'),
+        _v(report, 'BB SPL MOD', 'progPurchaseBales'),
+        _v(report, 'MECH', 'progPurchaseBales')],
+      ['24', 'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
+        _v(report, 'BB MOD', 'progFarmers'),
+        _v(report, 'BB SPL MOD', 'progFarmers'),
+        _v(report, 'MECH', 'progFarmers')],
+    ];
+
+    List<Map<String, dynamic>> factories = [];
+    final src = report['factories'];
+    if (src is List) factories = List<Map<String, dynamic>>.from(src);
+
+    return Container(
+      decoration:
+      BoxDecoration(border: Border.all(color: const Color(0xFF94A3B8))),
+      child: Column(
+        children: [
+          _plainHeader('THE COTTON CORPORATION OF INDIA LTD'),
+          _plainHeader('BRANCH OFFICE :: MAHABUBNAGAR.'),
+          _plainHeader('DAILY PURCHASE REPORT'),
+          _plainHeader('CROP SEASON 2025-26', trailing: 'MSP'),
+          _numRow('1', 'Purchase Date', dateStr, dateStr, dateStr),
+          _numRow('2', 'Centre', centre, centre, centre),
+          _numRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
+          ...rows.map((r) => _numRow(r[0], r[1], r[2], r[3], r[4])),
+          _numRow('25', 'Factory wise day purchase details',
+              'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
+          _factorySubHeader(),
+          if (factories.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text(
+                'No factory data available',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+              ),
+            )
+          else
+            ...factories.asMap().entries.map((e) {
+              final i = e.key;
+              final f = e.value;
+              return _factoryRow(
+                '${i + 1}',
+                f['factoryName']?.toString() ?? '',
+                _v(report, 'BB MOD', 'progPurchaseQtls'),
+                _v(report, 'BB MOD', 'progPurchaseBales'),
+                _v(report, 'BB SPL MOD', 'progPurchaseQtls'),
+                _v(report, 'BB SPL MOD', 'progPurchaseBales'),
+                _v(report, 'MECH', 'progPurchaseQtls'),
+                _v(report, 'MECH', 'progPurchaseBales'),
+              );
+            }),
+          _totalRow(report),
+        ],
+      ),
+    );
+  }
+
+  Widget _plainHeader(String text, {String? trailing}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      width: double.infinity,
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          if (trailing != null)
+            Text(
+              trailing,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _numRow(String n, String label, String v1, String v2, String v3,
+      {bool bold = false}) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                n,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                  color: const Color(0xFF334155),
+                ),
+              ),
+            ),
+          ),
+          _cell(v1, bold: bold),
+          _cell(v2, bold: bold),
+          _cell(v3, bold: bold),
+        ],
+      ),
+    );
+  }
+
+  Widget _cell(String value, {bool bold = false}) {
+    return Expanded(
+      flex: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+        child: Text(
+          value,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _factorySubHeader() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF1F5F9),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          const Expanded(
+            flex: 4,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                'Factory Name',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          _subCell('Prog. Pur.\nin qtls'),
+          _subCell('Prog. Pur.\nin Bales'),
+          _subCell('Prog. Pur.\nin qtls'),
+          _subCell('Prog. Pur.\nin Bales'),
+          _subCell('Prog. Pur.\nin qtls'),
+          _subCell('Prog. Pur.\nin Bales'),
+        ],
+      ),
+    );
+  }
+
+  Widget _subCell(String text) {
+    return Expanded(
+      flex: 2,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _factoryRow(
+      String sno,
+      String name,
+      String b1,
+      String b2,
+      String b3,
+      String b4,
+      String b5,
+      String b6,
+      ) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                sno,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                name,
+                style: const TextStyle(fontSize: 11),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          _cell(b1),
+          _cell(b2),
+          _cell(b3),
+          _cell(b4),
+          _cell(b5),
+          _cell(b6),
+        ],
+      ),
+    );
+  }
+
+  Widget _totalRow(Map<String, dynamic> report) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF1F5F9),
+        border: Border(top: BorderSide(color: Color(0xFF94A3B8), width: 1)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          const Expanded(
+            flex: 4,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(
+                'TOTAL',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          _cell(_v(report, 'BB MOD', 'progPurchaseQtls'), bold: true),
+          _cell(_v(report, 'BB MOD', 'progPurchaseBales'), bold: true),
+          _cell(_v(report, 'BB SPL MOD', 'progPurchaseQtls'), bold: true),
+          _cell(_v(report, 'BB SPL MOD', 'progPurchaseBales'), bold: true),
+          _cell(_v(report, 'MECH', 'progPurchaseQtls'), bold: true),
+          _cell(_v(report, 'MECH', 'progPurchaseBales'), bold: true),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // Build
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
+    final isPurchase = widget.reportType == 'purchase';
+    final availableCentres = _availableCentres;
+    final availableVarieties = _availableVarieties;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Proforma Reports'),
+        title: Text('${isPurchase ? 'Purchase' : 'Seed'} Reports'),
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadProformas,
+            onPressed: _loadReports,
+            tooltip: 'Refresh',
           ),
         ],
       ),
       body: Column(
         children: [
-          _buildFilterBar(),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _ModeChip(
+                      label: 'Single Date',
+                      selected: _filterMode == _DateFilterMode.single,
+                      onTap: () => _setFilterMode(_DateFilterMode.single),
+                    ),
+                    _ModeChip(
+                      label: 'Date Range',
+                      selected: _filterMode == _DateFilterMode.range,
+                      onTap: () => _setFilterMode(_DateFilterMode.range),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (availableCentres.isNotEmpty) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedCentreFilter,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            hintText: 'All Centres',
+                            hintStyle: const TextStyle(
+                                fontSize: 12, color: Color(0xFF64748B)),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                            filled: true,
+                            fillColor: const Color(0xFFF1F5F9),
+                            isDense: true,
+                            suffixIcon: _selectedCentreFilter != null
+                                ? IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              onPressed: _clearCentreFilter,
+                              padding: EdgeInsets.zero,
+                            )
+                                : null,
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: null,
+                              child: Text('All Centres'),
+                            ),
+                            ...availableCentres.map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c),
+                            )),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _selectedCentreFilter = v);
+                            _applyFilters();
+                          },
+                        ),
+                      ),
+                      if (isPurchase && availableVarieties.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedVarietyFilter,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              hintText: 'All Varieties',
+                              hintStyle: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF64748B)),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+                              filled: true,
+                              fillColor: const Color(0xFFF1F5F9),
+                              isDense: true,
+                              suffixIcon: _selectedVarietyFilter != null
+                                  ? IconButton(
+                                icon: const Icon(Icons.close, size: 16),
+                                onPressed: _clearVarietyFilter,
+                                padding: EdgeInsets.zero,
+                              )
+                                  : null,
+                            ),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('All Varieties'),
+                              ),
+                              ...availableVarieties.map((v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(v),
+                              )),
+                            ],
+                            onChanged: (v) {
+                              setState(() => _selectedVarietyFilter = v);
+                              _applyFilters();
+                            },
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: _openDatePicker,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _isDateFilterActive
+                                  ? const Color(0xFF0F172A)
+                                  : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today_rounded,
+                                size: 16,
+                                color: _isDateFilterActive
+                                    ? const Color(0xFF0F172A)
+                                    : const Color(0xFF64748B),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _isDateFilterActive &&
+                                      _filterStartDate != null
+                                      ? (_filterMode == _DateFilterMode.single
+                                      ? _formatFilterDate(_filterStartDate!)
+                                      : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}')
+                                      : (_filterMode == _DateFilterMode.single
+                                      ? 'Select date'
+                                      : 'Select date range'),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: _isDateFilterActive
+                                        ? const Color(0xFF0F172A)
+                                        : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_isDateFilterActive) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: _clearDateFilter,
+                        icon: const Icon(Icons.close_rounded),
+                        color: const Color(0xFF64748B),
+                      ),
+                    ],
+                  ],
+                ),
+                if (_isFilterActive) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (_selectedCentreFilter != null)
+                        _FilterChip(
+                          label: 'Centre: $_selectedCentreFilter',
+                          onPressed: _clearCentreFilter,
+                        ),
+                      if (_selectedVarietyFilter != null)
+                        _FilterChip(
+                          label: 'Variety: $_selectedVarietyFilter',
+                          onPressed: _clearVarietyFilter,
+                        ),
+                      if (_isDateFilterActive)
+                        _FilterChip(
+                          label: _filterMode == _DateFilterMode.single
+                              ? 'Date: ${_formatFilterDate(_filterStartDate!)}'
+                              : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}',
+                          onPressed: _clearDateFilter,
+                        ),
+                      _FilterChip(
+                        label: 'Clear All',
+                        onPressed: _clearAllFilters,
+                        isClearAll: true,
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text(_error!, style: const TextStyle(color: Color(0xFF64748B))),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _loadProformas,
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            )
-                : _filteredProformas.isEmpty
+                : _filteredReports.isEmpty
                 ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    _isFilterActive ? Icons.search_off_rounded : Icons.picture_as_pdf,
+                    _isFilterActive
+                        ? Icons.search_off_rounded
+                        : (isPurchase
+                        ? Icons.shopping_basket_outlined
+                        : Icons.eco_outlined),
                     size: 64,
                     color: const Color(0xFF94A3B8),
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _isFilterActive ? 'No Proformas Match Your Filters' : 'No Proformas Generated Yet',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
                     _isFilterActive
-                        ? 'Try changing your filters'
-                        : 'Generate a proforma from the Purchase Entry dialog',
-                    style: const TextStyle(color: Color(0xFF64748B)),
-                    textAlign: TextAlign.center,
+                        ? 'No data records found'
+                        : 'Select filters to view reports',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
                   ),
                   if (_isFilterActive) ...[
                     const SizedBox(height: 16),
@@ -361,297 +1306,88 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
             )
                 : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _filteredProformas.length,
+              itemCount: _filteredReports.length,
               itemBuilder: (context, index) {
-                final proforma = _filteredProformas[index];
-                final proformaId = _getProformaId(proforma) ?? '';
-                final centre = proforma['centre'] ?? 'Unknown';
-                final variety = proforma['variety'] ?? 'Unknown';
-                final quantity = proforma['quantity'] ?? 0;
-                final bales = proforma['bales'] ?? 0;
-                final entryCount = proforma['entryCount'] ?? 0;
-
+                final report = _filteredReports[index];
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 2,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                  elevation: 2,
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(16),
-                    leading: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD1FAE5),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.picture_as_pdf,
-                        color: Color(0xFF059669),
+                    leading: CircleAvatar(
+                      backgroundColor: isPurchase
+                          ? const Color(0xFFE0F2FE)
+                          : const Color(0xFFD1FAE5),
+                      child: Icon(
+                        isPurchase
+                            ? Icons.shopping_basket_rounded
+                            : Icons.eco_rounded,
+                        color: const Color(0xFF0F172A),
                       ),
                     ),
                     title: Text(
-                      '$centre - $variety',
+                      isPurchase
+                          ? '${report['centre'] ?? 'Unknown'} - Report #${report['reportNo'] ?? 'N/A'}'
+                          : (report['factoryName'] ??
+                          report['centre'] ??
+                          'Report'),
                       style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF0F172A),
-                      ),
+                          fontWeight: FontWeight.w600, fontSize: 16),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
                         Text(
-                          'Entries: $entryCount | Period: ${_formatDateRange(proforma)}',
-                          style: const TextStyle(color: Color(0xFF64748B)),
-                        ),
-                        Text(
-                          'Total Quantity: $quantity Quintals',
-                          style: const TextStyle(color: Color(0xFF64748B)),
-                        ),
-                        Text(
-                          'Total Bales: $bales',
+                          'Date: ${report['date']?.toString().split('T').first ?? 'N/A'}',
                           style: const TextStyle(
-                            color: Color(0xFF0F172A),
-                            fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                              fontSize: 13),
+                        ),
+                        Text(
+                          'Centre: ${report['centre'] ?? 'Unknown'}',
+                          style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 13),
+                        ),
+                        if (report['variety'] != null)
+                          Text(
+                            'Variety: ${report['variety']}',
+                            style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13),
                           ),
+                      ],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.visibility),
+                          onPressed: () => _viewReport(report),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.download),
+                          onPressed: _exportToExcel,
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete_outline,
+                              color: Colors.red.shade400),
+                          onPressed: _isDeleting
+                              ? null
+                              : () => _deleteReport(report, index),
                         ),
                       ],
                     ),
-                    trailing: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: Color(0xFF94A3B8),
-                      ),
-                      onPressed: proformaId.isNotEmpty
-                          ? () => _viewProforma(proforma)
-                          : null,
-                      tooltip: 'View Proforma',
-                    ),
-                    onTap: proformaId.isNotEmpty
-                        ? () => _viewProforma(proforma)
-                        : null,
+                    onTap: () => _viewReport(report),
                   ),
                 );
               },
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  // ========================================================================
-  // FILTER BAR
-  // ========================================================================
-  Widget _buildFilterBar() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Filter Mode Chips
-          Row(
-            children: [
-              _ModeChip(
-                label: 'Single Date',
-                selected: _filterMode == _DateFilterMode.single,
-                onTap: () => _setFilterMode(_DateFilterMode.single),
-              ),
-              const SizedBox(width: 8),
-              _ModeChip(
-                label: 'Date Range',
-                selected: _filterMode == _DateFilterMode.range,
-                onTap: () => _setFilterMode(_DateFilterMode.range),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Centre + Variety Filter Dropdowns
-          Row(
-            children: [
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedCentreFilter,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    hintText: 'All Centres',
-                    hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF1F5F9),
-                    isDense: true,
-                    suffixIcon: _selectedCentreFilter != null
-                        ? IconButton(
-                      icon: const Icon(Icons.close, size: 16),
-                      onPressed: _clearCentreFilter,
-                      padding: EdgeInsets.zero,
-                    )
-                        : null,
-                  ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('All Centres'),
-                    ),
-                    ...ReportConstants.centres.map((centre) {
-                      return DropdownMenuItem<String>(
-                        value: centre,
-                        child: Text(centre),
-                      );
-                    }),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCentreFilter = value;
-                    });
-                    _applyFilters();
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedVarietyFilter,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    hintText: 'All Varieties',
-                    hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF1F5F9),
-                    isDense: true,
-                    suffixIcon: _selectedVarietyFilter != null
-                        ? IconButton(
-                      icon: const Icon(Icons.close, size: 16),
-                      onPressed: _clearVarietyFilter,
-                      padding: EdgeInsets.zero,
-                    )
-                        : null,
-                  ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: null,
-                      child: Text('All Varieties'),
-                    ),
-                    ...ReportConstants.varieties.map((variety) {
-                      return DropdownMenuItem<String>(
-                        value: variety,
-                        child: Text(variety),
-                      );
-                    }),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedVarietyFilter = value;
-                    });
-                    _applyFilters();
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Date Picker
-          Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  onTap: _openDatePicker,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: _isDateFilterActive ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 16,
-                          color: _isDateFilterActive ? const Color(0xFF0F172A) : const Color(0xFF64748B),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _isDateFilterActive && _filterStartDate != null
-                                ? (_filterMode == _DateFilterMode.single
-                                ? _formatFilterDate(_filterStartDate!)
-                                : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}')
-                                : (_filterMode == _DateFilterMode.single ? 'Select date' : 'Select date range'),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: _isDateFilterActive ? const Color(0xFF0F172A) : const Color(0xFF64748B),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              if (_isDateFilterActive) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _clearDateFilter,
-                  icon: const Icon(Icons.close_rounded),
-                  color: const Color(0xFF64748B),
-                  tooltip: 'Clear date filter',
-                ),
-              ],
-            ],
-          ),
-          // Active filters summary
-          if (_isFilterActive) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                if (_selectedCentreFilter != null)
-                  _FilterChip(
-                    label: 'Centre: $_selectedCentreFilter',
-                    onPressed: _clearCentreFilter,
-                  ),
-                if (_selectedVarietyFilter != null)
-                  _FilterChip(
-                    label: 'Variety: $_selectedVarietyFilter',
-                    onPressed: _clearVarietyFilter,
-                  ),
-                if (_isDateFilterActive)
-                  _FilterChip(
-                    label: _filterMode == _DateFilterMode.single
-                        ? 'Date: ${_formatFilterDate(_filterStartDate!)}'
-                        : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}',
-                    onPressed: _clearDateFilter,
-                  ),
-                _FilterChip(
-                  label: 'Clear All',
-                  onPressed: _clearAllFilters,
-                  isClearAll: true,
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -723,7 +1459,8 @@ class _FilterChip extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: isClearAll ? Colors.red.shade700 : const Color(0xFF334155),
+              color:
+              isClearAll ? Colors.red.shade700 : const Color(0xFF334155),
               fontWeight: isClearAll ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
@@ -733,7 +1470,8 @@ class _FilterChip extends StatelessWidget {
             child: Icon(
               Icons.close,
               size: 14,
-              color: isClearAll ? Colors.red.shade700 : const Color(0xFF64748B),
+              color:
+              isClearAll ? Colors.red.shade700 : const Color(0xFF64748B),
             ),
           ),
         ],
