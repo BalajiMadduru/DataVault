@@ -226,6 +226,8 @@ class ApiService {
 
   // ============ GET NEXT REPORT NUMBER ============
 
+  // ============ GET NEXT REPORT NUMBER ============
+
   static Future<ApiResponse> getNextReportNo({
     required String type,
     required String centre,
@@ -244,17 +246,38 @@ class ApiService {
           .get();
 
       int maxReportNo = 0;
+      int? existingReportNoForDay;
+
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
+
         final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (reportNo > maxReportNo) maxReportNo = reportNo;
+
+        // If a report already exists for the same centre + date,
+        // reuse its reportNo instead of incrementing. This makes all
+        // varieties of a same-day/same-centre report share one number.
+        if (date != null) {
+          final rawDate = data['date'];
+          if (rawDate is String) {
+            final parsed = DateTime.tryParse(rawDate);
+            if (parsed != null &&
+                parsed.year == date.year &&
+                parsed.month == date.month &&
+                parsed.day == date.day) {
+              existingReportNoForDay = reportNo;
+            }
+          }
+        }
       }
+
       return ApiResponse(
         success: true,
         message: 'Next report number generated',
-        data: {'nextReportNo': maxReportNo + 1},
+        data: {'nextReportNo': existingReportNoForDay ?? (maxReportNo + 1)},
       );
     } catch (e) {
       return ApiResponse(
@@ -1072,6 +1095,8 @@ class ApiService {
       );
     }
   }
+
+
 
   static Future<ApiResponse> getProformaById(String proformaId) async {
     try {

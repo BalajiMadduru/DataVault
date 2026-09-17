@@ -57,6 +57,23 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     return v.toList()..sort();
   }
 
+  /// Filtered reports grouped by centre + date + reportNo.
+  List<MapEntry<String, Map<String, Map<String, dynamic>>>>
+  get _groupedFilteredReports {
+    final groups = <String, Map<String, Map<String, dynamic>>>{};
+
+    for (final r in _filteredReports) {
+      final centre = (r['centre'] ?? '').toString();
+      final date = (r['date'] ?? '').toString().split('T').first;
+      final reportNo = (r['reportNo'] ?? '').toString();
+      final variety = (r['variety'] ?? '').toString();
+      final key = '$centre|$date|$reportNo';
+      groups.putIfAbsent(key, () => {})[variety] = r;
+    }
+
+    return groups.entries.toList();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -74,14 +91,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     return v.toString();
   }
 
-  /// Variety-aware progressive value lookup.
-  /// Each purchase submission is saved as ONE document for ONE variety;
-  /// the other two varieties' progressive totals are embedded as a
-  /// snapshot in that document's `otherVarietiesProgressive` map (see
-  /// purchase_entry_dialog.dart / preview_dialog.dart). This reads the
-  /// document that IS the target variety directly when it exists, and
-  /// otherwise falls back to whichever document is present in the group
-  /// and pulls the target variety's progressive snapshot out of it.
   String _progVal(
       Map<String, dynamic>? bbMod,
       Map<String, dynamic>? bbSplMod,
@@ -278,14 +287,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   // Group reports by (centre + date + reportNo)
   // ====================================================================
 
-  /// Groups flat list of variety-docs into 3-variety bundles.
-  /// Returns Map keyed by `centre|date|reportNo`.
   Map<String, Map<String, Map<String, dynamic>>> _groupByReport() {
     final groups = <String, Map<String, Map<String, dynamic>>>{};
-    // Use the full, unfiltered report list here — grouping over
-    // _filteredReports would drop sibling-variety documents whenever a
-    // variety filter is active, leaving the preview/export with only the
-    // one variety that survived the filter.
     for (final r in _reports) {
       final centre = (r['centre'] ?? '').toString();
       final date = (r['date'] ?? '').toString().split('T').first;
@@ -298,12 +301,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   }
 
   // ====================================================================
-  // Delete
+  // Delete entire group
   // ====================================================================
 
-  Future<void> _deleteReport(Map<String, dynamic> report, int index) async {
-    final docId = report['id']?.toString();
-    if (docId == null || docId.isEmpty) {
+  Future<void> _deleteGroup(Map<String, Map<String, dynamic>> group) async {
+    final sample = group.values.first;
+    final docIds = group.values
+        .map((r) => r['id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    if (docIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cannot delete: Report ID not found'),
@@ -313,6 +322,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       return;
     }
 
+    final varieties = group.keys.toList()..sort();
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -320,9 +331,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         title: const Text('Delete Report'),
         content: Text(
           'Delete this report?\n'
-              'Centre: ${report['centre']}\n'
-              'Variety: ${report['variety']}\n'
-              'Report #${report['reportNo']}\n\n'
+              'Centre: ${sample['centre']}\n'
+              'Report #${sample['reportNo']}\n'
+              'Varieties: ${varieties.join(', ')}\n\n'
               'This cannot be undone.',
         ),
         actions: [
@@ -340,41 +351,40 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     );
 
     if (confirm != true) return;
+
     setState(() => _isDeleting = true);
-    try {
-      final response = await ApiService.deleteEntry(docId);
-      if (!mounted) return;
-      if (response.success) {
-        setState(() {
-          _reports.removeWhere((r) => r['id'] == docId);
-          _isDeleting = false;
-        });
-        _applyFilters();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Report deleted'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        setState(() => _isDeleting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ ${response.message}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+    int failed = 0;
+    for (final id in docIds) {
+      try {
+        final response = await ApiService.deleteEntry(id);
+        if (!response.success) failed++;
+      } catch (_) {
+        failed++;
       }
-    } catch (e) {
-      setState(() => _isDeleting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('❌ $e'), backgroundColor: Colors.red),
-      );
     }
+
+    if (!mounted) return;
+
+    setState(() {
+      _reports.removeWhere((r) => docIds.contains(r['id']?.toString()));
+      _isDeleting = false;
+    });
+    _applyFilters();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          failed == 0
+              ? '✅ Report deleted'
+              : '⚠️ Deleted ${docIds.length - failed}, $failed failed',
+        ),
+        backgroundColor: failed == 0 ? Colors.green : Colors.orange,
+      ),
+    );
   }
 
   // ====================================================================
-  // EXPORT — mirrors the Excel reference exactly
+  // EXPORT
   // ====================================================================
 
   Future<void> _exportToExcel() async {
@@ -414,7 +424,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         try {
           final excel = excel_lib.Excel.createExcel();
 
-          // Prefer date-specific sheet name
           String sheetName = dateIso.isNotEmpty ? dateIso : 'Report';
           final sheet = excel['Sheet1'];
           if (excel.tables.containsKey('Sheet1') && sheetName != 'Sheet1') {
@@ -423,24 +432,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
           void row(List<dynamic> cells) => sheet.appendRow(cells);
 
-          // ── Header block ─────────────────────────────────
           row(['', 'THE COTTON CORPORATION OF INDIA LTD']);
           row(['', 'BRANCH OFFICE :: MAHABUBNAGAR.']);
           row(['', 'DAILY PURCHASE REPORT']);
           row(['', 'CROP SEASON 2025-26', '', '', 'MSP']);
 
           final dateStr = _fmtDateDisplay(dateIso);
-          row([
-            '1', 'Purchase Date', ':', dateStr, '', dateStr, '', dateStr,
-          ]);
-          row([
-            '2', 'Centre', ':', centre, '', centre, '', centre,
-          ]);
+          row(['1', 'Purchase Date', ':', dateStr, '', dateStr, '', dateStr]);
+          row(['2', 'Centre', ':', centre, '', centre, '', centre]);
           row([
             '3', 'Variety', ':', 'BB MOD', '', 'BB SPL MOD', '', 'MECH',
           ]);
 
-          // ── Rows 4–24 ────────────────────────────────────
           void dataRow(String n, String label, String field) {
             row([
               n, label, ':',
@@ -469,11 +472,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           dataRow('18', 'Market Lowest Rate (In Rs. per qtl)', 'marketLowestRate');
           dataRow('19', 'CCI Highest Rate (In Rs. per qtl)', 'cciHighestRate');
           dataRow('20', 'CCI Lowest Rate (In Rs. per qtl)', 'cciLowestRate');
-          // Progressive rows (21-24) are variety-aware: each submission is
-          // saved as ONE document for ONE variety, with the other two
-          // varieties' progressive totals embedded as a snapshot in
-          // `otherVarietiesProgressive`. Use _progVal so these still show
-          // up correctly even when bbSplMod/mech aren't separate documents.
+
           row([
             '21', 'Prog. Pressed Bales', ':',
             _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPressedBales'), '',
@@ -501,21 +500,19 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             _progVal(bbMod, bbSplMod, mech, 'MECH', 'progFarmers'),
           ]);
 
-          // ── Row 25: factory header ────────────────────────
           row(['25', 'Factory wise day purchase details', ':',
             'BB MOD', '', 'BB SPL MOD', '', 'MECH']);
           row(['', '', '', 'Prog. Pur. in qtls', 'Prog. Pur. in Bales',
             'Prog. Pur. in qtls', 'Prog. Pur. in Bales',
             'Prog. Pur. in qtls', 'Prog. Pur. in Bales']);
 
-          // Factory rows
           List<Map<String, dynamic>> factories = [];
           final src = bbMod?['factories'] ?? bbSplMod?['factories'] ?? mech?['factories'];
           if (src is List) {
             factories = List<Map<String, dynamic>>.from(src);
           }
 
-          int excelRow = 31; // matches reference (factory rows start at 31)
+          int excelRow = 31;
           for (int i = 0; i < factories.length; i++) {
             final f = factories[i];
             row([
@@ -530,7 +527,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             excelRow++;
           }
 
-          // TOTAL row with real formula
           row([
             '', 'TOTAL', '', ':',
             '=SUM(E31:E$excelRow)', '=SUM(F31:F$excelRow)',
@@ -595,16 +591,17 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     int success = 0;
     int fail = 0;
 
-    for (final report in _filteredReports) {
+    final groups = _groupByReport();
+
+    for (final entry in groups.entries) {
+      final group = entry.value;
+      final sample = group.values.isNotEmpty ? group.values.first : null;
+
       try {
         final excel = excel_lib.Excel.createExcel();
         final sheet = excel['Sheet1'];
 
-        List<Map<String, dynamic>> factories = [];
-        final src = report['seedFactories'] ?? report['factories'];
-        if (src is List) {
-          factories = List<Map<String, dynamic>>.from(src);
-        }
+        final factories = _mergedSeedFactories(group);
         if (factories.isEmpty) {
           fail++;
           continue;
@@ -614,10 +611,12 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
         sheet.appendRow([]);
 
-        final centre = (report['centre'] ?? 'DEVADURGA').toString().toUpperCase();
-        final dateStr = _fmtDateDisplay(report['date']);
+        final centre =
+        (sample?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
+        final dateStr = _fmtDateDisplay(sample?['date']);
+        final reportNo = sample?['reportNo']?.toString() ?? '1';
         sheet.appendRow(['CENTRE:', centre, '', 'DATE:', dateStr]);
-        sheet.appendRow(['REPORT NO.:', report['reportNo']?.toString() ?? '1']);
+        sheet.appendRow(['REPORT NO.:', reportNo]);
         sheet.appendRow([]);
 
         sheet.appendRow([
@@ -647,7 +646,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
         final bytes = excel.save();
         if (bytes != null) {
-          final fileName = 'Seed_Report_${dateStr.replaceAll('.', '-')}.xlsx';
+          final fileName =
+              'Seed_Report_${dateStr.replaceAll('.', '-')}_$reportNo.xlsx';
           String? savePath;
           if (Platform.isAndroid || Platform.isIOS) {
             final dir = await getExternalStorageDirectory();
@@ -679,10 +679,15 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   }
 
   // ====================================================================
-  // Preview (in-app dialog) — Excel-style, grouped by report
+  // Preview
   // ====================================================================
 
   void _viewReport(Map<String, dynamic> report) {
+    if (widget.reportType != 'purchase') {
+      _viewSeedReport(report);
+      return;
+    }
+
     final centre = (report['centre'] ?? '').toString();
     final date = (report['date'] ?? '').toString().split('T').first;
     final reportNo = (report['reportNo'] ?? '').toString();
@@ -694,28 +699,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     final bbMod = group['BB MOD'];
     final bbSplMod = group['BB SPL MOD'];
     final mech = group['MECH'];
-
-    debugPrint('════════════════════════════════════════');
-    debugPrint('🔍 _viewReport called');
-    debugPrint('🔍 Report centre: $centre');
-    debugPrint('🔍 Report date (raw): ${report['date']}');
-    debugPrint('🔍 Report date (split): $date');
-    debugPrint('🔍 Report reportNo: $reportNo');
-    debugPrint('🔍 Report variety: ${report['variety']}');
-    debugPrint('🔍 Lookup key: "$key"');
-    debugPrint('🔍 Total groups: ${groups.length}');
-    debugPrint('🔍 Group keys: ${groups.keys.toList()}');
-    debugPrint('🔍 Group found: ${groups.containsKey(key)}');
-    debugPrint('🔍 Varieties in group: ${group.keys.toList()}');
-    debugPrint('🔍 bbMod null? ${bbMod == null}');
-    if (bbMod != null) {
-      debugPrint('🔍 bbMod keys: ${bbMod.keys.toList()}');
-      debugPrint('🔍 bbMod progPressedBales: ${bbMod['progPressedBales']}');
-      debugPrint('🔍 bbMod progPurchaseQtls: ${bbMod['progPurchaseQtls']}');
-      debugPrint('🔍 bbMod progPurchaseBales: ${bbMod['progPurchaseBales']}');
-      debugPrint('🔍 bbMod progFarmers: ${bbMod['progFarmers']}');
-    }
-    debugPrint('════════════════════════════════════════');
 
     showDialog(
       context: context,
@@ -783,6 +766,202 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  List<Map<String, dynamic>> _mergedSeedFactories(
+      Map<String, Map<String, dynamic>> group) {
+    final merged = <Map<String, dynamic>>[];
+    for (final doc in group.values) {
+      final src = doc['seedFactories'] ?? doc['factories'];
+      if (src is List) {
+        for (final f in src) {
+          if (f is Map) {
+            merged.add(Map<String, dynamic>.from(f));
+          }
+        }
+      }
+    }
+    return merged;
+  }
+
+  void _viewSeedReport(Map<String, dynamic> report) {
+    final centre = (report['centre'] ?? '').toString();
+    final date = (report['date'] ?? '').toString().split('T').first;
+    final reportNo = (report['reportNo'] ?? '').toString();
+    final key = '$centre|$date|$reportNo';
+
+    final groups = _groupByReport();
+    final group = groups[key] ?? {(report['variety'] ?? '').toString(): report};
+
+    final factories = _mergedSeedFactories(group);
+    final sample = group.values.isNotEmpty ? group.values.first : report;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 1000, maxHeight: 700),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD1FAE5),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.eco_rounded,
+                        color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Seed Report - $centre',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildSeedPreviewTable(sample, factories),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Close'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _exportToExcel();
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Export'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeedPreviewTable(
+      Map<String, dynamic>? sample, List<Map<String, dynamic>> factories) {
+    final dateStr = _fmtDateDisplay(sample?['date']);
+    final centre = (sample?['centre'] ?? '').toString().toUpperCase();
+    final reportNo = (sample?['reportNo'] ?? '').toString();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+          ),
+          child: const Text(
+            'SEED REPORT',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              letterSpacing: 1,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Text('CENTRE:',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(centre,
+                  style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            ),
+            const Text('DATE:',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(dateStr, style: const TextStyle(fontSize: 12)),
+            const SizedBox(width: 16),
+            const Text('REPORT NO.:',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+            const SizedBox(width: 4),
+            Text(reportNo, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (factories.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('No factory data available',
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+            ),
+          )
+        else
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: DataTable(
+              headingRowColor:
+              WidgetStateProperty.all(const Color(0xFFE2E8F0)),
+              columns: const [
+                DataColumn(label: Text('S.No.')),
+                DataColumn(label: Text('Factory Name')),
+                DataColumn(label: Text('Variety')),
+                DataColumn(label: Text('Prog. Realisable')),
+                DataColumn(label: Text('Prog. Sold')),
+                DataColumn(label: Text("Day's Unsold")),
+                DataColumn(label: Text('Kapas Form')),
+                DataColumn(label: Text('Ready Form')),
+                DataColumn(label: Text('Total')),
+                DataColumn(label: Text('Base Rate')),
+              ],
+              rows: factories.asMap().entries.map((e) {
+                final i = e.key;
+                final f = e.value;
+                final total =
+                    f['total'] ?? ((f['kapasForm'] ?? 0) + (f['readyForm'] ?? 0));
+                return DataRow(cells: [
+                  DataCell(Text('${i + 1}')),
+                  DataCell(Text(f['factoryName']?.toString() ?? '')),
+                  DataCell(Text(f['variety']?.toString() ?? '')),
+                  DataCell(Text(f['progressiveRealisable']?.toString() ?? '0')),
+                  DataCell(Text(f['progressiveSold']?.toString() ?? '0')),
+                  DataCell(Text(f['dayUnsold']?.toString() ?? '0')),
+                  DataCell(Text(f['kapasForm']?.toString() ?? '0')),
+                  DataCell(Text(f['readyForm']?.toString() ?? '0')),
+                  DataCell(Text(total.toString())),
+                  DataCell(Text(f['baseRate']?.toString() ?? '0')),
+                ]);
+              }).toList(),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1105,6 +1284,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     final isPurchase = widget.reportType == 'purchase';
     final availableCentres = _availableCentres;
     final availableVarieties = _availableVarieties;
+    final groupedReports = _groupedFilteredReports;
 
     return Scaffold(
       appBar: AppBar(
@@ -1337,7 +1517,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _filteredReports.isEmpty
+                : groupedReports.isEmpty
                 ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -1377,9 +1557,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             )
                 : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _filteredReports.length,
+              itemCount: groupedReports.length,
               itemBuilder: (context, index) {
-                final report = _filteredReports[index];
+                final groupEntry = groupedReports[index];
+                final parts = groupEntry.key.split('|');
+                final centre = parts[0];
+                final dateIso = parts[1];
+                final reportNo = parts[2];
+                final group = groupEntry.value;
+
+                final varieties = group.keys.toList()..sort();
+                final sample = group.values.first;
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   shape: RoundedRectangleBorder(
@@ -1401,10 +1590,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     ),
                     title: Text(
                       isPurchase
-                          ? '${report['centre'] ?? 'Unknown'} - Report #${report['reportNo'] ?? 'N/A'}'
-                          : (report['factoryName'] ??
-                          report['centre'] ??
-                          'Report'),
+                          ? '$centre - Report #$reportNo'
+                          : (sample['factoryName'] ?? centre ?? 'Report'),
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 16),
                     ),
@@ -1413,21 +1600,20 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                       children: [
                         const SizedBox(height: 4),
                         Text(
-                          'Date: ${report['date']?.toString().split('T').first ?? 'N/A'}',
+                          'Date: $dateIso',
                           style: const TextStyle(
                               color: Color(0xFF64748B), fontSize: 13),
                         ),
                         Text(
-                          'Centre: ${report['centre'] ?? 'Unknown'}',
+                          'Centre: $centre',
                           style: const TextStyle(
                               color: Color(0xFF64748B), fontSize: 13),
                         ),
-                        if (report['variety'] != null)
-                          Text(
-                            'Variety: ${report['variety']}',
-                            style: const TextStyle(
-                                color: Color(0xFF64748B), fontSize: 13),
-                          ),
+                        Text(
+                          'Varieties: ${varieties.join(', ')}',
+                          style: const TextStyle(
+                              color: Color(0xFF64748B), fontSize: 13),
+                        ),
                       ],
                     ),
                     trailing: Row(
@@ -1435,7 +1621,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.visibility),
-                          onPressed: () => _viewReport(report),
+                          onPressed: () => _viewReport(sample),
                         ),
                         IconButton(
                           icon: const Icon(Icons.download),
@@ -1446,11 +1632,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                               color: Colors.red.shade400),
                           onPressed: _isDeleting
                               ? null
-                              : () => _deleteReport(report, index),
+                              : () => _deleteGroup(group),
                         ),
                       ],
                     ),
-                    onTap: () => _viewReport(report),
+                    onTap: () => _viewReport(sample),
                   ),
                 );
               },
