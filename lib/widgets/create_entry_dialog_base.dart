@@ -1,3 +1,4 @@
+import 'package:datavault/widgets/weight_list_entry_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/services.dart';
@@ -512,15 +513,21 @@ class CreateEntryDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (type == ReportType.dailyPurchase) {
-      return PurchaseEntryDialog(  // Changed from PurchaseCreateEntryDialog
+      return PurchaseEntryDialog(
         isModify: isModify,
         existingData: existingData,
       );
-    } else {
-      return SeedEntryDialog(  // Changed from SeedCreateEntryDialog
+    } else if (type == ReportType.dailySeed) {
+      return SeedEntryDialog(
+        isModify: isModify,
+        existingData: existingData,
+      );
+    } else if (type == ReportType.weightList) {
+      return WeightListEntryDialog(
         isModify: isModify,
         existingData: existingData,
       );
     }
+    return const SizedBox.shrink();
   }
 }

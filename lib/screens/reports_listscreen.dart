@@ -64,11 +64,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
     for (final r in _filteredReports) {
       final centre = (r['centre'] ?? '').toString();
-      final date = (r['date'] ?? '').toString().split('T').first;
+      final date = _dateKey(r['date']);
       final reportNo = (r['reportNo'] ?? '').toString();
-      final variety = (r['variety'] ?? '').toString();
-      final key = '$centre|$date|$reportNo';
-      groups.putIfAbsent(key, () => {})[variety] = r;
+
+      // For weight list, use a single key without variety
+      if (widget.reportType == 'weightList') {
+        final key = '$centre|$date|$reportNo';
+        groups.putIfAbsent(key, () => {})['weightList'] = r;
+      } else {
+        final variety = (r['variety'] ?? '').toString();
+        final key = '$centre|$date|$reportNo';
+        groups.putIfAbsent(key, () => {})[variety] = r;
+      }
     }
 
     return groups.entries.toList();
@@ -83,6 +90,13 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   // ====================================================================
   // Helpers
   // ====================================================================
+
+  double _n(dynamic v) {
+    if (v == null) return 0;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
 
   String _val(Map<String, dynamic>? doc, String field) {
     if (doc == null) return '0';
@@ -119,10 +133,43 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     return '0';
   }
 
+  /// Parses String (ISO or dd/MM/yyyy or dd.MM.yyyy), DateTime or Firestore
+  /// Timestamp into a DateTime. Returns null if it can't be parsed.
+  DateTime? _parseAnyDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    if (v is String) {
+      final s = v.trim();
+      if (s.isEmpty) return null;
+      final iso = DateTime.tryParse(s);
+      if (iso != null) return iso;
+      final m = RegExp(r'^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$').firstMatch(s);
+      if (m != null) {
+        return DateTime(
+            int.parse(m.group(3)!), int.parse(m.group(2)!), int.parse(m.group(1)!));
+      }
+      return null;
+    }
+    try {
+      // Firestore Timestamp (avoids needing the cloud_firestore import here)
+      final d = (v as dynamic).toDate();
+      if (d is DateTime) return d;
+    } catch (_) {}
+    return null;
+  }
+
+  /// yyyy-MM-dd string for grouping/keys.
+  String _dateKey(dynamic v) {
+    final d = _parseAnyDate(v);
+    if (d == null) return (v ?? '').toString().split('T').first;
+    return '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   String _fmtDateDisplay(dynamic d) {
     if (d == null) return '';
     try {
-      final date = d is String ? DateTime.parse(d) : d as DateTime;
+      final date = _parseAnyDate(d);
+      if (date == null) return '';
       return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
     } catch (_) {
       return '';
@@ -235,18 +282,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   void _applyFilters() {
     setState(() {
       _filteredReports = _reports.where((report) {
-        final rawDate = report['date']?.toString();
-        if (rawDate == null || rawDate.isEmpty) return false;
-        final reportDate = DateTime.tryParse(rawDate);
-        if (reportDate == null) return false;
-        final n = DateTime(reportDate.year, reportDate.month, reportDate.day);
+        final reportDate = _parseAnyDate(report['date']);
+        if (reportDate == null && _isDateFilterActive) return false;
+        final n = reportDate == null
+            ? null
+            : DateTime(reportDate.year, reportDate.month, reportDate.day);
 
-        if (_filterStartDate != null) {
+        if (n != null && _filterStartDate != null) {
           final s = DateTime(_filterStartDate!.year, _filterStartDate!.month,
               _filterStartDate!.day);
           if (n.isBefore(s)) return false;
         }
-        if (_filterEndDate != null) {
+        if (n != null && _filterEndDate != null) {
           final e = DateTime(_filterEndDate!.year, _filterEndDate!.month,
               _filterEndDate!.day);
           if (n.isAfter(e)) return false;
@@ -255,7 +302,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           final c = report['centre']?.toString().toLowerCase() ?? '';
           if (c != _selectedCentreFilter!.toLowerCase()) return false;
         }
-        if (_selectedVarietyFilter != null && _selectedVarietyFilter!.isNotEmpty) {
+        if (_selectedVarietyFilter != null &&
+            _selectedVarietyFilter!.isNotEmpty) {
           final v = report['variety']?.toString().toLowerCase() ?? '';
           if (v != _selectedVarietyFilter!.toLowerCase()) return false;
         }
@@ -266,9 +314,18 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
   void _loadReports() async {
     setState(() => _isLoading = true);
-    final response = widget.reportType == 'purchase'
-        ? await ApiService.getPurchaseEntries()
-        : await ApiService.getSeedEntries();
+    ApiResponse response;
+
+    if (widget.reportType == 'purchase') {
+      response = await ApiService.getPurchaseEntries();
+    } else if (widget.reportType == 'seed') {
+      response = await ApiService.getSeedEntries();
+    } else if (widget.reportType == 'weightList') {
+      response = await ApiService.getWeightListEntries();
+    } else {
+      response = ApiResponse(success: false, message: 'Unknown report type');
+    }
+
     if (mounted) {
       setState(() {
         if (response.success && response.data != null) {
@@ -279,6 +336,17 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         }
         _isLoading = false;
       });
+      debugPrint('[Reports] ${widget.reportType}: loaded ${_reports.length} reports'
+          '${response.success ? '' : ' (ERROR: ${response.message})'}');
+      if (!response.success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.message),
+            backgroundColor: Colors.red[700],
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
       _applyFilters();
     }
   }
@@ -291,11 +359,17 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     final groups = <String, Map<String, Map<String, dynamic>>>{};
     for (final r in _reports) {
       final centre = (r['centre'] ?? '').toString();
-      final date = (r['date'] ?? '').toString().split('T').first;
+      final date = _dateKey(r['date']);
       final reportNo = (r['reportNo'] ?? '').toString();
-      final variety = (r['variety'] ?? '').toString();
       final key = '$centre|$date|$reportNo';
-      groups.putIfAbsent(key, () => {})[variety] = r;
+
+      if (widget.reportType == 'weightList') {
+        // Weight lists have a single entry per report — use a fixed inner key
+        groups.putIfAbsent(key, () => {})['weightList'] = r;
+      } else {
+        final variety = (r['variety'] ?? '').toString();
+        groups.putIfAbsent(key, () => {})[variety] = r;
+      }
     }
     return groups;
   }
@@ -400,6 +474,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
     if (widget.reportType == 'purchase') {
       await _exportPurchaseReportsExcelStyle();
+    } else if (widget.reportType == 'weightList') {
+      // Export all weight list reports
+      for (final report in _filteredReports) {
+        await _exportWeightListToExcel(report);
+      }
     } else {
       await _exportSeedReports();
     }
@@ -415,7 +494,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         final parts = entry.key.split('|');
         final centre = parts[0];
         final dateIso = parts[1];
-        final reportNo = parts[2];
 
         final bbMod = entry.value['BB MOD'];
         final bbSplMod = entry.value['BB SPL MOD'];
@@ -441,14 +519,25 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           row(['1', 'Purchase Date', ':', dateStr, '', dateStr, '', dateStr]);
           row(['2', 'Centre', ':', centre, '', centre, '', centre]);
           row([
-            '3', 'Variety', ':', 'BB MOD', '', 'BB SPL MOD', '', 'MECH',
+            '3',
+            'Variety',
+            ':',
+            'BB MOD',
+            '',
+            'BB SPL MOD',
+            '',
+            'MECH',
           ]);
 
           void dataRow(String n, String label, String field) {
             row([
-              n, label, ':',
-              _val(bbMod, field), '',
-              _val(bbSplMod, field), '',
+              n,
+              label,
+              ':',
+              _val(bbMod, field),
+              '',
+              _val(bbSplMod, field),
+              '',
               _val(mech, field),
             ]);
           }
@@ -460,54 +549,89 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           dataRow('6', 'CCI Purchases (In Qtls)', 'cciPurchaseQtls');
           dataRow('7', 'CCI Purchases (In Bales)', 'cciPurchaseBales');
           dataRow('8', 'Avarage Kapas rate (In Rs. per qtl)', 'avgKapasRate');
-          dataRow('9', 'Budgeted Lint Percetage (%)', 'budgetedLint');
-          dataRow('10', 'Budgeted Shortage Percetage (%)', 'budgetedShortage');
-          dataRow('11', 'Cotton seed Percetage (%)', 'cottonSeedPct');
-          dataRow('12', 'Cotton seed rate  (In Rs. per qtl)', 'cottonSeedRate');
-          dataRow('13', "Processing cycle (In day's)", 'processingCycle');
-          dataRow('14', 'Proforma Expenses (In Rs. per Candy)', 'proformaExpenses');
-          dataRow('15', 'Budgeted Padtha (In Rs. per candy)', 'budgetedPadtha');
-          dataRow('16', "Day's pressed bales (In Bales)", 'dayPressedBales');
-          dataRow('17', 'Market Highest Rate (In Rs. per qtl)', 'marketHighestRate');
-          dataRow('18', 'Market Lowest Rate (In Rs. per qtl)', 'marketLowestRate');
-          dataRow('19', 'CCI Highest Rate (In Rs. per qtl)', 'cciHighestRate');
-          dataRow('20', 'CCI Lowest Rate (In Rs. per qtl)', 'cciLowestRate');
+          dataRow('9', 'Moisture (%)', 'moisture');
+          dataRow('10', 'Budgeted Lint Percetage (%)', 'budgetedLint');
+          dataRow('11', 'Budgeted Shortage Percetage (%)', 'budgetedShortage');
+          dataRow('12', 'Cotton seed Percetage (%)', 'cottonSeedPct');
+          dataRow('13', 'Cotton seed rate  (In Rs. per qtl)', 'cottonSeedRate');
+          dataRow('14', "Processing cycle (In day's)", 'processingCycle');
+          dataRow('15', 'Proforma Expenses (In Rs. per Candy)',
+              'proformaExpenses');
+          dataRow('16', 'Budgeted Padtha (In Rs. per candy)', 'budgetedPadtha');
+          dataRow('17', "Day's pressed bales (In Bales)", 'dayPressedBales');
+          dataRow('18', 'Market Highest Rate (In Rs. per qtl)',
+              'marketHighestRate');
+          dataRow('19', 'Market Lowest Rate (In Rs. per qtl)',
+              'marketLowestRate');
+          dataRow('20', 'CCI Highest Rate (In Rs. per qtl)', 'cciHighestRate');
+          dataRow('21', 'CCI Lowest Rate (In Rs. per qtl)', 'cciLowestRate');
 
           row([
-            '21', 'Prog. Pressed Bales', ':',
-            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPressedBales'), '',
-            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPressedBales'), '',
+            '22',
+            'Prog. Pressed Bales',
+            ':',
+            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPressedBales'),
+            '',
+            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPressedBales'),
+            '',
             _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPressedBales'),
           ]);
           row([
-            '22', 'Prog. Purchase in qtls', ':',
-            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseQtls'), '',
-            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseQtls'), '',
+            '23',
+            'Prog. Purchase in qtls',
+            ':',
+            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseQtls'),
+            '',
+            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseQtls'),
+            '',
             _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseQtls'),
           ]);
           row([
-            '23', 'Prog. Purchase Bales', ':',
-            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseBales'), '',
-            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseBales'), '',
+            '24',
+            'Prog. Purchase Bales',
+            ':',
+            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseBales'),
+            '',
+            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseBales'),
+            '',
             _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseBales'),
           ]);
           row([
-            '24',
+            '25',
             'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
             ':',
-            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progFarmers'), '',
-            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progFarmers'), '',
+            _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progFarmers'),
+            '',
+            _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progFarmers'),
+            '',
             _progVal(bbMod, bbSplMod, mech, 'MECH', 'progFarmers'),
           ]);
 
-          row(['25', 'Factory wise day purchase details', ':',
-            'BB MOD', '', 'BB SPL MOD', '', 'MECH']);
-          row(['', '', '', 'Prog. Pur. in qtls', 'Prog. Pur. in Bales',
-            'Prog. Pur. in qtls', 'Prog. Pur. in Bales',
-            'Prog. Pur. in qtls', 'Prog. Pur. in Bales']);
+          row([
+            '26',
+            'Factory wise day purchase details',
+            ':',
+            'BB MOD',
+            '',
+            'BB SPL MOD',
+            '',
+            'MECH'
+          ]);
+          row([
+            '',
+            '',
+            '',
+            'Prog. Pur. in qtls',
+            'Prog. Pur. in Bales',
+            'Prog. Pur. in qtls',
+            'Prog. Pur. in Bales',
+            'Prog. Pur. in qtls',
+            'Prog. Pur. in Bales'
+          ]);
 
           List<Map<String, dynamic>> factories = [];
-          final src = bbMod?['factories'] ?? bbSplMod?['factories'] ?? mech?['factories'];
+          final src =
+              bbMod?['factories'] ?? bbSplMod?['factories'] ?? mech?['factories'];
           if (src is List) {
             factories = List<Map<String, dynamic>>.from(src);
           }
@@ -516,7 +640,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           for (int i = 0; i < factories.length; i++) {
             final f = factories[i];
             row([
-              '', '${i + 1}', f['factoryName']?.toString() ?? '', ':',
+              '',
+              '${i + 1}',
+              f['factoryName']?.toString() ?? '',
+              ':',
               _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseQtls'),
               _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseBales'),
               _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseQtls'),
@@ -528,10 +655,16 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           }
 
           row([
-            '', 'TOTAL', '', ':',
-            '=SUM(E31:E$excelRow)', '=SUM(F31:F$excelRow)',
-            '=SUM(G31:G$excelRow)', '=SUM(H31:H$excelRow)',
-            '=SUM(I31:I$excelRow)', '=SUM(J31:J$excelRow)',
+            '',
+            'TOTAL',
+            '',
+            ':',
+            '=SUM(E31:E$excelRow)',
+            '=SUM(F31:F$excelRow)',
+            '=SUM(G31:G$excelRow)',
+            '=SUM(H31:H$excelRow)',
+            '=SUM(I31:I$excelRow)',
+            '=SUM(J31:J$excelRow)',
           ]);
 
           final fileBytes = excel.save();
@@ -540,7 +673,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             final parts2 = fileDate.split('-');
             String shortDate = fileDate;
             if (parts2.length == 3) {
-              final y = parts2[2].length > 2 ? parts2[2].substring(2) : parts2[2];
+              final y = parts2[2].length > 2
+                  ? parts2[2].substring(2)
+                  : parts2[2];
               shortDate = '${parts2[0]}.${parts2[1]}.$y';
             }
             final fileName =
@@ -620,27 +755,56 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         sheet.appendRow([]);
 
         sheet.appendRow([
-          'S.No.', 'Factory Name', 'Variety',
-          'Prog. Realisable', 'Prog. Sold', "Day's Unsold",
-          'Kapas Form', 'Ready Form', 'Total', 'Base Rate',
+          'Sno',
+          'Centre',
+          'Name of Factory',
+          'Variety',
+          'Realisable',
+          'Realised',
+          'Sold Quantity',
+          'Progressive Delivery',
+          'KAPAS (1)',
+          'READY (1)',
+          'TOTAL (1)',
+          'KAPAS (2)',
+          'READY (2)',
+          'TOTAL (2)',
+          'Market Rate (Min)',
+          'Market Rate (Max)',
         ]);
 
         for (int i = 0; i < factories.length; i++) {
           final f = factories[i];
-          final kapas = f['kapasForm'] ?? 0;
-          final ready = f['readyForm'] ?? 0;
-          final total = f['total'] ?? (kapas + ready);
+          final realisable = _n(f['realisable'] ?? f['progressiveRealisable']);
+          final realised = _n(f['realised'] ?? f['progressiveSold']);
+          final soldQty = _n(f['soldQty']);
+          final progDelivery = _n(f['progDelivery']);
+
+          final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
+          final kaps1 = realisable - soldQty - ready1;
+          final total1 = kaps1 + ready1;
+
+          final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
+          final ready2 = soldQty - progDelivery - kaps2;
+          final total2 = kaps2 + ready2;
+
           sheet.appendRow([
             '${i + 1}',
+            centre,
             f['factoryName']?.toString() ?? '',
             f['variety']?.toString() ?? '',
-            f['progressiveRealisable']?.toString() ?? '0',
-            f['progressiveSold']?.toString() ?? '0',
-            f['dayUnsold']?.toString() ?? '0',
-            kapas.toString(),
-            ready.toString(),
-            total.toString(),
-            f['baseRate']?.toString() ?? '0',
+            realisable,
+            realised,
+            soldQty,
+            progDelivery,
+            kaps1,
+            ready1,
+            total1,
+            kaps2,
+            ready2,
+            total2,
+            _n(f['marketRateMin']),
+            _n(f['marketRateMax']),
           ]);
         }
 
@@ -678,18 +842,195 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     }
   }
 
+  Future<void> _exportWeightListToExcel(Map<String, dynamic> data) async {
+    try {
+      final excel = excel_lib.Excel.createExcel();
+      final sheet = excel['Sheet1'];
+
+      final dateStr = _fmtDateDisplay(data['date']);
+      final centre = (data['centre'] ?? '').toString().toUpperCase();
+      final variety = (data['variety'] ?? '').toString();
+      final pmNo = (data['pmNo'] ?? '').toString();
+      final prNo = (data['prNo'] ?? '').toString();
+      final lotNo = (data['lotNo'] ?? '').toString();
+      final sampleBaleNo = (data['sampleBaleNo'] ?? '').toString();
+      final godown = (data['godown'] ?? '').toString();
+      final noOfBales = (data['noOfBales'] ?? 100).toString();
+      final moisture = (data['moisture'] ?? '').toString();
+      final pressingFactory = (data['pressingFactory'] ?? '').toString();
+
+      // Parse bale entries
+      List<Map<String, dynamic>> baleEntries = [];
+      final baleSrc = data['baleEntries'];
+      if (baleSrc is List) {
+        baleEntries = List<Map<String, dynamic>>.from(baleSrc);
+      }
+
+      final tareWeight = _n(data['tareWeight']);
+      final totalGrossWeight = _n(data['totalGrossWeight']);
+      final totalNettWeight = _n(data['totalNettWeight']);
+
+      String fmt(double v) {
+        if (v == v.roundToDouble()) return v.toInt().toString();
+        return v.toStringAsFixed(2);
+      }
+
+      // Header rows
+      sheet.appendRow(['', 'THE COTTON CORPORATION OF INDIA LTD']);
+      sheet.appendRow(['', 'BRANCH OFFICE :: MAHABUBNAGAR']);
+      sheet.appendRow(['', 'CENTRE :: $centre']);
+      sheet.appendRow([]);
+      sheet.appendRow(['', 'P.MARK NO: $pmNo', '', 'P.R.NO: $prNo']);
+      sheet.appendRow(
+          ['', 'VARIETY: $variety', '', 'Sample Bale No: $sampleBaleNo']);
+      sheet.appendRow(['', 'LOT NO: $lotNo', '', 'GODOWN: $godown']);
+      sheet.appendRow(
+          ['', 'NO OF BALES: $noOfBales', '', 'MOISTURE: $moisture']);
+      sheet.appendRow(['', 'DATE OF PRESSING: $dateStr']);
+      sheet.appendRow(
+          ['', 'NAME OF THE PRESSING FACTORY: $pressingFactory']);
+      sheet.appendRow([]);
+
+      // Bale table header
+      final headerRow = <String>[];
+      for (int c = 0; c < 5; c++) {
+        headerRow.add('NO');
+        headerRow.add('Kgs.');
+      }
+      sheet.appendRow(headerRow);
+
+      // Bale data - 10 rows per section, 5 columns
+      final totalBales = baleEntries.length;
+      for (int section = 0; section < (totalBales / 50).ceil(); section++) {
+        final sectionStart = section * 50;
+        final sectionEnd = (sectionStart + 50).clamp(0, totalBales);
+
+        // 10 rows of data
+        for (int r = 0; r < 10; r++) {
+          final rowData = <String>[];
+          for (int c = 0; c < 5; c++) {
+            final idx = sectionStart + r + (c * 10);
+            if (idx < sectionEnd && idx < baleEntries.length) {
+              rowData.add('${idx + 1}');
+              rowData.add(fmt(_n(baleEntries[idx]['weight'])));
+            } else {
+              rowData.add('');
+              rowData.add('');
+            }
+          }
+          sheet.appendRow(rowData);
+        }
+
+        // Total row
+        final totalRow = <String>[];
+        for (int c = 0; c < 5; c++) {
+          double colTotal = 0;
+          for (int r = 0; r < 10; r++) {
+            final idx = sectionStart + r + (c * 10);
+            if (idx < sectionEnd && idx < baleEntries.length) {
+              colTotal += _n(baleEntries[idx]['weight']);
+            }
+          }
+          totalRow.add(c == 0 ? 'TOTAL' : '');
+          totalRow.add(fmt(colTotal));
+        }
+        sheet.appendRow(totalRow);
+        sheet.appendRow([]);
+      }
+
+      // Summary
+      sheet.appendRow([
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Total Grass Weight :',
+        fmt(totalGrossWeight)
+      ]);
+      sheet.appendRow([
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Tare Weight:',
+        fmt(tareWeight)
+      ]);
+      sheet.appendRow([
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Total Nett Weight:',
+        fmt(totalNettWeight)
+      ]);
+
+      final fileBytes = excel.save();
+      if (fileBytes != null) {
+        final fileName =
+            'Weight_List_${centre}_${dateStr.replaceAll('.', '-')}.xlsx';
+        String? savePath;
+
+        if (Platform.isAndroid || Platform.isIOS) {
+          final dir = await getExternalStorageDirectory();
+          if (dir != null) savePath = '${dir.path}/$fileName';
+        } else {
+          final dir = await getApplicationDocumentsDirectory();
+          savePath = '${dir.path}/$fileName';
+        }
+
+        if (savePath != null) {
+          await File(savePath).writeAsBytes(fileBytes);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✅ Weight list exported to: $fileName'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Export failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   // ====================================================================
   // Preview
   // ====================================================================
 
   void _viewReport(Map<String, dynamic> report) {
+    if (widget.reportType == 'weightList') {
+      _viewWeightListReport(report);
+      return;
+    }
+
     if (widget.reportType != 'purchase') {
       _viewSeedReport(report);
       return;
     }
 
     final centre = (report['centre'] ?? '').toString();
-    final date = (report['date'] ?? '').toString().split('T').first;
+    final date = _dateKey(report['date']);
     final reportNo = (report['reportNo'] ?? '').toString();
     final key = '$centre|$date|$reportNo';
 
@@ -703,7 +1044,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 1200, maxHeight: 720),
           padding: const EdgeInsets.all(20),
@@ -769,6 +1111,87 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     );
   }
 
+  void _viewWeightListReport(Map<String, dynamic> report) {
+    final centre = (report['centre'] ?? '').toString();
+    final date = _dateKey(report['date']);
+    final reportNo = (report['reportNo'] ?? '').toString();
+    final key = '$centre|$date|$reportNo';
+
+    final groups = _groupByReport();
+    final group = groups[key] ?? {(report['variety'] ?? '').toString(): report};
+
+    // For weight list, use the first entry as the primary data
+    final sample = group.values.isNotEmpty ? group.values.first : report;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 1200, maxHeight: 720),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.scale_rounded,
+                        color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Weight List Report - $centre',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: _buildWeightListPreviewTable(sample),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Close'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _exportWeightListToExcel(sample);
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Export'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> _mergedSeedFactories(
       Map<String, Map<String, dynamic>> group) {
     final merged = <Map<String, dynamic>>[];
@@ -787,7 +1210,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
   void _viewSeedReport(Map<String, dynamic> report) {
     final centre = (report['centre'] ?? '').toString();
-    final date = (report['date'] ?? '').toString().split('T').first;
+    final date = _dateKey(report['date']);
     final reportNo = (report['reportNo'] ?? '').toString();
     final key = '$centre|$date|$reportNo';
 
@@ -800,9 +1223,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape:
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: Container(
-          constraints: const BoxConstraints(maxWidth: 1000, maxHeight: 700),
+          constraints: const BoxConstraints(maxWidth: 1200, maxHeight: 720),
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -871,6 +1295,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     final centre = (sample?['centre'] ?? '').toString().toUpperCase();
     final reportNo = (sample?['reportNo'] ?? '').toString();
 
+    String fmt(double v) =>
+        v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -900,8 +1327,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             const SizedBox(width: 4),
             Expanded(
               child: Text(centre,
-                  style:
-                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w500)),
             ),
             const Text('DATE:',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
@@ -930,33 +1357,58 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               headingRowColor:
               WidgetStateProperty.all(const Color(0xFFE2E8F0)),
               columns: const [
-                DataColumn(label: Text('S.No.')),
-                DataColumn(label: Text('Factory Name')),
+                DataColumn(label: Text('Sno')),
+                DataColumn(label: Text('Centre')),
+                DataColumn(label: Text('Name of Factory')),
                 DataColumn(label: Text('Variety')),
-                DataColumn(label: Text('Prog. Realisable')),
-                DataColumn(label: Text('Prog. Sold')),
-                DataColumn(label: Text("Day's Unsold")),
-                DataColumn(label: Text('Kapas Form')),
-                DataColumn(label: Text('Ready Form')),
-                DataColumn(label: Text('Total')),
-                DataColumn(label: Text('Base Rate')),
+                DataColumn(label: Text('Realisable')),
+                DataColumn(label: Text('Realised')),
+                DataColumn(label: Text('Sold Quantity')),
+                DataColumn(label: Text('Progressive Delivery')),
+                DataColumn(label: Text('KAPAS (1)')),
+                DataColumn(label: Text('READY (1)')),
+                DataColumn(label: Text('TOTAL (1)')),
+                DataColumn(label: Text('KAPAS (2)')),
+                DataColumn(label: Text('READY (2)')),
+                DataColumn(label: Text('TOTAL (2)')),
+                DataColumn(label: Text('Market Rate (Min)')),
+                DataColumn(label: Text('Market Rate (Max)')),
               ],
               rows: factories.asMap().entries.map((e) {
                 final i = e.key;
                 final f = e.value;
-                final total =
-                    f['total'] ?? ((f['kapasForm'] ?? 0) + (f['readyForm'] ?? 0));
+
+                final realisable =
+                _n(f['realisable'] ?? f['progressiveRealisable']);
+                final realised = _n(f['realised'] ?? f['progressiveSold']);
+                final soldQty = _n(f['soldQty']);
+                final progDelivery = _n(f['progDelivery']);
+
+                final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
+                final kaps1 = realisable - soldQty - ready1;
+                final total1 = kaps1 + ready1;
+
+                final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
+                final ready2 = soldQty - progDelivery - kaps2;
+                final total2 = kaps2 + ready2;
+
                 return DataRow(cells: [
                   DataCell(Text('${i + 1}')),
+                  DataCell(Text(centre)),
                   DataCell(Text(f['factoryName']?.toString() ?? '')),
                   DataCell(Text(f['variety']?.toString() ?? '')),
-                  DataCell(Text(f['progressiveRealisable']?.toString() ?? '0')),
-                  DataCell(Text(f['progressiveSold']?.toString() ?? '0')),
-                  DataCell(Text(f['dayUnsold']?.toString() ?? '0')),
-                  DataCell(Text(f['kapasForm']?.toString() ?? '0')),
-                  DataCell(Text(f['readyForm']?.toString() ?? '0')),
-                  DataCell(Text(total.toString())),
-                  DataCell(Text(f['baseRate']?.toString() ?? '0')),
+                  DataCell(Text(fmt(realisable))),
+                  DataCell(Text(fmt(realised))),
+                  DataCell(Text(fmt(soldQty))),
+                  DataCell(Text(fmt(progDelivery))),
+                  DataCell(Text(fmt(kaps1))),
+                  DataCell(Text(fmt(ready1))),
+                  DataCell(Text(fmt(total1))),
+                  DataCell(Text(fmt(kaps2))),
+                  DataCell(Text(fmt(ready2))),
+                  DataCell(Text(fmt(total2))),
+                  DataCell(Text(fmt(_n(f['marketRateMin'])))),
+                  DataCell(Text(fmt(_n(f['marketRateMax'])))),
                 ]);
               }).toList(),
             ),
@@ -978,64 +1430,170 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         .toUpperCase();
 
     final rows = <List<String>>[
-      ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
-        _val(bbMod, 'farmersDay'), _val(bbSplMod, 'farmersDay'), _val(mech, 'farmersDay')],
-      ['5', 'Arrivals (In Bales)',
-        _val(bbMod, 'arrivalsBales'), _val(bbSplMod, 'arrivalsBales'), _val(mech, 'arrivalsBales')],
-      ['6', 'CCI Purchases (In Qtls)',
-        _val(bbMod, 'cciPurchaseQtls'), _val(bbSplMod, 'cciPurchaseQtls'), _val(mech, 'cciPurchaseQtls')],
-      ['7', 'CCI Purchases (In Bales)',
-        _val(bbMod, 'cciPurchaseBales'), _val(bbSplMod, 'cciPurchaseBales'), _val(mech, 'cciPurchaseBales')],
-      ['8', 'Avarage Kapas rate (In Rs. per qtl)',
-        _val(bbMod, 'avgKapasRate'), _val(bbSplMod, 'avgKapasRate'), _val(mech, 'avgKapasRate')],
-      ['9', 'Budgeted Lint Percetage (%)',
-        _val(bbMod, 'budgetedLint'), _val(bbSplMod, 'budgetedLint'), _val(mech, 'budgetedLint')],
-      ['10', 'Budgeted Shortage Percetage (%)',
-        _val(bbMod, 'budgetedShortage'), _val(bbSplMod, 'budgetedShortage'), _val(mech, 'budgetedShortage')],
-      ['11', 'Cotton seed Percetage (%)',
-        _val(bbMod, 'cottonSeedPct'), _val(bbSplMod, 'cottonSeedPct'), _val(mech, 'cottonSeedPct')],
-      ['12', 'Cotton seed rate  (In Rs. per qtl)',
-        _val(bbMod, 'cottonSeedRate'), _val(bbSplMod, 'cottonSeedRate'), _val(mech, 'cottonSeedRate')],
-      ['13', "Processing cycle (In day's)",
-        _val(bbMod, 'processingCycle'), _val(bbSplMod, 'processingCycle'), _val(mech, 'processingCycle')],
-      ['14', 'Proforma Expenses (In Rs. per Candy)',
-        _val(bbMod, 'proformaExpenses'), _val(bbSplMod, 'proformaExpenses'), _val(mech, 'proformaExpenses')],
-      ['15', 'Budgeted Padtha (In Rs. per candy)',
-        _val(bbMod, 'budgetedPadtha'), _val(bbSplMod, 'budgetedPadtha'), _val(mech, 'budgetedPadtha')],
-      ['16', "Day's pressed bales (In Bales)",
-        _val(bbMod, 'dayPressedBales'), _val(bbSplMod, 'dayPressedBales'), _val(mech, 'dayPressedBales')],
-      ['17', 'Market Highest Rate (In Rs. per qtl)',
-        _val(bbMod, 'marketHighestRate'), _val(bbSplMod, 'marketHighestRate'), _val(mech, 'marketHighestRate')],
-      ['18', 'Market Lowest Rate (In Rs. per qtl)',
-        _val(bbMod, 'marketLowestRate'), _val(bbSplMod, 'marketLowestRate'), _val(mech, 'marketLowestRate')],
-      ['19', 'CCI Highest Rate (In Rs. per qtl)',
-        _val(bbMod, 'cciHighestRate'), _val(bbSplMod, 'cciHighestRate'), _val(mech, 'cciHighestRate')],
-      ['20', 'CCI Lowest Rate (In Rs. per qtl)',
-        _val(bbMod, 'cciLowestRate'), _val(bbSplMod, 'cciLowestRate'), _val(mech, 'cciLowestRate')],
-      ['21', 'Prog. Pressed Bales',
+      [
+        '4',
+        "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
+        _val(bbMod, 'farmersDay'),
+        _val(bbSplMod, 'farmersDay'),
+        _val(mech, 'farmersDay')
+      ],
+      [
+        '5',
+        'Arrivals (In Bales)',
+        _val(bbMod, 'arrivalsBales'),
+        _val(bbSplMod, 'arrivalsBales'),
+        _val(mech, 'arrivalsBales')
+      ],
+      [
+        '6',
+        'CCI Purchases (In Qtls)',
+        _val(bbMod, 'cciPurchaseQtls'),
+        _val(bbSplMod, 'cciPurchaseQtls'),
+        _val(mech, 'cciPurchaseQtls')
+      ],
+      [
+        '7',
+        'CCI Purchases (In Bales)',
+        _val(bbMod, 'cciPurchaseBales'),
+        _val(bbSplMod, 'cciPurchaseBales'),
+        _val(mech, 'cciPurchaseBales')
+      ],
+      [
+        '8',
+        'Avarage Kapas rate (In Rs. per qtl)',
+        _val(bbMod, 'avgKapasRate'),
+        _val(bbSplMod, 'avgKapasRate'),
+        _val(mech, 'avgKapasRate')
+      ],
+      [
+        '9',
+        'Moisture (%)',
+        _val(bbMod, 'moisture'),
+        _val(bbSplMod, 'moisture'),
+        _val(mech, 'moisture')
+      ],
+      [
+        '10',
+        'Budgeted Lint Percetage (%)',
+        _val(bbMod, 'budgetedLint'),
+        _val(bbSplMod, 'budgetedLint'),
+        _val(mech, 'budgetedLint')
+      ],
+      [
+        '11',
+        'Budgeted Shortage Percetage (%)',
+        _val(bbMod, 'budgetedShortage'),
+        _val(bbSplMod, 'budgetedShortage'),
+        _val(mech, 'budgetedShortage')
+      ],
+      [
+        '12',
+        'Cotton seed Percetage (%)',
+        _val(bbMod, 'cottonSeedPct'),
+        _val(bbSplMod, 'cottonSeedPct'),
+        _val(mech, 'cottonSeedPct')
+      ],
+      [
+        '13',
+        'Cotton seed rate  (In Rs. per qtl)',
+        _val(bbMod, 'cottonSeedRate'),
+        _val(bbSplMod, 'cottonSeedRate'),
+        _val(mech, 'cottonSeedRate')
+      ],
+      [
+        '14',
+        "Processing cycle (In day's)",
+        _val(bbMod, 'processingCycle'),
+        _val(bbSplMod, 'processingCycle'),
+        _val(mech, 'processingCycle')
+      ],
+      [
+        '15',
+        'Proforma Expenses (In Rs. per Candy)',
+        _val(bbMod, 'proformaExpenses'),
+        _val(bbSplMod, 'proformaExpenses'),
+        _val(mech, 'proformaExpenses')
+      ],
+      [
+        '16',
+        'Budgeted Padtha (In Rs. per candy)',
+        _val(bbMod, 'budgetedPadtha'),
+        _val(bbSplMod, 'budgetedPadtha'),
+        _val(mech, 'budgetedPadtha')
+      ],
+      [
+        '17',
+        "Day's pressed bales (In Bales)",
+        _val(bbMod, 'dayPressedBales'),
+        _val(bbSplMod, 'dayPressedBales'),
+        _val(mech, 'dayPressedBales')
+      ],
+      [
+        '18',
+        'Market Highest Rate (In Rs. per qtl)',
+        _val(bbMod, 'marketHighestRate'),
+        _val(bbSplMod, 'marketHighestRate'),
+        _val(mech, 'marketHighestRate')
+      ],
+      [
+        '19',
+        'Market Lowest Rate (In Rs. per qtl)',
+        _val(bbMod, 'marketLowestRate'),
+        _val(bbSplMod, 'marketLowestRate'),
+        _val(mech, 'marketLowestRate')
+      ],
+      [
+        '20',
+        'CCI Highest Rate (In Rs. per qtl)',
+        _val(bbMod, 'cciHighestRate'),
+        _val(bbSplMod, 'cciHighestRate'),
+        _val(mech, 'cciHighestRate')
+      ],
+      [
+        '21',
+        'CCI Lowest Rate (In Rs. per qtl)',
+        _val(bbMod, 'cciLowestRate'),
+        _val(bbSplMod, 'cciLowestRate'),
+        _val(mech, 'cciLowestRate')
+      ],
+      [
+        '22',
+        'Prog. Pressed Bales',
         _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPressedBales'),
         _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPressedBales'),
-        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPressedBales')],
-      ['22', 'Prog. Purchase in qtls',
+        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPressedBales')
+      ],
+      [
+        '23',
+        'Prog. Purchase in qtls',
         _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseQtls'),
         _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseQtls'),
-        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseQtls')],
-      ['23', 'Prog. Purchase Bales',
+        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseQtls')
+      ],
+      [
+        '24',
+        'Prog. Purchase Bales',
         _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseBales'),
         _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseBales'),
-        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseBales')],
-      ['24', 'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
+        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseBales')
+      ],
+      [
+        '25',
+        'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
         _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progFarmers'),
         _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progFarmers'),
-        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progFarmers')],
+        _progVal(bbMod, bbSplMod, mech, 'MECH', 'progFarmers')
+      ],
     ];
 
     List<Map<String, dynamic>> factories = [];
-    final src = bbMod?['factories'] ?? bbSplMod?['factories'] ?? mech?['factories'];
+    final src =
+        bbMod?['factories'] ?? bbSplMod?['factories'] ?? mech?['factories'];
     if (src is List) factories = List<Map<String, dynamic>>.from(src);
 
     return Container(
-      decoration: BoxDecoration(border: Border.all(color: const Color(0xFF94A3B8))),
+      decoration:
+      BoxDecoration(border: Border.all(color: const Color(0xFF94A3B8))),
       child: Column(
         children: [
           _plainHeader('THE COTTON CORPORATION OF INDIA LTD'),
@@ -1046,8 +1604,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           _numRow('2', 'Centre', centre, centre, centre),
           _numRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
           ...rows.map((r) => _numRow(r[0], r[1], r[2], r[3], r[4])),
-          _numRow('25', 'Factory wise day purchase details',
-              'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
+          _numRow('26', 'Factory wise day purchase details', 'BB MOD',
+              'BB SPL MOD', 'MECH',
+              bold: true),
           _factorySubHeader(),
           if (factories.isEmpty)
             const Padding(
@@ -1064,8 +1623,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                 f['factoryName']?.toString() ?? '',
                 _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseQtls'),
                 _progVal(bbMod, bbSplMod, mech, 'BB MOD', 'progPurchaseBales'),
-                _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseQtls'),
-                _progVal(bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseBales'),
+                _progVal(
+                    bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseQtls'),
+                _progVal(
+                    bbMod, bbSplMod, mech, 'BB SPL MOD', 'progPurchaseBales'),
                 _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseQtls'),
                 _progVal(bbMod, bbSplMod, mech, 'MECH', 'progPurchaseBales'),
               );
@@ -1075,6 +1636,336 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       ),
     );
   }
+
+  // ====================================================================
+  // WEIGHT LIST PREVIEW WIDGETS
+  // ====================================================================
+
+  Widget _buildWeightListPreviewTable(Map<String, dynamic> data) {
+    final dateStr = _fmtDateDisplay(data['date']);
+    final centre = (data['centre'] ?? '').toString().toUpperCase();
+    final variety = (data['variety'] ?? '').toString();
+    final pmNo = (data['pmNo'] ?? '').toString();
+    final prNo = (data['prNo'] ?? '').toString();
+    final lotNo = (data['lotNo'] ?? '').toString();
+    final sampleBaleNo = (data['sampleBaleNo'] ?? '').toString();
+    final godown = (data['godown'] ?? '').toString();
+    final noOfBales = (data['noOfBales'] ?? 100).toString();
+    final moisture = (data['moisture'] ?? '').toString();
+    final pressingFactory = (data['pressingFactory'] ?? '').toString();
+
+    // Parse bale entries
+    List<Map<String, dynamic>> baleEntries = [];
+    final baleSrc = data['baleEntries'];
+    if (baleSrc is List) {
+      baleEntries = List<Map<String, dynamic>>.from(baleSrc);
+    }
+
+    // Summary values
+    final tareWeight = _n(data['tareWeight']);
+    final totalGrossWeight = _n(data['totalGrossWeight']);
+    final totalNettWeight = _n(data['totalNettWeight']);
+
+    String fmt(double v) {
+      if (v == v.roundToDouble()) return v.toInt().toString();
+      return v.toStringAsFixed(2);
+    }
+
+    // Split bales into columns of 10 (matching Excel layout)
+    final baleCount = int.tryParse(noOfBales) ?? baleEntries.length;
+    final totalBales = baleCount > 0 ? baleCount : baleEntries.length;
+
+    // Build rows for display (5 pairs of NO/Kgs columns per row)
+    final rows = <List<Map<String, dynamic>?>>[];
+    const balesPerRow = 10; // 5 columns × 2 (NO + Kgs)
+
+    for (int i = 0; i < totalBales; i += balesPerRow) {
+      final row = <Map<String, dynamic>?>[];
+      for (int j = 0; j < balesPerRow; j++) {
+        final idx = i + j;
+        if (idx < baleEntries.length) {
+          row.add(baleEntries[idx]);
+        } else {
+          row.add(null);
+        }
+      }
+      rows.add(row);
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF94A3B8)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+            child: Column(
+              children: [
+                const Text(
+                  'THE COTTON CORPORATION OF INDIA LTD',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'BRANCH OFFICE :: MAHABUBNAGAR',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'CENTRE :: $centre',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, thickness: 1, color: Color(0xFF94A3B8)),
+
+          // Info rows
+          _weightInfoRow('P.MARK NO: $pmNo', 'P.R.NO: $prNo'),
+          _weightInfoRow('VARIETY: $variety', 'Sample Bale No: $sampleBaleNo'),
+          _weightInfoRow('LOT NO: $lotNo', 'GODOWN: $godown'),
+          _weightInfoRow('NO OF BALES: $noOfBales', 'MOISTURE: $moisture'),
+          _weightInfoRow('DATE OF PRESSING: $dateStr', ''),
+          _weightInfoRow('NAME OF THE PRESSING FACTORY: $pressingFactory', ''),
+
+          const Divider(height: 1, thickness: 1, color: Color(0xFF94A3B8)),
+
+          // Bale table header
+          Container(
+            color: const Color(0xFFF1F5F9),
+            child: Row(
+              children: [
+                for (int c = 0; c < 5; c++) ...[
+                  _weightHeaderCell('NO'),
+                  _weightHeaderCell('Kgs.'),
+                ],
+              ],
+            ),
+          ),
+
+          // Bale rows (10 rows per section)
+          for (int section = 0; section < rows.length; section += 10) ...[
+            // Process in chunks of 10 rows
+            for (int r = section;
+            r < (section + 10).clamp(0, rows.length);
+            r++) ...[
+              Container(
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    for (final bale in rows[r]) ...[
+                      _weightDataCell(
+                          bale != null ? '${bale['baleNo']}' : ''),
+                      _weightDataCell(
+                        bale != null ? fmt(_n(bale['weight'])) : '',
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+
+            // Total row for this section
+            Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                border: Border(
+                  top: BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                  bottom: BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                ),
+              ),
+              child: Row(
+                children: [
+                  for (int c = 0; c < 5; c++) ...[
+                    _weightTotalCell(c == 0 ? 'TOTAL' : ''),
+                    _weightTotalCell(
+                      fmt(
+                        _getWeightListColumnTotal(
+                          baleEntries,
+                          section,
+                          c,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+
+          // Summary section
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            child: Column(
+              children: [
+                _weightSummaryRow(
+                    'Total Grass Weight :', fmt(totalGrossWeight)),
+                _weightSummaryRow('Tare Weight:', fmt(tareWeight)),
+                _weightSummaryRow(
+                    'Total Nett Weight:', fmt(totalNettWeight)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _getWeightListColumnTotal(
+      List<Map<String, dynamic>> baleEntries, int sectionStart, int col) {
+    double total = 0;
+    for (int r = 0; r < 10; r++) {
+      final idx = sectionStart + r + (col * 10);
+      if (idx < baleEntries.length) {
+        total += _n(baleEntries[idx]['weight']);
+      }
+    }
+    return total;
+  }
+
+  Widget _weightInfoRow(String left, String right) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              child: Text(
+                left,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              child: Text(
+                right,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _weightHeaderCell(String text) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF0F172A),
+        ),
+      ),
+    ),
+  );
+
+  Widget _weightDataCell(String text) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF334155),
+        ),
+      ),
+    ),
+  );
+
+  Widget _weightTotalCell(String text) => Expanded(
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+      alignment: Alignment.center,
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF0F172A),
+        ),
+      ),
+    ),
+  );
+
+  Widget _weightSummaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF334155),
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 100,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ====================================================================
+  // PURCHASE PREVIEW WIDGETS
+  // ====================================================================
 
   Widget _plainHeader(String text, {String? trailing}) {
     return Container(
@@ -1236,7 +2127,12 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                   overflow: TextOverflow.ellipsis),
             ),
           ),
-          _cell(b1), _cell(b2), _cell(b3), _cell(b4), _cell(b5), _cell(b6),
+          _cell(b1),
+          _cell(b2),
+          _cell(b3),
+          _cell(b4),
+          _cell(b5),
+          _cell(b6),
         ],
       ),
     );
@@ -1265,9 +2161,12 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
             ),
           ),
           _cell(s('BB MOD', 'progPurchaseQtls').toStringAsFixed(2), bold: true),
-          _cell(s('BB MOD', 'progPurchaseBales').toStringAsFixed(0), bold: true),
-          _cell(s('BB SPL MOD', 'progPurchaseQtls').toStringAsFixed(2), bold: true),
-          _cell(s('BB SPL MOD', 'progPurchaseBales').toStringAsFixed(0), bold: true),
+          _cell(s('BB MOD', 'progPurchaseBales').toStringAsFixed(0),
+              bold: true),
+          _cell(s('BB SPL MOD', 'progPurchaseQtls').toStringAsFixed(2),
+              bold: true),
+          _cell(s('BB SPL MOD', 'progPurchaseBales').toStringAsFixed(0),
+              bold: true),
           _cell(s('MECH', 'progPurchaseQtls').toStringAsFixed(2), bold: true),
           _cell(s('MECH', 'progPurchaseBales').toStringAsFixed(0), bold: true),
         ],
@@ -1282,13 +2181,23 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   @override
   Widget build(BuildContext context) {
     final isPurchase = widget.reportType == 'purchase';
+    final isWeightList = widget.reportType == 'weightList';
     final availableCentres = _availableCentres;
     final availableVarieties = _availableVarieties;
     final groupedReports = _groupedFilteredReports;
 
+    String appBarTitle;
+    if (isPurchase) {
+      appBarTitle = 'Purchase Reports';
+    } else if (isWeightList) {
+      appBarTitle = 'Weight List Reports';
+    } else {
+      appBarTitle = 'Seed Reports';
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('${isPurchase ? 'Purchase' : 'Seed'} Reports'),
+        title: Text(appBarTitle),
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         actions: [
@@ -1403,10 +2312,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                                 value: null,
                                 child: Text('All Varieties'),
                               ),
-                              ...availableVarieties.map((v) => DropdownMenuItem(
-                                value: v,
-                                child: Text(v),
-                              )),
+                              ...availableVarieties.map((v) =>
+                                  DropdownMenuItem(value: v, child: Text(v))),
                             ],
                             onChanged: (v) {
                               setState(() => _selectedVarietyFilter = v);
@@ -1449,11 +2356,15 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  _isDateFilterActive && _filterStartDate != null
-                                      ? (_filterMode == _DateFilterMode.single
-                                      ? _formatFilterDate(_filterStartDate!)
+                                  _isDateFilterActive &&
+                                      _filterStartDate != null
+                                      ? (_filterMode ==
+                                      _DateFilterMode.single
+                                      ? _formatFilterDate(
+                                      _filterStartDate!)
                                       : '${_formatFilterDate(_filterStartDate!)} - ${_formatFilterDate(_filterEndDate!)}')
-                                      : (_filterMode == _DateFilterMode.single
+                                      : (_filterMode ==
+                                      _DateFilterMode.single
                                       ? 'Select date'
                                       : 'Select date range'),
                                   style: TextStyle(
@@ -1527,6 +2438,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                         ? Icons.search_off_rounded
                         : (isPurchase
                         ? Icons.shopping_basket_outlined
+                        : isWeightList
+                        ? Icons.scale_outlined
                         : Icons.eco_outlined),
                     size: 64,
                     color: const Color(0xFF94A3B8),
@@ -1580,10 +2493,14 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     leading: CircleAvatar(
                       backgroundColor: isPurchase
                           ? const Color(0xFFE0F2FE)
+                          : isWeightList
+                          ? const Color(0xFFFEF3C7)
                           : const Color(0xFFD1FAE5),
                       child: Icon(
                         isPurchase
                             ? Icons.shopping_basket_rounded
+                            : isWeightList
+                            ? Icons.scale_rounded
                             : Icons.eco_rounded,
                         color: const Color(0xFF0F172A),
                       ),
@@ -1591,7 +2508,11 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                     title: Text(
                       isPurchase
                           ? '$centre - Report #$reportNo'
-                          : (sample['factoryName'] ?? centre ?? 'Report'),
+                          : isWeightList
+                          ? 'Weight List - $centre #$reportNo'
+                          : (sample['factoryName'] ??
+                          centre ??
+                          'Report'),
                       style: const TextStyle(
                           fontWeight: FontWeight.w600, fontSize: 16),
                     ),
@@ -1602,18 +2523,30 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                         Text(
                           'Date: $dateIso',
                           style: const TextStyle(
-                              color: Color(0xFF64748B), fontSize: 13),
+                              color: Color(0xFF64748B),
+                              fontSize: 13),
                         ),
                         Text(
                           'Centre: $centre',
                           style: const TextStyle(
-                              color: Color(0xFF64748B), fontSize: 13),
+                              color: Color(0xFF64748B),
+                              fontSize: 13),
                         ),
-                        Text(
-                          'Varieties: ${varieties.join(', ')}',
-                          style: const TextStyle(
-                              color: Color(0xFF64748B), fontSize: 13),
-                        ),
+                        if (isWeightList) ...[
+                          Text(
+                            'Lot: ${sample['lotNo'] ?? '—'} | Bales: ${sample['noOfBales'] ?? '—'}',
+                            style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13),
+                          ),
+                        ] else ...[
+                          Text(
+                            'Varieties: ${varieties.join(', ')}',
+                            style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13),
+                          ),
+                        ],
                       ],
                     ),
                     trailing: Row(
@@ -1713,7 +2646,8 @@ class _FilterChip extends StatelessWidget {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: isClearAll ? Colors.red.shade700 : const Color(0xFF334155),
+              color:
+              isClearAll ? Colors.red.shade700 : const Color(0xFF334155),
               fontWeight: isClearAll ? FontWeight.w600 : FontWeight.normal,
             ),
           ),

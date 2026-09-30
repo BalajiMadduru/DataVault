@@ -1,15 +1,14 @@
-import 'package:datavault/screens/proforma_view_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'package:datavault/screens/reports_listscreen.dart';
 
 import '../services/apiservice.dart';
 import 'loginscreen.dart';
 import '../enums/report_type.dart';
 import '../widgets/drawer_widget.dart';
-import '../widgets/create_entry_dialog_base.dart'; // ADD THIS LINE
-import 'proforma_list_screen.dart' hide ReportsListScreen;
+import '../widgets/create_entry_dialog_base.dart';
+import 'proforma_list_screen.dart';
+import 'reports_listscreen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,21 +23,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<PurchaseEntry> _purchaseEntries = [];
   List<SeedEntry> _seedEntries = [];
 
-  // Logged-in user's details, as saved in Firestore at login/signup.
   String _username = '';
   String _email = '';
   String _mobile = '';
   bool _isProfileLoading = true;
 
-  void _handleViewProforma() {
-    Navigator.push(
+  // ============================================================
+  // DIALOG / NAVIGATION HELPERS
+  // ============================================================
+
+  /// Generic entry opener — works for purchase, seed, and weight list.
+  Future<void> _openEntryDialog({
+    required bool isModify,
+    required ReportType type,
+    Map<String, dynamic>? existingData,
+  }) async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => CreateEntryDialog(
+        type: type,
+        isModify: isModify,
+        existingData: existingData,
+      ),
+    );
+
+    // Optional: refresh dashboard after the dialog closes.
+    if (mounted) {
+      _loadData();
+    }
+  }
+
+  /// Opens the reports viewer for the given report type.
+  Future<void> _openViewReports(ReportType type) async {
+    String reportTypeKey;
+    switch (type) {
+      case ReportType.dailyPurchase:
+        reportTypeKey = 'purchase';
+        break;
+      case ReportType.dailySeed:
+        reportTypeKey = 'seed';
+        break;
+      case ReportType.weightList:
+        reportTypeKey = 'weightList';
+        break;
+    }
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => const ProformaViewScreen(),
+        builder: (context) => ReportsListScreen(
+          reportType: reportTypeKey,
+        ),
       ),
     );
   }
 
+  void _handleViewProforma() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ProformaListScreen(),
+      ),
+    );
+  }
+
+  // ============================================================
+  // DATA LOADING
+  // ============================================================
 
   Future<void> _loadUserProfile() async {
     final result = await ApiService.getCurrentUserProfile();
@@ -67,14 +119,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               backgroundColor: const Color(0xFF0F172A),
               child: Text(
                 _username.isNotEmpty ? _username[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 _username.isNotEmpty ? _username : 'Your account',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style:
+                const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -84,9 +138,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _ProfileDetailRow(icon: Icons.mail_outline_rounded, label: 'Email', value: _email),
+            _ProfileDetailRow(
+                icon: Icons.mail_outline_rounded,
+                label: 'Email',
+                value: _email),
             const SizedBox(height: 12),
-            _ProfileDetailRow(icon: Icons.phone_outlined, label: 'Mobile', value: _mobile),
+            _ProfileDetailRow(
+                icon: Icons.phone_outlined,
+                label: 'Mobile',
+                value: _mobile),
           ],
         ),
         actions: [
@@ -99,7 +159,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Real-time data simulation
   void _loadData() {
     setState(() {
       _isLoading = true;
@@ -196,71 +255,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
   }
 
-  // ============ DRAWER HANDLERS ============
+  // ============================================================
+  // ENTRY HANDLERS
+  // ============================================================
+
   void _handleCreatePurchase() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const CreateEntryDialog(
-        type: ReportType.dailyPurchase,
-        isModify: false,
-      ),
-    );
+    _openEntryDialog(isModify: false, type: ReportType.dailyPurchase);
   }
 
   void _handleCreateSeed() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const CreateEntryDialog(
-        type: ReportType.dailySeed,
-        isModify: false,
-      ),
-    );
+    _openEntryDialog(isModify: false, type: ReportType.dailySeed);
   }
 
   void _handleModifyPurchase() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const CreateEntryDialog(
-        type: ReportType.dailyPurchase,
-        isModify: true,
-      ),
-    );
+    _openEntryDialog(isModify: true, type: ReportType.dailyPurchase);
   }
 
   void _handleModifySeed() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const CreateEntryDialog(
-        type: ReportType.dailySeed,
-        isModify: true,
-      ),
-    );
+    _openEntryDialog(isModify: true, type: ReportType.dailySeed);
+  }
+
+  void _handleCreateWeightList() {
+    _openEntryDialog(isModify: false, type: ReportType.weightList);
+  }
+
+  void _handleModifyWeightList() {
+    _openEntryDialog(isModify: true, type: ReportType.weightList);
   }
 
   void _handleViewPurchaseReports() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ReportsListScreen(
-          reportType: 'purchase',
-        ),
-      ),
-    );
+    _openViewReports(ReportType.dailyPurchase);
   }
 
   void _handleViewSeedReports() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const ReportsListScreen(
-          reportType: 'seed',
-        ),
-      ),
-    );
+    _openViewReports(ReportType.dailySeed);
+  }
+
+  void _handleViewWeightListReports() {
+    _openViewReports(ReportType.weightList);
   }
 
   Future<void> _handleLogout() async {
@@ -277,7 +309,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Log out', style: TextStyle(color: Colors.redAccent)),
+            child: const Text('Log out',
+                style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -293,6 +326,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           (route) => false,
     );
   }
+
+  // ============================================================
+  // LIFECYCLE
+  // ============================================================
 
   @override
   void initState() {
@@ -344,13 +381,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         },
+
+        // Purchase
         onCreatePurchase: _handleCreatePurchase,
-        onCreateSeed: _handleCreateSeed,
         onModifyPurchase: _handleModifyPurchase,
+
+        // Seed
+        onCreateSeed: _handleCreateSeed,
         onModifySeed: _handleModifySeed,
+
+        // Weight List (NEW)
+        onCreateWeightList: _handleCreateWeightList,
+        onModifyWeightList: _handleModifyWeightList,
+
+        // View Reports
         onViewPurchaseReports: _handleViewPurchaseReports,
         onViewSeedReports: _handleViewSeedReports,
-        onViewProforma: _handleViewProforma, // Add this line
+        onViewWeightListReports: _handleViewWeightListReports,
+
+        // Proforma
+        onViewProforma: _handleViewProforma,
       ),
       body: Column(
         children: [
@@ -362,10 +412,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ? const SizedBox(
               height: 16,
               width: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white70),
             )
                 : Text(
-              _username.isNotEmpty ? 'Welcome, $_username' : 'Welcome back',
+              _username.isNotEmpty
+                  ? 'Welcome, $_username'
+                  : 'Welcome back',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 13,
@@ -378,7 +431,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: _isLoading
                 ? const Center(
               child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),
+                valueColor:
+                AlwaysStoppedAnimation<Color>(Color(0xFF0F172A)),
               ),
             )
                 : _SelectedTypeView(
@@ -418,11 +472,13 @@ class _ProfileDetailRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                style:
+                const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
               ),
               Text(
                 value.isNotEmpty ? value : '—',
-                style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+                style:
+                const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
               ),
             ],
           ),
@@ -485,11 +541,22 @@ class _SelectedTypeView extends StatelessWidget {
               style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
             ),
             const SizedBox(height: 24),
-
             if (type == ReportType.dailyPurchase) ...[
               _PurchaseChartSection(entries: purchaseEntries),
-            ] else ...[
+            ] else if (type == ReportType.dailySeed) ...[
               _SeedChartSection(entries: seedEntries),
+            ] else ...[
+              // Weight List has no chart data yet
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    'Weight List — use the drawer to create, modify, or view entries.',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
             ],
           ],
         ),
@@ -519,7 +586,8 @@ class _PurchaseChartSection extends StatelessWidget {
     }
 
     final totalAmount = entries.fold(0.0, (sum, entry) => sum + entry.amount);
-    final totalQuantity = entries.fold(0.0, (sum, entry) => sum + entry.quantity);
+    final totalQuantity =
+    entries.fold(0.0, (sum, entry) => sum + entry.quantity);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,7 +610,6 @@ class _PurchaseChartSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-
         Container(
           height: 300,
           padding: const EdgeInsets.all(16),
@@ -585,7 +652,6 @@ class _PurchaseChartSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
-
         Container(
           height: 250,
           padding: const EdgeInsets.all(16),
@@ -684,7 +750,8 @@ class _PurchaseChartSection extends StatelessWidget {
     return entries.asMap().entries.map((entry) {
       final index = entry.key;
       final data = entry.value;
-      final percentage = (data.amount / entries.fold(0.0, (sum, e) => sum + e.amount)) * 100;
+      final percentage =
+          (data.amount / entries.fold(0.0, (sum, e) => sum + e.amount)) * 100;
 
       return PieChartSectionData(
         color: colors[index % colors.length],
@@ -740,8 +807,10 @@ class _SeedChartSection extends StatelessWidget {
       );
     }
 
-    final totalQuantity = entries.fold(0.0, (sum, entry) => sum + entry.quantity);
-    final totalValue = entries.fold(0.0, (sum, entry) => sum + (entry.quantity * entry.pricePerUnit));
+    final totalQuantity =
+    entries.fold(0.0, (sum, entry) => sum + entry.quantity);
+    final totalValue = entries.fold(
+        0.0, (sum, entry) => sum + (entry.quantity * entry.pricePerUnit));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -764,7 +833,6 @@ class _SeedChartSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-
         Container(
           height: 300,
           padding: const EdgeInsets.all(16),
@@ -807,7 +875,6 @@ class _SeedChartSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
-
         Container(
           height: 250,
           padding: const EdgeInsets.all(16),

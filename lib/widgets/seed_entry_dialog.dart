@@ -20,32 +20,105 @@ class SeedEntryDialog extends StatefulWidget {
   State<SeedEntryDialog> createState() => _SeedEntryDialogState();
 }
 
+// ============================================================
+// SEED FACTORY ROW MODEL — only inputs are stored; Kaps/Ready/Total
+// are always computed on the fly from the formulas.
+// ============================================================
+class SeedFactoryRow {
+  String factoryName;
+  String variety;
+  double realisable;
+  double realised;
+  double soldQty;
+  double progDelivery;
+  double marketRateMin;
+  double marketRateMax;
+
+  SeedFactoryRow({
+    required this.factoryName,
+    required this.variety,
+    required this.realisable,
+    required this.realised,
+    required this.soldQty,
+    required this.progDelivery,
+    required this.marketRateMin,
+    required this.marketRateMax,
+  });
+
+  // ---- Unsold (Group 1) ----
+  // Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
+  double get ready1 {
+    if (realised < soldQty) return 0;
+    return realised - soldQty;
+  }
+
+  // Kaps_1 = Realisable − Sold Qty − Ready_1
+  double get kaps1 => realisable - soldQty - ready1;
+
+  // Total_1 = Kaps_1 + Ready_1
+  double get total1 => kaps1 + ready1;
+
+  // ---- Sold but not lifted (Group 2) ----
+  // Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
+  double get kaps2 {
+    if (realised > soldQty) return 0;
+    return soldQty - realised;
+  }
+
+  // Ready_2 = Sold Qty − Prog Delivery − Kaps_2
+  double get ready2 => soldQty - progDelivery - kaps2;
+
+  // Total_2 = Kaps_2 + Ready_2
+  double get total2 => kaps2 + ready2;
+
+  Map<String, dynamic> toJson() => {
+    'factoryName': factoryName,
+    'variety': variety,
+    'realisable': realisable,
+    'realised': realised,
+    'soldQty': soldQty,
+    'progDelivery': progDelivery,
+    'marketRateMin': marketRateMin,
+    'marketRateMax': marketRateMax,
+  };
+
+  factory SeedFactoryRow.fromJson(Map<String, dynamic> json) => SeedFactoryRow(
+    factoryName: json['factoryName'] as String? ?? '',
+    variety: json['variety'] as String? ?? '',
+    realisable: (json['realisable'] as num?)?.toDouble() ??
+        (json['progressiveRealisable'] as num?)?.toDouble() ??
+        0,
+    realised: (json['realised'] as num?)?.toDouble() ??
+        (json['progressiveSold'] as num?)?.toDouble() ??
+        0,
+    soldQty: (json['soldQty'] as num?)?.toDouble() ?? 0,
+    progDelivery: (json['progDelivery'] as num?)?.toDouble() ?? 0,
+    marketRateMin: (json['marketRateMin'] as num?)?.toDouble() ?? 0,
+    marketRateMax: (json['marketRateMax'] as num?)?.toDouble() ?? 0,
+  );
+}
+
 class _SeedEntryDialogState extends State<SeedEntryDialog> {
   final _formKey = GlobalKey<FormState>();
   final _lookupFormKey = GlobalKey<FormState>();
   final _factoryFormKey = GlobalKey<FormState>();
   final ScrollController _scrollController = ScrollController();
+  final ScrollController _factoryTableScrollController = ScrollController();
   final FocusNode _dialogFocusNode = FocusNode();
   bool _isSubmitting = false;
-  DateTime? _lastSubmitTime; // Prevent double submission
+  DateTime? _lastSubmitTime;
 
-  // Find-then-edit flow
   bool _entryFound = false;
   bool _isSearching = false;
   String? _docId;
   String? _lookupError;
 
-  // Header fields
   String? _selectedCentre;
   final _reportNoController = TextEditingController();
 
-  // Variety used only for the Find Entry lookup step — seed reports don't
-  // have a single report-level variety (it's per factory row), so this
-  // filters for reports containing at least one factory with this variety.
   String? _lookupVariety;
 
-  // Use FactoryData from report_modals.dart (NOT PurchaseFactoryData)
-  List<FactoryData> _seedFactories = [];
+  List<SeedFactoryRow> _seedFactories = [];
 
   DateTime _selectedDate = DateTime.now();
   bool _isLoadingReportNo = false;
@@ -78,6 +151,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _factoryTableScrollController.dispose();
     _dialogFocusNode.dispose();
     _reportNoController.dispose();
     super.dispose();
@@ -88,7 +162,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
     _selectedCentre = (centre != null && centre.isNotEmpty) ? centre : null;
     _reportNoController.text = data['reportNo']?.toString() ?? '';
 
-    // Load seed factories - FactoryData from report_modals.dart
     List factoriesData = [];
     if (data['seedFactories'] is List) {
       factoriesData = data['seedFactories'] as List;
@@ -98,7 +171,8 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
 
     if (factoriesData.isNotEmpty) {
       _seedFactories = factoriesData
-          .map((f) => FactoryData.fromJson(Map<String, dynamic>.from(f as Map)))
+          .map((f) =>
+          SeedFactoryRow.fromJson(Map<String, dynamic>.from(f as Map)))
           .toList();
     }
 
@@ -130,7 +204,8 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       _reportNoController.text = '1';
     });
 
-    final normalizedDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final normalizedDate =
+    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
     final requestedCentre = _selectedCentre;
 
     try {
@@ -147,7 +222,8 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
           ? response.data!['nextReportNo'] as int?
           : null;
 
-      setState(() => _reportNoController.text = (nextReportNo ?? 1).toString());
+      setState(
+              () => _reportNoController.text = (nextReportNo ?? 1).toString());
     } catch (e) {
       debugLog('❌ Error generating report number: $e');
       if (mounted && requestedCentre == _selectedCentre) {
@@ -170,7 +246,8 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       _lookupError = null;
     });
 
-    final normalizedDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final normalizedDate =
+    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
 
     final response = await ApiService.findEntry(
       type: 'seed',
@@ -239,22 +316,33 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(color: Color(0xFFD1FAE5), shape: BoxShape.circle),
-              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 48),
+              decoration: const BoxDecoration(
+                  color: Color(0xFFD1FAE5), shape: BoxShape.circle),
+              child: const Icon(Icons.check_circle_rounded,
+                  color: Color(0xFF059669), size: 48),
             ),
             const SizedBox(height: 16),
             Text(
-              widget.isModify ? 'Report Updated Successfully!' : 'Report Created Successfully!',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              widget.isModify
+                  ? 'Report Updated Successfully!'
+                  : 'Report Created Successfully!',
+              style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A)),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            const Text('Redirecting to dashboard...', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+            const Text('Redirecting to dashboard...',
+                style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
             const SizedBox(height: 16),
             const SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A))),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor:
+                  AlwaysStoppedAnimation<Color>(Color(0xFF0F172A))),
             ),
           ],
         ),
@@ -270,7 +358,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
   }
 
   void _submitForm() async {
-    // Prevent double submission within 2 seconds
     final now = DateTime.now();
     if (_lastSubmitTime != null &&
         now.difference(_lastSubmitTime!).inMilliseconds < 2000) {
@@ -282,27 +369,12 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
 
     setState(() => _isSubmitting = true);
 
-    // Clean up the data before sending it
-    final cleanedFactories = _seedFactories.map((f) {
-      return FactoryData(
-        factoryName: f.factoryName ?? '',
-        variety: f.variety ?? '-',
-        progressiveRealisable: f.progressiveRealisable ?? 0,
-        progressiveSold: f.progressiveSold ?? 0,
-        kapasForm: f.kapasForm ?? 0,
-        readyForm: f.readyForm ?? 0,
-        total: f.total ?? 0,
-        baseRate: f.baseRate ?? 0,
-        avgProgressiveBudgetedRate: f.avgProgressiveBudgetedRate ?? 0.0,
-      );
-    }).toList();
-
     final data = {
       'reportType': ReportType.dailySeed.label,
       'date': _selectedDate.toIso8601String(),
       'centre': _selectedCentre ?? '',
       'reportNo': int.tryParse(_reportNoController.text) ?? 0,
-      'seedFactories': cleanedFactories.map((f) => f.toJson()).toList(),
+      'seedFactories': _seedFactories.map((f) => f.toJson()).toList(),
     };
 
     final ApiResponse response;
@@ -320,32 +392,53 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       _showCelebration();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message), backgroundColor: Colors.red, duration: const Duration(seconds: 3)),
+        SnackBar(
+            content: Text(response.message),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3)),
       );
     }
   }
 
-  // -------------------- Factory dialog helpers --------------------
+  // -------------------- Factory popup --------------------
 
   void _openAddSeedFactoryDialog() => _showSeedFactoryFormDialog(null);
-  void _openEditSeedFactoryDialog(int index) => _showSeedFactoryFormDialog(_seedFactories[index]);
+  void _openEditSeedFactoryDialog(int index) =>
+      _showSeedFactoryFormDialog(_seedFactories[index]);
 
-  void _showSeedFactoryFormDialog(FactoryData? factoryData) {
-    final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
-    // Default to a real, valid variety right away — not just for display —
-    // so the state variable actually matches what's shown, and sanitize any
-    // previously-saved bad value (e.g. '-') that isn't in the current list.
+  // ============================================================
+  // FACTORY FORM POPUP — all 16 fields, derived ones read-only
+  // ============================================================
+  void _showSeedFactoryFormDialog(SeedFactoryRow? factoryData) {
+    final nameController =
+    TextEditingController(text: factoryData?.factoryName ?? '');
+
     String selectedVariety = (factoryData?.variety != null &&
         ReportConstants.varieties.contains(factoryData!.variety))
         ? factoryData.variety
         : ReportConstants.varieties.first;
-    final realisableController = TextEditingController(text: factoryData?.progressiveRealisable.toString() ?? '');
-    final soldController = TextEditingController(text: factoryData?.progressiveSold.toString() ?? '');
-    final kapasController = TextEditingController(text: factoryData?.kapasForm.toString() ?? '');
-    final readyController = TextEditingController(text: factoryData?.readyForm.toString() ?? '');
-    final baseRateController = TextEditingController(text: factoryData?.baseRate.toString() ?? '');
-    final avgProgRateController =
-    TextEditingController(text: factoryData?.avgProgressiveBudgetedRate.toString() ?? '');
+
+    // Inputs (editable)
+    final realisableController =
+    TextEditingController(text: factoryData?.realisable.toString() ?? '');
+    final realisedController =
+    TextEditingController(text: factoryData?.realised.toString() ?? '');
+    final soldQtyController =
+    TextEditingController(text: factoryData?.soldQty.toString() ?? '');
+    final progDeliveryController = TextEditingController(
+        text: factoryData?.progDelivery.toString() ?? '');
+    final marketRateMinController = TextEditingController(
+        text: factoryData?.marketRateMin.toString() ?? '');
+    final marketRateMaxController = TextEditingController(
+        text: factoryData?.marketRateMax.toString() ?? '');
+
+    // Derived (read-only, displayed)
+    final kaps1Controller = TextEditingController();
+    final ready1Controller = TextEditingController();
+    final total1Controller = TextEditingController();
+    final kaps2Controller = TextEditingController();
+    final ready2Controller = TextEditingController();
+    final total2Controller = TextEditingController();
 
     final isEditing = factoryData != null;
 
@@ -354,130 +447,384 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          double d(TextEditingController c) =>
+              double.tryParse(c.text.trim()) ?? 0;
+
+          String fmt(double v) => v == v.roundToDouble()
+              ? v.toInt().toString()
+              : v.toStringAsFixed(2);
+
+          // Recompute derived values from current inputs
+          void recompute() {
+            final realisable = d(realisableController);
+            final realised = d(realisedController);
+            final soldQty = d(soldQtyController);
+            final progDelivery = d(progDeliveryController);
+
+            // 10. Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
+            final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
+            // 9. Kaps_1 = Realisable − Sold Qty − Ready_1
+            final kaps1 = realisable - soldQty - ready1;
+            // 11. Total_1 = Kaps_1 + Ready_1
+            final total1 = kaps1 + ready1;
+
+            // 12. Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
+            final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
+            // 13. Ready_2 = Sold Qty − Prog Delivery − Kaps_2
+            final ready2 = soldQty - progDelivery - kaps2;
+            // 14. Total_2 = Kaps_2 + Ready_2
+            final total2 = kaps2 + ready2;
+
+            kaps1Controller.text = fmt(kaps1);
+            ready1Controller.text = fmt(ready1);
+            total1Controller.text = fmt(total1);
+            kaps2Controller.text = fmt(kaps2);
+            ready2Controller.text = fmt(ready2);
+            total2Controller.text = fmt(total2);
+          }
+
+          // Compute initial values for edit mode
+          if (kaps1Controller.text.isEmpty &&
+              realisableController.text.isNotEmpty) {
+            recompute();
+          }
+
           return AlertDialog(
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
             content: SizedBox(
-              width: 500,
+              width: 700,
               child: Form(
                 key: _factoryFormKey,
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // 1. Sno — read-only, only in edit mode
+                      if (isEditing)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: CommonFormWidgets.textField(
+                            controller: TextEditingController(
+                              text: (_seedFactories.indexOf(factoryData) + 1)
+                                  .toString(),
+                            ),
+                            label: 'Sno',
+                            hint: '',
+                            icon: Icons.numbers,
+                            readOnly: true,
+                          ),
+                        ),
+
+                      // 3. Name of the Factory
                       CommonFormWidgets.textField(
                         controller: nameController,
-                        label: 'Factory Name',
-                        hint: 'e.g., A Yesh Patil Cotton Company',
+                        label: 'Name of the Factory',
+                        hint: 'e.g., Vijay Industries',
                         icon: Icons.factory,
                       ),
                       const SizedBox(height: 12),
+
+                      // 4. Variety
                       DropdownButtonFormField<String>(
                         value: selectedVariety,
                         decoration: InputDecoration(
                           labelText: 'Variety',
                           hintText: 'Select variety',
-                          prefixIcon: const Icon(Icons.eco, color: Color(0xFF64748B)),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          prefixIcon: const Icon(Icons.eco,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
                         ),
-                        items: ReportConstants.varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-                        onChanged: (value) => setDialogState(() => selectedVariety = value ?? selectedVariety),
+                        items: ReportConstants.varieties
+                            .map((v) =>
+                            DropdownMenuItem(value: v, child: Text(v)))
+                            .toList(),
+                        onChanged: (value) => setDialogState(
+                                () => selectedVariety = value ?? selectedVariety),
                         validator: (value) {
-                          if (value == null || value.isEmpty) return 'Please select a variety';
+                          if (value == null || value.isEmpty) {
+                            return 'Please select a variety';
+                          }
                           return null;
                         },
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
+
+                      // ---- PROG. QTY. OF COTTON SEED (IN QTLS) ----
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'PROG. QTY. OF COTTON SEED (IN QTLS)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // 5. Realisable
+                      TextFormField(
+                        controller: realisableController,
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setDialogState(recompute),
+                        decoration: InputDecoration(
+                          labelText: 'Realisable',
+                          hintText: 'e.g., 14832.36',
+                          prefixIcon: const Icon(Icons.trending_up,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // 6. Realised
+                      TextFormField(
+                        controller: realisedController,
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setDialogState(recompute),
+                        decoration: InputDecoration(
+                          labelText: 'Realised',
+                          hintText: 'e.g., 14832.36',
+                          prefixIcon: const Icon(Icons.check_circle_outline,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // 7. Sold Quantity
+                      TextFormField(
+                        controller: soldQtyController,
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setDialogState(recompute),
+                        decoration: InputDecoration(
+                          labelText: 'Sold Quantity',
+                          hintText: 'e.g., 14832.36',
+                          prefixIcon: const Icon(Icons.sell,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ---- UNSOLD QTY (IN QTLS) ----
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'UNSOLD QTY (IN QTLS)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // 8. Progressive Delivery (input)
+                      TextFormField(
+                        controller: progDeliveryController,
+                        keyboardType:
+                        const TextInputType.numberWithOptions(
+                            decimal: true),
+                        onChanged: (_) => setDialogState(recompute),
+                        decoration: InputDecoration(
+                          labelText: 'Progressive Delivery (in Qtls)',
+                          hintText: 'e.g., 14800',
+                          prefixIcon:
+                          const Icon(Icons.local_shipping_outlined,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // 9, 10, 11. Kaps / Ready / Total (derived, read-only)
                       Row(
                         children: [
                           Expanded(
                             child: CommonFormWidgets.textField(
-                              controller: realisableController,
-                              label: 'Progressive Realisable (Total)',
-                              hint: 'e.g., 70',
-                              icon: Icons.trending_up,
-                              keyboardType: TextInputType.number,
+                              controller: kaps1Controller,
+                              label: 'Kaps',
+                              hint: 'auto',
+                              icon: Icons.inventory_2_outlined,
+                              readOnly: true,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: CommonFormWidgets.textField(
-                              controller: soldController,
-                              label: 'Progressive Sold',
-                              hint: 'e.g., 0',
-                              icon: Icons.sell,
-                              keyboardType: TextInputType.number,
+                              controller: ready1Controller,
+                              label: 'Ready',
+                              hint: 'auto',
+                              icon: Icons.check_outlined,
+                              readOnly: true,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: total1Controller,
+                              label: 'Total',
+                              hint: 'auto',
+                              icon: Icons.summarize_outlined,
+                              readOnly: true,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
+
+                      // ---- SOLD BUT NOT LIFTED QTY (IN QTLS) ----
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          "Day's Unsold Cotton Seed (Quintals)",
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                          'SOLD BUT NOT LIFTED QTY (IN QTLS)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 6),
+
+                      // 12, 13, 14. Kaps / Ready / Total (derived, read-only)
                       Row(
                         children: [
                           Expanded(
                             child: CommonFormWidgets.textField(
-                              controller: kapasController,
-                              label: 'Kapas Form',
-                              hint: 'e.g., 0',
-                              icon: Icons.format_align_left,
-                              keyboardType: TextInputType.number,
+                              controller: kaps2Controller,
+                              label: 'Kaps',
+                              hint: 'auto',
+                              icon: Icons.inventory_2_outlined,
+                              readOnly: true,
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Expanded(
                             child: CommonFormWidgets.textField(
-                              controller: readyController,
-                              label: 'Ready Form',
-                              hint: 'e.g., 70',
-                              icon: Icons.check_circle_outline,
-                              keyboardType: TextInputType.number,
+                              controller: ready2Controller,
+                              label: 'Ready',
+                              hint: 'auto',
+                              icon: Icons.check_outlined,
+                              readOnly: true,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: total2Controller,
+                              label: 'Total',
+                              hint: 'auto',
+                              icon: Icons.summarize_outlined,
+                              readOnly: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ---- COTTON SEED MARKET RATE ----
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'COTTON SEED MARKET RATE (In Rs.)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // 15, 16. Market rate min / max
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: marketRateMinController,
+                              label: 'Minimum',
+                              hint: 'e.g., 3150',
+                              icon: Icons.arrow_downward,
+                              keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: marketRateMaxController,
+                              label: 'Maximum',
+                              hint: 'e.g., 3200',
+                              icon: Icons.arrow_upward,
+                              keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Align(
+                      const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Total (auto): ${(int.tryParse(kapasController.text) ?? 0) + (int.tryParse(readyController.text) ?? 0)}',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                          'Kaps / Ready / Total are auto-calculated from the input fields above.',
+                          style: TextStyle(
+                              fontSize: 10, color: Color(0xFF94A3B8)),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: CommonFormWidgets.textField(
-                              controller: baseRateController,
-                              label: "Day's Budgeted Rate",
-                              hint: 'e.g., 3700',
-                              icon: Icons.currency_rupee,
-                              keyboardType: TextInputType.number,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: CommonFormWidgets.textField(
-                              controller: avgProgRateController,
-                              label: 'Avg. Progressive Budgeted Rate',
-                              hint: 'e.g., 3700',
-                              icon: Icons.trending_up,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -485,34 +832,34 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
               ElevatedButton(
                 onPressed: () {
                   if (_factoryFormKey.currentState!.validate()) {
-                    final progressiveRealisable = int.tryParse(realisableController.text) ?? 0;
-                    final progressiveSold = int.tryParse(soldController.text) ?? 0;
-                    final kapasForm = int.tryParse(kapasController.text) ?? 0;
-                    final readyForm = int.tryParse(readyController.text) ?? 0;
-                    final total = kapasForm + readyForm;
-
-                    final factory = FactoryData(
-                      factoryName: nameController.text,
+                    final row = SeedFactoryRow(
+                      factoryName: nameController.text.trim(),
                       variety: selectedVariety,
-                      progressiveRealisable: progressiveRealisable,
-                      progressiveSold: progressiveSold,
-                      kapasForm: kapasForm,
-                      readyForm: readyForm,
-                      total: total,
-                      baseRate: int.tryParse(baseRateController.text) ?? 0,
-                      avgProgressiveBudgetedRate: double.tryParse(avgProgRateController.text) ?? 0,
+                      realisable:
+                      double.tryParse(realisableController.text) ?? 0,
+                      realised: double.tryParse(realisedController.text) ?? 0,
+                      soldQty: double.tryParse(soldQtyController.text) ?? 0,
+                      progDelivery:
+                      double.tryParse(progDeliveryController.text) ?? 0,
+                      marketRateMin:
+                      double.tryParse(marketRateMinController.text) ?? 0,
+                      marketRateMax:
+                      double.tryParse(marketRateMaxController.text) ?? 0,
                     );
 
                     setState(() {
                       if (isEditing) {
                         final index = _seedFactories.indexOf(factoryData);
-                        _seedFactories[index] = factory;
+                        _seedFactories[index] = row;
                       } else {
-                        _seedFactories.add(factory);
+                        _seedFactories.add(row);
                       }
                     });
 
@@ -520,7 +867,11 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
+                  backgroundColor: isEditing
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF059669),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                 ),
                 child: Text(isEditing ? 'Update' : 'Save'),
               ),
@@ -538,7 +889,9 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
         title: const Text('Delete Factory'),
         content: const Text('Are you sure you want to delete this factory?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () {
               setState(() => _seedFactories.removeAt(index));
@@ -552,6 +905,9 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
     );
   }
 
+  // ============================================================
+  // FACTORY TABLE — matches Excel columns exactly
+  // ============================================================
   Widget _buildSeedFactoryTable() {
     if (_seedFactories.isEmpty) {
       return Container(
@@ -566,20 +922,56 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
             children: [
               Icon(Icons.factory_outlined, size: 40, color: Color(0xFF94A3B8)),
               SizedBox(height: 8),
-              Text('No factories added yet', style: TextStyle(color: Color(0xFF64748B))),
-              Text('Click "Add Factory" to add one', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+              Text('No factories added yet',
+                  style: TextStyle(color: Color(0xFF64748B))),
+              Text('Click "Add Factory" to add one',
+                  style:
+                  TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
             ],
           ),
         ),
       );
     }
 
+    String fmt(double v) =>
+        v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+
     const borderColor = Color(0xFFE2E8F0);
     const headerBg = Color(0xFFF1F5F9);
-    const headerTextStyle = TextStyle(
-      fontWeight: FontWeight.bold,
-      fontSize: 10,
-      color: Color(0xFF0F172A),
+
+    Widget headerCell(String text, {int flex = 2}) => Expanded(
+      flex: flex,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 10,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ),
+    );
+
+    Widget dataCell(String text, {int flex = 2, bool bold = false}) => Expanded(
+      flex: flex,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+          ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+      ),
     );
 
     return Container(
@@ -589,154 +981,267 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Table(
-            columnWidths: const {
-              0: IntrinsicColumnWidth(),
-              1: IntrinsicColumnWidth(),
-              2: IntrinsicColumnWidth(),
-              3: IntrinsicColumnWidth(),
-              4: IntrinsicColumnWidth(),
-              5: FixedColumnWidth(200),
-              6: IntrinsicColumnWidth(),
-              7: IntrinsicColumnWidth(),
-              8: IntrinsicColumnWidth(),
-            },
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            border: TableBorder.all(color: borderColor),
-            children: [
-              // Header Row
-              TableRow(
-                decoration: BoxDecoration(color: headerBg),
+        child: Scrollbar(
+          controller: _factoryTableScrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          child: SingleChildScrollView(
+            controller: _factoryTableScrollController,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: 1650,
+              child: Column(
                 children: [
-                  _buildHeaderCell('S.No.', textAlign: TextAlign.center),
-                  _buildHeaderCell('Factory Name', textAlign: TextAlign.center),
-                  _buildHeaderCell('Variety', textAlign: TextAlign.center),
-                  _buildHeaderCell('Prog Realisable', textAlign: TextAlign.center),
-                  _buildHeaderCell('Prog Sold', textAlign: TextAlign.center),
+                  // ---------- Group header row ----------
                   Container(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                    height: 60,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    color: headerBg,
+                    child: Row(
                       children: [
-                        const Text(
-                          "Day's Unsold",
-                          style: headerTextStyle,
-                          textAlign: TextAlign.center,
+                        // SR. NO.
+                        Expanded(
+                          flex: 1,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text('SR.\nNO.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
                         ),
-                        const SizedBox(height: 6),
-                        const Divider(color: borderColor, height: 1, thickness: 1),
-                        const SizedBox(height: 4),
-                        IntrinsicHeight(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: const [
-                              Text('Kapas', style: headerTextStyle),
-                              VerticalDivider(color: borderColor, width: 1, thickness: 1),
-                              Text('Ready', style: headerTextStyle),
-                              VerticalDivider(color: borderColor, width: 1, thickness: 1),
-                              Text('Total', style: headerTextStyle),
-                            ],
+                        // CENTRE
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text('CENTRE',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // Name of Factory
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text('NAME OF THE\nFACTORY',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // Variety
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text('VARIETY',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // PROG QTY (3 cols)
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            color: const Color(0xFFE2E8F0),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text(
+                                'PROG. QTY. OF COTTON SEED (IN QTLS)',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // UNSOLD (4 cols: Progressive Delivery + KAPAS + READY + TOTAL)
+                        Expanded(
+                          flex: 4,
+                          child: Container(
+                            color: const Color(0xFFE2E8F0),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text(
+                                'UNSOLD QTY (IN QTLS)',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // SOLD BUT NOT LIFTED (3 cols)
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            color: const Color(0xFFE2E8F0),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text(
+                                'SOLD BUT NOT LIFTED QTY (IN QTLS)',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // Market rate min
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text(
+                                'MARKET RATE MIN\n(In Rs.)',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // Market rate max
+                        Expanded(
+                          flex: 2,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 8, horizontal: 4),
+                            alignment: Alignment.center,
+                            child: const Text(
+                                'MARKET RATE MAX\n(In Rs.)',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                        // Actions
+                        const SizedBox(
+                          width: 80,
+                          child: Padding(
+                            padding: EdgeInsets.all(6),
+                            child: Text('ACTIONS',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700)),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  _buildHeaderCell('Budget Rate', textAlign: TextAlign.center),
-                  _buildHeaderCell('Avg Prog Rate', textAlign: TextAlign.center),
-                  _buildHeaderCell('', textAlign: TextAlign.center),
-                ],
-              ),
 
-              // Data Rows
-              ..._seedFactories.asMap().entries.map((entry) {
-                final index = entry.key;
-                final factory = entry.value;
-                return TableRow(
-                  children: [
-                    _buildDataCell('${index + 1}', textAlign: TextAlign.center),
-                    _buildDataCell(factory.factoryName, textAlign: TextAlign.center),
-                    _buildDataCell(factory.variety ?? '-', textAlign: TextAlign.center),
-                    _buildDataCell(factory.progressiveRealisable.toString(), textAlign: TextAlign.center),
-                    _buildDataCell(factory.progressiveSold.toString(), textAlign: TextAlign.center),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                      child: IntrinsicHeight(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            Text(factory.kapasForm.toString(), style: const TextStyle(fontSize: 11)),
-                            const VerticalDivider(color: borderColor, width: 1, thickness: 1),
-                            Text(factory.readyForm.toString(), style: const TextStyle(fontSize: 11)),
-                            const VerticalDivider(color: borderColor, width: 1, thickness: 1),
-                            Text(factory.total.toString(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                          ],
-                        ),
+                  // ---------- Sub-header row ----------
+                  Container(
+                    decoration: BoxDecoration(
+                      color: headerBg,
+                      border: Border(
+                        top: BorderSide(color: borderColor),
                       ),
                     ),
-                    _buildDataCell(factory.baseRate.toString(), textAlign: TextAlign.center),
-                    _buildDataCell(factory.avgProgressiveBudgetedRate.toStringAsFixed(0), textAlign: TextAlign.center),
-                    Padding(
-                      padding: const EdgeInsets.all(4),
+                    child: Row(
+                      children: [
+                        headerCell('', flex: 1),
+                        headerCell('', flex: 2),
+                        headerCell('', flex: 3),
+                        headerCell('', flex: 2),
+                        headerCell('REALISABLE', flex: 1),
+                        headerCell('REALISED', flex: 1),
+                        headerCell('SOLD QTY', flex: 1),
+                        headerCell('PROG.\nDELIVERY', flex: 1),
+                        headerCell('KAPAS', flex: 1),
+                        headerCell('READY', flex: 1),
+                        headerCell('TOTAL', flex: 1),
+                        headerCell('KAPAS', flex: 1),
+                        headerCell('READY', flex: 1),
+                        headerCell('TOTAL', flex: 1),
+                        headerCell('', flex: 2),
+                        headerCell('', flex: 2),
+                        const SizedBox(width: 80),
+                      ],
+                    ),
+                  ),
+
+                  // ---------- Data rows ----------
+                  ..._seedFactories.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final f = entry.value;
+
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(color: borderColor),
+                        ),
+                      ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          IconButton(
-                            onPressed: () => _openEditSeedFactoryDialog(index),
-                            icon: const Icon(Icons.edit, size: 14, color: Color(0xFFF59E0B)),
-                            tooltip: 'Edit',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                          const SizedBox(width: 4),
-                          IconButton(
-                            onPressed: () => _deleteSeedFactory(index),
-                            icon: const Icon(Icons.delete, size: 14, color: Colors.red),
-                            tooltip: 'Delete',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                          dataCell('${index + 1}', flex: 1),
+                          dataCell(_selectedCentre ?? '', flex: 2),
+                          dataCell(f.factoryName, flex: 3),
+                          dataCell(f.variety, flex: 2),
+                          dataCell(fmt(f.realisable), flex: 1),
+                          dataCell(fmt(f.realised), flex: 1),
+                          dataCell(fmt(f.soldQty), flex: 1),
+                          dataCell(fmt(f.progDelivery), flex: 1),
+                          dataCell(fmt(f.kaps1), flex: 1),
+                          dataCell(fmt(f.ready1), flex: 1),
+                          dataCell(fmt(f.total1), flex: 1, bold: true),
+                          dataCell(fmt(f.kaps2), flex: 1),
+                          dataCell(fmt(f.ready2), flex: 1),
+                          dataCell(fmt(f.total2), flex: 1, bold: true),
+                          dataCell(fmt(f.marketRateMin), flex: 2),
+                          dataCell(fmt(f.marketRateMax), flex: 2),
+                          SizedBox(
+                            width: 80,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconButton(
+                                  onPressed: () =>
+                                      _openEditSeedFactoryDialog(index),
+                                  icon: const Icon(Icons.edit,
+                                      size: 16, color: Color(0xFFF59E0B)),
+                                  tooltip: 'Edit',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                                const SizedBox(width: 6),
+                                IconButton(
+                                  onPressed: () => _deleteSeedFactory(index),
+                                  icon: const Icon(Icons.delete,
+                                      size: 16, color: Colors.red),
+                                  tooltip: 'Delete',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                );
-              }),
-            ],
+                    );
+                  }),
+                ],
+              ),
+            ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeaderCell(String text, {TextAlign textAlign = TextAlign.left}) {
-    return Padding(
-      padding: const EdgeInsets.all(8),
-      child: Text(
-        text,
-        textAlign: textAlign,
-        style: const TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: 10,
-          color: Color(0xFF0F172A),
-        ),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
-
-  Widget _buildDataCell(String text, {TextAlign textAlign = TextAlign.left}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: Text(
-        text,
-        textAlign: textAlign,
-        style: const TextStyle(fontSize: 11),
-        overflow: TextOverflow.ellipsis,
-        maxLines: 1,
       ),
     );
   }
@@ -773,15 +1278,14 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       child: Container(
         padding: const EdgeInsets.all(20),
         constraints: const BoxConstraints(
-          maxWidth: 950,
-          maxHeight: 750,
+          maxWidth: 1300,
+          maxHeight: 850,
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Fixed Header
                 Row(
                   children: [
                     Container(
@@ -790,7 +1294,8 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                         color: const Color(0xFFD1FAE5),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.eco_rounded, color: Color(0xFF0F172A), size: 24),
+                      child: const Icon(Icons.eco_rounded,
+                          color: Color(0xFF0F172A), size: 24),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -808,7 +1313,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                 ),
                 const SizedBox(height: 12),
 
-                // Scrollable Content
                 Expanded(
                   child: SingleChildScrollView(
                     controller: _scrollController,
@@ -828,22 +1332,30 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
                                   child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                     children: [
-                                      CommonFormWidgets.sectionHeader('Header Information'),
+                                      CommonFormWidgets.sectionHeader(
+                                          'Header Information'),
                                       TextButton.icon(
-                                        onPressed: _isSubmitting ? null : _resetLookup,
-                                        icon: const Icon(Icons.search, size: 16),
-                                        label: const Text('Change entry'),
+                                        onPressed: _isSubmitting
+                                            ? null
+                                            : _resetLookup,
+                                        icon: const Icon(Icons.search,
+                                            size: 16),
+                                        label:
+                                        const Text('Change entry'),
                                         style: TextButton.styleFrom(
-                                          foregroundColor: const Color(0xFF0F172A),
+                                          foregroundColor:
+                                          const Color(0xFF0F172A),
                                         ),
                                       ),
                                     ],
                                   ),
                                 )
                               else
-                                CommonFormWidgets.sectionHeader('Header Information'),
+                                CommonFormWidgets.sectionHeader(
+                                    'Header Information'),
 
                               Row(
                                 children: [
@@ -856,7 +1368,9 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                           _selectedCentre = value;
                                           _resetReportNoToDefault();
                                         });
-                                        if (value != null) _autoGenerateReportNo();
+                                        if (value != null) {
+                                          _autoGenerateReportNo();
+                                        }
                                       },
                                     ),
                                   ),
@@ -865,22 +1379,29 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     child: CommonFormWidgets.textField(
                                       controller: _reportNoController,
                                       label: 'Report No.',
-                                      hint: _isLoadingReportNo ? 'Generating...' : 'e.g., 1',
+                                      hint: _isLoadingReportNo
+                                          ? 'Generating...'
+                                          : 'e.g., 1',
                                       icon: Icons.numbers,
-                                      keyboardType: TextInputType.number,
-                                      readOnly: widget.isModify || _isLoadingReportNo,
+                                      keyboardType:
+                                      TextInputType.number,
+                                      readOnly: widget.isModify ||
+                                          _isLoadingReportNo,
                                       suffixIcon: _isLoadingReportNo
                                           ? const Padding(
                                         padding: EdgeInsets.all(12),
                                         child: SizedBox(
                                           width: 20,
                                           height: 20,
-                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                          child:
+                                          CircularProgressIndicator(
+                                              strokeWidth: 2),
                                         ),
                                       )
                                           : null,
                                       validator: (value) {
-                                        if (value == null || value.isEmpty) {
+                                        if (value == null ||
+                                            value.isEmpty) {
                                           return 'Please enter report number';
                                         }
                                         return null;
@@ -892,21 +1413,28 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                               const SizedBox(height: 12),
 
                               InkWell(
-                                onTap: widget.isModify ? null : () => _selectDate(context),
+                                onTap: widget.isModify
+                                    ? null
+                                    : () => _selectDate(context),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 14),
                                   decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey[300]!),
-                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: Colors.grey[300]!),
+                                    borderRadius:
+                                    BorderRadius.circular(12),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
+                                      const Icon(Icons.calendar_today,
+                                          color: Color(0xFF64748B)),
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
                                           'Date: ${CommonFormWidgets.formatDate(_selectedDate)}',
-                                          style: const TextStyle(fontSize: 16),
+                                          style: const TextStyle(
+                                              fontSize: 16),
                                         ),
                                       ),
                                       const Icon(Icons.arrow_drop_down),
@@ -929,11 +1457,16 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                 children: [
                                   Expanded(
                                     child: OutlinedButton(
-                                      onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                                      onPressed: _isSubmitting
+                                          ? null
+                                          : () =>
+                                          Navigator.of(context).pop(),
                                       style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 14),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                          BorderRadius.circular(12),
                                         ),
                                       ),
                                       child: const Text('Cancel'),
@@ -942,25 +1475,35 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: ElevatedButton(
-                                      onPressed: _isSubmitting ? null : _submitForm,
+                                      onPressed: _isSubmitting
+                                          ? null
+                                          : _submitForm,
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF0F172A),
-                                        padding: const EdgeInsets.symmetric(vertical: 14),
+                                        backgroundColor:
+                                        const Color(0xFF0F172A),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 14),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
+                                          borderRadius:
+                                          BorderRadius.circular(12),
                                         ),
                                       ),
                                       child: _isSubmitting
                                           ? const SizedBox(
                                         height: 20,
                                         width: 20,
-                                        child: CircularProgressIndicator(
+                                        child:
+                                        CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          valueColor:
+                                          AlwaysStoppedAnimation<
+                                              Color>(Colors.white),
                                         ),
                                       )
                                           : Text(
-                                        widget.isModify ? 'Update' : 'Submit',
+                                        widget.isModify
+                                            ? 'Update'
+                                            : 'Submit',
                                         style: const TextStyle(
                                           color: Colors.white,
                                           fontWeight: FontWeight.w600,

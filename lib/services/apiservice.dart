@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 
 class ApiService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -224,9 +224,7 @@ class ApiService {
     }
   }
 
-  // ============ GET NEXT REPORT NUMBER ============
-
-  // ============ GET NEXT REPORT NUMBER ============
+  // ============ GET NEXT REPORT NUMBER (Purchase / Seed) ============
 
   static Future<ApiResponse> getNextReportNo({
     required String type,
@@ -257,9 +255,6 @@ class ApiService {
         final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (reportNo > maxReportNo) maxReportNo = reportNo;
 
-        // If a report already exists for the same centre + date,
-        // reuse its reportNo instead of incrementing. This makes all
-        // varieties of a same-day/same-centre report share one number.
         if (date != null) {
           final rawDate = data['date'];
           if (rawDate is String) {
@@ -277,6 +272,62 @@ class ApiService {
       return ApiResponse(
         success: true,
         message: 'Next report number generated',
+        data: {'nextReportNo': existingReportNoForDay ?? (maxReportNo + 1)},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Failed to generate report number: $e',
+      );
+    }
+  }
+
+  // ============ GET NEXT WEIGHT LIST REPORT NUMBER ============
+
+  static Future<ApiResponse> getNextWeightListReportNo({
+    required String centre,
+    DateTime? date,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      final normalizedCentre = centre.trim().toLowerCase();
+      final querySnapshot = await _db
+          .collection('weightLists')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      int maxReportNo = 0;
+      int? existingReportNoForDay;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (reportNo > maxReportNo) maxReportNo = reportNo;
+
+        if (date != null) {
+          final rawDate = data['date'];
+          if (rawDate is String) {
+            final parsed = DateTime.tryParse(rawDate);
+            if (parsed != null &&
+                parsed.year == date.year &&
+                parsed.month == date.month &&
+                parsed.day == date.day) {
+              existingReportNoForDay = reportNo;
+            }
+          }
+        }
+      }
+
+      return ApiResponse(
+        success: true,
+        message: 'Next weight list report number generated',
         data: {'nextReportNo': existingReportNoForDay ?? (maxReportNo + 1)},
       );
     } catch (e) {
@@ -395,6 +446,30 @@ class ApiService {
     }
   }
 
+  static Future<ApiResponse> saveWeightListEntry(Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      data['userId'] = user.uid;
+      data['createdAt'] = FieldValue.serverTimestamp();
+      data['type'] = 'weightList';
+
+      final docRef = await _db.collection('weightLists').add(data);
+      return ApiResponse(
+        success: true,
+        message: 'Weight list saved successfully',
+        data: {'id': docRef.id},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error saving weight list: $e',
+      );
+    }
+  }
+
   static Future<ApiResponse> findEntry({
     required String type,
     required String centre,
@@ -473,6 +548,66 @@ class ApiService {
       return ApiResponse(
         success: false,
         message: 'Error finding entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> findWeightListEntry({
+    required String centre,
+    required int reportNo,
+    required DateTime date,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      final normalizedCentre = centre.trim().toLowerCase();
+
+      final querySnapshot = await _db
+          .collection('weightLists')
+          .where('userId', isEqualTo: user.uid)
+          .where('reportNo', isEqualTo: reportNo)
+          .get();
+
+      Map<String, dynamic>? match;
+      String? matchId;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null &&
+              parsed.year == date.year &&
+              parsed.month == date.month &&
+              parsed.day == date.day) {
+            match = data;
+            matchId = doc.id;
+            break;
+          }
+        }
+      }
+
+      if (match == null) {
+        return ApiResponse(
+          success: false,
+          message: 'No weight list found for that centre, report number & date',
+        );
+      }
+      match['id'] = matchId;
+      return ApiResponse(
+        success: true,
+        message: 'Weight list found',
+        data: {'entry': match},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error finding weight list: $e',
       );
     }
   }
@@ -570,9 +705,6 @@ class ApiService {
   }
 
   // ============ GET PROGRESSIVE FOR ALL VARIETIES ============
-  // Returns a map keyed by variety name with the latest progressive
-  // values for that variety at the given centre. Used by the entry form
-  // to populate `otherVarietiesProgressive` before saving a purchase.
 
   static Future<Map<String, Map<String, double>>> getProgressiveForAllVarieties({
     required String type,
@@ -618,7 +750,6 @@ class ApiService {
         final data = doc.data();
         data['id'] = doc.id;
 
-        // Normalize alternate field names to canonical ones.
         data['progPressedBales'] ??= data['balesPressedProg'];
         data['balesPressedProg'] ??= data['progPressedBales'];
         data['progFarmers'] ??= data['farmersProgressive'];
@@ -680,6 +811,72 @@ class ApiService {
     }
   }
 
+  static Future<ApiResponse> getWeightListEntries() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      debugPrint('[WeightList] logged-in uid: ${user.uid}');
+
+      // No orderBy here: it needs a composite index and silently drops
+      // documents that have no createdAt. We sort locally instead.
+      final querySnapshot = await _db
+          .collection('weightLists')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      debugPrint('[WeightList] docs matching uid: ${querySnapshot.docs.length}');
+
+      final entries = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      DateTime? ts(dynamic v) {
+        if (v is Timestamp) return v.toDate();
+        if (v is DateTime) return v;
+        if (v is String) return DateTime.tryParse(v);
+        return null;
+      }
+
+      entries.sort((a, b) {
+        final da = ts(a['createdAt']) ?? ts(a['date']);
+        final db = ts(b['createdAt']) ?? ts(b['date']);
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return db.compareTo(da); // newest first
+      });
+
+      // Diagnostic: if nothing matched the uid, report how many docs exist.
+      if (entries.isEmpty) {
+        try {
+          final all = await _db.collection('weightLists').get();
+          debugPrint('[WeightList] total docs in collection: ${all.docs.length}');
+          for (final d in all.docs) {
+            debugPrint('[WeightList]   ${d.id} userId=${d.data()['userId']}');
+          }
+        } catch (e) {
+          debugPrint('[WeightList] could not list collection: $e');
+        }
+      }
+
+      return ApiResponse(
+        success: true,
+        message: 'Weight list entries fetched successfully',
+        data: {'entries': entries},
+      );
+    } catch (e) {
+      debugPrint('[WeightList] LOAD ERROR: $e');
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching weight list entries: $e',
+      );
+    }
+  }
+
   static Future<ApiResponse> updateEntry(String docId, Map<String, dynamic> data) async {
     try {
       final user = _auth.currentUser;
@@ -696,6 +893,26 @@ class ApiService {
       return ApiResponse(
         success: false,
         message: 'Error updating entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> updateWeightListEntry(String docId, Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      data['updatedAt'] = FieldValue.serverTimestamp();
+      await _db.collection('weightLists').doc(docId).update(data);
+      return ApiResponse(
+        success: true,
+        message: 'Weight list updated successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error updating weight list: $e',
       );
     }
   }
@@ -739,6 +956,25 @@ class ApiService {
       return ApiResponse(
         success: false,
         message: 'Error deleting entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> deleteWeightListEntry(String docId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      await _db.collection('weightLists').doc(docId).delete();
+      return ApiResponse(
+        success: true,
+        message: 'Weight list deleted successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error deleting weight list: $e',
       );
     }
   }
@@ -797,6 +1033,57 @@ class ApiService {
       return ApiResponse(
         success: false,
         message: 'Error checking entry: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> checkWeightListEntryExists({
+    required String centre,
+    required int reportNo,
+    required DateTime date,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      final normalizedCentre = centre.trim().toLowerCase();
+
+      final querySnapshot = await _db
+          .collection('weightLists')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+        final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (storedReportNo != reportNo) continue;
+        final rawDate = data['date'];
+        if (rawDate is String) {
+          final parsed = DateTime.tryParse(rawDate);
+          if (parsed != null &&
+              parsed.year == date.year &&
+              parsed.month == date.month &&
+              parsed.day == date.day) {
+            return ApiResponse(
+              success: true,
+              message: 'Weight list exists',
+              data: {'exists': true, 'docId': doc.id},
+            );
+          }
+        }
+      }
+      return ApiResponse(
+        success: true,
+        message: 'No weight list found',
+        data: {'exists': false},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error checking weight list: $e',
       );
     }
   }
@@ -1038,10 +1325,10 @@ class ApiService {
       if (user == null) {
         return ApiResponse(success: false, message: 'User not logged in');
       }
+
       final querySnapshot = await _db
           .collection('proformas')
           .where('userId', isEqualTo: user.uid)
-          .orderBy('createdAt', descending: true)
           .get();
 
       final proformas = querySnapshot.docs.map((doc) {
@@ -1049,6 +1336,25 @@ class ApiService {
         data['id'] = doc.id;
         return data;
       }).toList();
+
+      proformas.sort((a, b) {
+        final aRaw = a['updatedAt'] ?? a['createdAt'];
+        final bRaw = b['updatedAt'] ?? b['createdAt'];
+        DateTime? aDate;
+        DateTime? bDate;
+        if (aRaw is DateTime) aDate = aRaw;
+        if (aRaw is String) aDate = DateTime.tryParse(aRaw);
+        if (aRaw is dynamic && aRaw?.runtimeType.toString() == 'Timestamp') {
+          aDate = (aRaw as dynamic).toDate();
+        }
+        if (bRaw is DateTime) bDate = bRaw;
+        if (bRaw is String) bDate = DateTime.tryParse(bRaw);
+        if (bRaw is dynamic && bRaw?.runtimeType.toString() == 'Timestamp') {
+          bDate = (bRaw as dynamic).toDate();
+        }
+        if (aDate == null || bDate == null) return 0;
+        return bDate.compareTo(aDate);
+      });
 
       return ApiResponse(
         success: true,
@@ -1095,8 +1401,6 @@ class ApiService {
       );
     }
   }
-
-
 
   static Future<ApiResponse> getProformaById(String proformaId) async {
     try {

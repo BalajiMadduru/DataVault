@@ -36,33 +36,28 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   bool _isSubmitting = false;
   DateTime? _lastSubmitTime;
 
-  // Flag to prevent duplicate submissions
   bool _isEntrySaved = false;
   String? _savedDocId;
 
-  // Regenerating the proforma for an already-saved entry (modify flow)
   bool _isRegeneratingProforma = false;
 
-  // Find-then-edit flow
   bool _entryFound = false;
   bool _isSearching = false;
   String? _docId;
   String? _lookupError;
 
-  // Header fields
   String? _selectedCentre;
   final _reportNoController = TextEditingController();
 
-  // Only 3 varieties as per Excel
   final List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
   String? _selectedVariety;
 
-  // Fields from Excel template
   final _farmersDayController = TextEditingController();
   final _arrivalsBalesController = TextEditingController();
   final _cciPurchaseQtlsController = TextEditingController();
   final _cciPurchaseBalesController = TextEditingController();
   final _avgKapasRateController = TextEditingController();
+  final _moistureController = TextEditingController();
   final _budgetedLintController = TextEditingController();
   final _budgetedShortageController = TextEditingController();
   final _cottonSeedRateController = TextEditingController();
@@ -75,31 +70,23 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   final _cciHighestRateController = TextEditingController();
   final _cciLowestRateController = TextEditingController();
 
-  // Progressive fields (auto-calculated or read-only)
   final _progPressedBalesController = TextEditingController();
   final _progPurchaseQtlsController = TextEditingController();
   final _progPurchaseBalesController = TextEditingController();
   final _progFarmersController = TextEditingController();
 
-  // Previous progressive values for calculation
   double _previousProgPressedBales = 0;
   double _previousProgPurchaseQtls = 0;
   double _previousProgPurchaseBales = 0;
   double _previousProgFarmers = 0;
 
-  // ⭐ NEW: Progressive values for the OTHER two varieties.
-  // Saved into the document as `otherVarietiesProgressive` so the
-  // preview & export can render all three columns even when the user
-  // only filled in data for their own variety.
   Map<String, Map<String, double>> _otherVarietiesProgressive = {};
 
-  // Store original values for modify mode
   double _originalPressedBales = 0;
   double _originalPurchaseQtls = 0;
   double _originalPurchaseBales = 0;
   double _originalFarmers = 0;
 
-  // Factory data with progressive purchase values
   List<PurchaseFactoryProgData> _purchaseFactories = [];
 
   DateTime _selectedDate = DateTime.now();
@@ -145,9 +132,12 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _cciPurchaseBalesController.addListener(_recalculateProgPurchaseBales);
       _farmersDayController.addListener(_recalculateProgFarmers);
     } else {
-      _dayPressedBalesController.addListener(_recalculateProgPressedBalesModify);
-      _cciPurchaseQtlsController.addListener(_recalculateProgPurchaseQtlsModify);
-      _cciPurchaseBalesController.addListener(_recalculateProgPurchaseBalesModify);
+      _dayPressedBalesController
+          .addListener(_recalculateProgPressedBalesModify);
+      _cciPurchaseQtlsController
+          .addListener(_recalculateProgPurchaseQtlsModify);
+      _cciPurchaseBalesController
+          .addListener(_recalculateProgPurchaseBalesModify);
       _farmersDayController.addListener(_recalculateProgFarmersModify);
     }
 
@@ -167,6 +157,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     _cciPurchaseQtlsController.dispose();
     _cciPurchaseBalesController.dispose();
     _avgKapasRateController.dispose();
+    _moistureController.dispose();
     _budgetedLintController.dispose();
     _budgetedShortageController.dispose();
     _cottonSeedRateController.dispose();
@@ -191,47 +182,52 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
   void _recalculateProgPressedBales() {
     final dayValue = double.tryParse(_dayPressedBalesController.text) ?? 0;
-    _progPressedBalesController.text = _formatNumber(_previousProgPressedBales + dayValue);
+    _progPressedBalesController.text =
+        _formatNumber(_previousProgPressedBales + dayValue);
   }
 
   void _recalculateProgPurchaseQtls() {
     final dayValue = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
-    _progPurchaseQtlsController.text = _formatNumber(_previousProgPurchaseQtls + dayValue);
+    _progPurchaseQtlsController.text =
+        _formatNumber(_previousProgPurchaseQtls + dayValue);
   }
 
   void _recalculateProgPurchaseBales() {
     final dayValue = double.tryParse(_cciPurchaseBalesController.text) ?? 0;
-    _progPurchaseBalesController.text = _formatNumber(_previousProgPurchaseBales + dayValue);
+    _progPurchaseBalesController.text =
+        _formatNumber(_previousProgPurchaseBales + dayValue);
   }
 
   void _recalculateProgFarmers() {
     final dayValue = double.tryParse(_farmersDayController.text) ?? 0;
-    _progFarmersController.text = _formatNumber(_previousProgFarmers + dayValue);
+    _progFarmersController.text =
+        _formatNumber(_previousProgFarmers + dayValue);
   }
 
   void _recalculateProgPressedBalesModify() {
     final dayValue = double.tryParse(_dayPressedBalesController.text) ?? 0;
-    _progPressedBalesController.text = _formatNumber(_previousProgPressedBales + dayValue);
+    _progPressedBalesController.text =
+        _formatNumber(_previousProgPressedBales + dayValue);
   }
 
   void _recalculateProgPurchaseQtlsModify() {
     final dayValue = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
-    _progPurchaseQtlsController.text = _formatNumber(_previousProgPurchaseQtls + dayValue);
+    _progPurchaseQtlsController.text =
+        _formatNumber(_previousProgPurchaseQtls + dayValue);
   }
 
   void _recalculateProgPurchaseBalesModify() {
     final dayValue = double.tryParse(_cciPurchaseBalesController.text) ?? 0;
-    _progPurchaseBalesController.text = _formatNumber(_previousProgPurchaseBales + dayValue);
+    _progPurchaseBalesController.text =
+        _formatNumber(_previousProgPurchaseBales + dayValue);
   }
 
   void _recalculateProgFarmersModify() {
     final dayValue = double.tryParse(_farmersDayController.text) ?? 0;
-    _progFarmersController.text = _formatNumber(_previousProgFarmers + dayValue);
+    _progFarmersController.text =
+        _formatNumber(_previousProgFarmers + dayValue);
   }
 
-  // ============================================================
-  // ⭐ NEW: FETCH PROGRESSIVE VALUES FOR THE OTHER TWO VARIETIES
-  // ============================================================
   Future<void> _fetchOtherVarietiesProgressive() async {
     if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
 
@@ -243,7 +239,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
       final others = <String, Map<String, double>>{};
       for (final entry in all.entries) {
-        if (entry.key == _selectedVariety) continue; // skip own variety
+        if (entry.key == _selectedVariety) continue;
         others[entry.key] = {
           'progPressedBales': entry.value['progPressedBales'] ?? 0,
           'progPurchaseQtls': entry.value['progPurchaseQtls'] ?? 0,
@@ -256,16 +252,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       setState(() {
         _otherVarietiesProgressive = others;
       });
-
-      debugLog('✅ Loaded otherVarietiesProgressive: $others');
-    } catch (e) {
-      debugLog('❌ Failed to fetch other varieties progressive: $e');
-    }
+    } catch (_) {}
   }
 
-  // ============================================================
-  // LOAD EXISTING DATA
-  // ============================================================
   void _loadExistingData(Map<String, dynamic> data) {
     final centre = data['centre'] as String?;
     _selectedCentre = (centre != null && centre.isNotEmpty) ? centre : null;
@@ -275,49 +264,67 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _selectedVariety = data['variety'];
     }
 
-    _originalPressedBales = double.tryParse(data['dayPressedBales']?.toString() ?? '0') ?? 0;
-    _originalPurchaseQtls = double.tryParse(data['cciPurchaseQtls']?.toString() ?? '0') ?? 0;
-    _originalPurchaseBales = double.tryParse(data['cciPurchaseBales']?.toString() ?? '0') ?? 0;
-    _originalFarmers = double.tryParse(data['farmersDay']?.toString() ?? '0') ?? 0;
+    _originalPressedBales =
+        double.tryParse(data['dayPressedBales']?.toString() ?? '0') ?? 0;
+    _originalPurchaseQtls =
+        double.tryParse(data['cciPurchaseQtls']?.toString() ?? '0') ?? 0;
+    _originalPurchaseBales =
+        double.tryParse(data['cciPurchaseBales']?.toString() ?? '0') ?? 0;
+    _originalFarmers =
+        double.tryParse(data['farmersDay']?.toString() ?? '0') ?? 0;
 
     _farmersDayController.text = data['farmersDay']?.toString() ?? '';
     _arrivalsBalesController.text = data['arrivalsBales']?.toString() ?? '';
-    _cciPurchaseQtlsController.text = data['cciPurchaseQtls']?.toString() ?? '';
-    _cciPurchaseBalesController.text = data['cciPurchaseBales']?.toString() ?? '';
+    _cciPurchaseQtlsController.text =
+        data['cciPurchaseQtls']?.toString() ?? '';
+    _cciPurchaseBalesController.text =
+        data['cciPurchaseBales']?.toString() ?? '';
     _avgKapasRateController.text = data['avgKapasRate']?.toString() ?? '';
+    _moistureController.text = data['moisture']?.toString() ?? '';
     _budgetedLintController.text = data['budgetedLint']?.toString() ?? '';
-    _budgetedShortageController.text = data['budgetedShortage']?.toString() ?? '';
+    _budgetedShortageController.text =
+        data['budgetedShortage']?.toString() ?? '';
     _cottonSeedRateController.text = data['cottonSeedRate']?.toString() ?? '';
-    _processingCycleController.text = data['processingCycle']?.toString() ?? '';
-    _proformaExpensesController.text = data['proformaExpenses']?.toString() ?? '';
+    _processingCycleController.text =
+        data['processingCycle']?.toString() ?? '';
+    _proformaExpensesController.text =
+        data['proformaExpenses']?.toString() ?? '';
     _budgetedPadthaController.text = data['budgetedPadtha']?.toString() ?? '';
-    _dayPressedBalesController.text = data['dayPressedBales']?.toString() ?? '';
-    _marketHighestRateController.text = data['marketHighestRate']?.toString() ?? '';
-    _marketLowestRateController.text = data['marketLowestRate']?.toString() ?? '';
+    _dayPressedBalesController.text =
+        data['dayPressedBales']?.toString() ?? '';
+    _marketHighestRateController.text =
+        data['marketHighestRate']?.toString() ?? '';
+    _marketLowestRateController.text =
+        data['marketLowestRate']?.toString() ?? '';
     _cciHighestRateController.text = data['cciHighestRate']?.toString() ?? '';
     _cciLowestRateController.text = data['cciLowestRate']?.toString() ?? '';
-    _progPressedBalesController.text = data['progPressedBales']?.toString() ?? '';
-    _progPurchaseQtlsController.text = data['progPurchaseQtls']?.toString() ?? '';
-    _progPurchaseBalesController.text = data['progPurchaseBales']?.toString() ?? '';
+    _progPressedBalesController.text =
+        data['progPressedBales']?.toString() ?? '';
+    _progPurchaseQtlsController.text =
+        data['progPurchaseQtls']?.toString() ?? '';
+    _progPurchaseBalesController.text =
+        data['progPurchaseBales']?.toString() ?? '';
     _progFarmersController.text = data['progFarmers']?.toString() ?? '';
 
-    // Load factories with progressive data
     if (data['factories'] is List && (data['factories'] as List).isNotEmpty) {
       _purchaseFactories = (data['factories'] as List)
-          .map((f) => PurchaseFactoryProgData.fromJson(Map<String, dynamic>.from(f as Map)))
+          .map((f) => PurchaseFactoryProgData.fromJson(
+          Map<String, dynamic>.from(f as Map)))
           .toList();
     }
 
-    // ⭐ Preserve otherVarietiesProgressive if it already exists on the doc
     final existingOthers = data['otherVarietiesProgressive'];
     if (existingOthers is Map) {
       _otherVarietiesProgressive = {};
       existingOthers.forEach((key, value) {
         if (value is Map) {
           _otherVarietiesProgressive[key.toString()] = {
-            'progPressedBales': (value['progPressedBales'] as num?)?.toDouble() ?? 0,
-            'progPurchaseQtls': (value['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
-            'progPurchaseBales': (value['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+            'progPressedBales':
+            (value['progPressedBales'] as num?)?.toDouble() ?? 0,
+            'progPurchaseQtls':
+            (value['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
+            'progPurchaseBales':
+            (value['progPurchaseBales'] as num?)?.toDouble() ?? 0,
             'progFarmers': (value['progFarmers'] as num?)?.toDouble() ?? 0,
           };
         }
@@ -329,9 +336,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  // ============================================================
-  // FETCH LATEST PROGRESSIVE FOR MODIFY MODE
-  // ============================================================
   Future<void> _fetchLatestProgressiveForModify() async {
     if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
     if (_selectedVariety == null || _selectedVariety!.isEmpty) return;
@@ -355,10 +359,14 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _isLoadingPreviousProgressive = false;
 
         if (response.success && response.data != null) {
-          _previousProgPressedBales = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
-          _previousProgPurchaseQtls = (response.data!['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
-          _previousProgPurchaseBales = (response.data!['progPurchaseBales'] as num?)?.toDouble() ?? 0;
-          _previousProgFarmers = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
+          _previousProgPressedBales =
+              (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseQtls =
+              (response.data!['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseBales =
+              (response.data!['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+          _previousProgFarmers =
+              (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
           _debugMessage = '✅ Loaded latest progressive values';
         } else {
           _previousProgPressedBales = 0;
@@ -385,9 +393,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  // ============================================================
-  // FETCH PREVIOUS PROGRESSIVE - for new entry creation
-  // ============================================================
   Future<void> _fetchPreviousProgressive() async {
     if (widget.isModify) return;
 
@@ -423,16 +428,21 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       );
 
       if (!mounted) return;
-      if (requestedCentre != _selectedCentre || requestedVariety != _selectedVariety) return;
+      if (requestedCentre != _selectedCentre ||
+          requestedVariety != _selectedVariety) return;
 
       setState(() {
         _isLoadingPreviousProgressive = false;
 
         if (response.success && response.data != null) {
-          _previousProgPressedBales = (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
-          _previousProgPurchaseQtls = (response.data!['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
-          _previousProgPurchaseBales = (response.data!['progPurchaseBales'] as num?)?.toDouble() ?? 0;
-          _previousProgFarmers = (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
+          _previousProgPressedBales =
+              (response.data!['balesPressedProg'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseQtls =
+              (response.data!['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+          _previousProgPurchaseBales =
+              (response.data!['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+          _previousProgFarmers =
+              (response.data!['farmersProgressive'] as num?)?.toDouble() ?? 0;
           _debugMessage = '✅ Loaded progressive values';
         } else {
           _previousProgPressedBales = 0;
@@ -450,7 +460,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _recalculateProgFarmers();
       });
     } catch (e) {
-      if (mounted && requestedCentre == _selectedCentre && requestedVariety == _selectedVariety) {
+      if (mounted &&
+          requestedCentre == _selectedCentre &&
+          requestedVariety == _selectedVariety) {
         setState(() {
           _isLoadingPreviousProgressive = false;
           _debugMessage = '❌ Error: $e';
@@ -459,9 +471,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  // ============================================================
-  // UTILITY METHODS
-  // ============================================================
   Future<void> _loadDefaultCentre() async {
     if (_selectedCentre != null) return;
     final prefs = await SharedPreferences.getInstance();
@@ -553,9 +562,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  // ============================================================
-  // FIND ENTRY
-  // ============================================================
   Future<void> _findEntry() async {
     if (!_lookupFormKey.currentState!.validate()) return;
     if (_selectedCentre == null) return;
@@ -568,7 +574,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       _lookupError = null;
     });
 
-    final normalizedDate = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final normalizedDate =
+    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
 
     final response = await ApiService.findEntry(
       type: 'purchase',
@@ -613,9 +620,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     });
   }
 
-  // ============================================================
-  // CHECK FOR EXISTING ENTRY
-  // ============================================================
   Future<bool> _checkEntryExists() async {
     if (widget.isModify) return false;
 
@@ -647,9 +651,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  // ============================================================
-  // SHOW DUPLICATE ERROR DIALOG
-  // ============================================================
   void _showDuplicateErrorDialog() {
     showDialog(
       context: context,
@@ -689,10 +690,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           children: [
             const Text(
               'A report with the same details already exists.',
-              style: TextStyle(
-                fontSize: 14,
-                color: Color(0xFF334155),
-              ),
+              style: TextStyle(fontSize: 14, color: Color(0xFF334155)),
             ),
             const SizedBox(height: 12),
             Container(
@@ -707,7 +705,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                 children: [
                   _buildDetailRow('Centre', _selectedCentre ?? '-'),
                   _buildDetailRow('Report No.', _reportNoController.text),
-                  _buildDetailRow('Date', CommonFormWidgets.formatDate(_selectedDate)),
+                  _buildDetailRow(
+                      'Date', CommonFormWidgets.formatDate(_selectedDate)),
                   _buildDetailRow('Variety', _selectedVariety ?? '-'),
                 ],
               ),
@@ -715,19 +714,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Icon(
-                  Icons.info_outline,
-                  size: 16,
-                  color: Colors.grey.shade600,
-                ),
+                Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Please change at least one of the above fields to create a new report.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
+                    style:
+                    TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                 ),
               ],
@@ -743,10 +736,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'OK',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -780,9 +770,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     );
   }
 
-  // ============================================================
-  // SHOW CELEBRATION
-  // ============================================================
   void _showCelebration() {
     showDialog(
       context: context,
@@ -794,22 +781,33 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           children: [
             Container(
               padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(color: Color(0xFFD1FAE5), shape: BoxShape.circle),
-              child: const Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 48),
+              decoration: const BoxDecoration(
+                  color: Color(0xFFD1FAE5), shape: BoxShape.circle),
+              child: const Icon(Icons.check_circle_rounded,
+                  color: Color(0xFF059669), size: 48),
             ),
             const SizedBox(height: 16),
             Text(
-              widget.isModify ? 'Report Updated Successfully!' : 'Report Created Successfully!',
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              widget.isModify
+                  ? 'Report Updated Successfully!'
+                  : 'Report Created Successfully!',
+              style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A)),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            const Text('Redirecting to dashboard...', style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+            const Text('Redirecting to dashboard...',
+                style: TextStyle(fontSize: 14, color: Color(0xFF64748B))),
             const SizedBox(height: 16),
             const SizedBox(
               width: 24,
               height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0F172A))),
+              child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor:
+                  AlwaysStoppedAnimation<Color>(Color(0xFF0F172A))),
             ),
           ],
         ),
@@ -824,9 +822,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     });
   }
 
-  // ============================================================
-  // BUILD DATA
-  // ============================================================
   Map<String, dynamic> _buildPurchaseData() {
     return {
       'reportType': ReportType.dailyPurchase.label,
@@ -837,31 +832,41 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       'farmersDay': double.tryParse(_farmersDayController.text) ?? 0,
       'arrivalsBales': double.tryParse(_arrivalsBalesController.text) ?? 0,
       'cciPurchaseQtls': double.tryParse(_cciPurchaseQtlsController.text) ?? 0,
-      'cciPurchaseBales': double.tryParse(_cciPurchaseBalesController.text) ?? 0,
+      'cciPurchaseBales':
+      double.tryParse(_cciPurchaseBalesController.text) ?? 0,
       'avgKapasRate': double.tryParse(_avgKapasRateController.text) ?? 0,
+      'moisture': double.tryParse(_moistureController.text) ?? 0,
       'budgetedLint': double.tryParse(_budgetedLintController.text) ?? 0,
-      'budgetedShortage': double.tryParse(_budgetedShortageController.text) ?? 0,
+      'budgetedShortage':
+      double.tryParse(_budgetedShortageController.text) ?? 0,
       'cottonSeedRate': double.tryParse(_cottonSeedRateController.text) ?? 0,
-      'processingCycle': int.tryParse(_processingCycleController.text) ?? 0,
-      'proformaExpenses': double.tryParse(_proformaExpensesController.text) ?? 0,
+      'processingCycle':
+      int.tryParse(_processingCycleController.text) ?? 0,
+      'proformaExpenses':
+      double.tryParse(_proformaExpensesController.text) ?? 0,
       'budgetedPadtha': double.tryParse(_budgetedPadthaController.text) ?? 0,
-      'dayPressedBales': double.tryParse(_dayPressedBalesController.text) ?? 0,
-      'marketHighestRate': double.tryParse(_marketHighestRateController.text) ?? 0,
-      'marketLowestRate': double.tryParse(_marketLowestRateController.text) ?? 0,
+      'dayPressedBales':
+      double.tryParse(_dayPressedBalesController.text) ?? 0,
+      'marketHighestRate':
+      double.tryParse(_marketHighestRateController.text) ?? 0,
+      'marketLowestRate':
+      double.tryParse(_marketLowestRateController.text) ?? 0,
       'cciHighestRate': double.tryParse(_cciHighestRateController.text) ?? 0,
       'cciLowestRate': double.tryParse(_cciLowestRateController.text) ?? 0,
-      'progPressedBales': double.tryParse(_progPressedBalesController.text) ?? 0,
-      'progPurchaseQtls': double.tryParse(_progPurchaseQtlsController.text) ?? 0,
-      'progPurchaseBales': double.tryParse(_progPurchaseBalesController.text) ?? 0,
+      'progPressedBales':
+      double.tryParse(_progPressedBalesController.text) ?? 0,
+      'progPurchaseQtls':
+      double.tryParse(_progPurchaseQtlsController.text) ?? 0,
+      'progPurchaseBales':
+      double.tryParse(_progPurchaseBalesController.text) ?? 0,
       'progFarmers': double.tryParse(_progFarmersController.text) ?? 0,
-      // ⭐ Save the other varieties' progressive values in the document
       'otherVarietiesProgressive': _otherVarietiesProgressive,
       'factories': _purchaseFactories.map((f) => f.toJson()).toList(),
     };
   }
 
   // ============================================================
-  // SUBMIT FORM
+  // SUBMIT FORM (with proforma generation)
   // ============================================================
   void _submitForm() async {
     final now = DateTime.now();
@@ -884,7 +889,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     setState(() => _isSubmitting = true);
 
-    // Make sure otherVarietiesProgressive is up-to-date before saving.
     if (_otherVarietiesProgressive.isEmpty &&
         _selectedCentre != null &&
         _selectedCentre!.isNotEmpty) {
@@ -910,20 +914,73 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     if (!mounted) return;
 
-    setState(() => _isSubmitting = false);
-
-    if (response.success) {
-      if (response.data != null && response.data!['id'] != null) {
-        _docId = response.data!['id'] as String?;
-        _savedDocId = _docId;
-        _isEntrySaved = true;
-      }
-      _showCelebration();
-    } else {
+    if (!response.success) {
+      setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(response.message), backgroundColor: Colors.red, duration: const Duration(seconds: 3)),
+        SnackBar(
+          content: Text(response.message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
       );
+      return;
     }
+
+    // Capture the saved doc id.
+    if (response.data != null && response.data!['id'] != null) {
+      _docId = response.data!['id'] as String?;
+      _savedDocId = _docId;
+      _isEntrySaved = true;
+    }
+
+    // ⭐ Auto-generate/update the proforma document.
+    if (_docId != null && _docId!.isNotEmpty) {
+      final qty = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
+      final rate = double.tryParse(_avgKapasRateController.text) ?? 0;
+      final amount = qty * rate;
+      final moisture = double.tryParse(_moistureController.text) ?? 0;
+      final shortage = double.tryParse(_budgetedShortageController.text) ?? 0;
+      final padtha = double.tryParse(_budgetedPadthaController.text) ?? 0;
+      final lint = double.tryParse(_budgetedLintController.text) ?? 0;
+      final farmers = double.tryParse(_farmersDayController.text) ?? 0;
+      final bales = double.tryParse(_cciPurchaseBalesController.text) ?? 0;
+      final seed = 100 - lint - shortage;
+
+      final proformaResult = await ApiService.saveProforma({
+        'centre': _selectedCentre ?? '',
+        'variety': _selectedVariety ?? '',
+        'date': _selectedDate.toIso8601String(),
+        'purchaseEntryId': _docId,
+        'factory': '',
+        'quantity': qty,
+        'rate': rate,
+        'amount': amount,
+        'farmers': farmers,
+        'moisture': moisture,
+        'moistureValue': qty * moisture,
+        'shortage': shortage,
+        'shortageValue': qty * shortage,
+        'padtha': padtha,
+        'padthaValue': qty * padtha,
+        'lint': lint,
+        'lintValue': qty * lint,
+        'seed': seed,
+        'seedValue': qty * seed,
+        'bales': bales,
+        'heapNo': '',
+      });
+
+      if (!proformaResult.success) {
+        debugLog('⚠️ Proforma save failed: ${proformaResult.message}');
+      } else {
+        debugLog('✅ Proforma saved/updated');
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() => _isSubmitting = false);
+    _showCelebration();
   }
 
   void _scrollUp() {
@@ -942,17 +999,17 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     );
   }
 
-  // ============================================================
-  // FACTORY DIALOG HELPERS
-  // ============================================================
-
   void _openAddPurchaseFactoryDialog() => _showPurchaseFactoryFormDialog(null);
-  void _openEditPurchaseFactoryDialog(int index) => _showPurchaseFactoryFormDialog(_purchaseFactories[index]);
+  void _openEditPurchaseFactoryDialog(int index) =>
+      _showPurchaseFactoryFormDialog(_purchaseFactories[index]);
 
   void _showPurchaseFactoryFormDialog(PurchaseFactoryProgData? factoryData) {
-    final nameController = TextEditingController(text: factoryData?.factoryName ?? '');
-    final progQtlsController = TextEditingController(text: factoryData?.progPurchaseQtls.toString() ?? '');
-    final progBalesController = TextEditingController(text: factoryData?.progPurchaseBales.toString() ?? '');
+    final nameController =
+    TextEditingController(text: factoryData?.factoryName ?? '');
+    final progQtlsController = TextEditingController(
+        text: factoryData?.progPurchaseQtls.toString() ?? '');
+    final progBalesController = TextEditingController(
+        text: factoryData?.progPurchaseBales.toString() ?? '');
 
     final isEditing = factoryData != null;
 
@@ -984,7 +1041,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           label: 'Prog. Purchase (Qtls)',
                           hint: 'e.g., 22708.95',
                           icon: Icons.scale,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1005,14 +1063,18 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
               if (_factoryFormKey.currentState!.validate()) {
                 final factory = PurchaseFactoryProgData(
                   factoryName: nameController.text,
-                  progPurchaseQtls: double.tryParse(progQtlsController.text) ?? 0,
-                  progPurchaseBales: double.tryParse(progBalesController.text) ?? 0,
+                  progPurchaseQtls:
+                  double.tryParse(progQtlsController.text) ?? 0,
+                  progPurchaseBales:
+                  double.tryParse(progBalesController.text) ?? 0,
                 );
 
                 setState(() {
@@ -1028,7 +1090,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
               }
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
+              backgroundColor:
+              isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
             ),
             child: Text(isEditing ? 'Update' : 'Save'),
           ),
@@ -1044,7 +1107,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         title: const Text('Delete Factory'),
         content: const Text('Are you sure you want to delete this factory?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel')),
           TextButton(
             onPressed: () {
               setState(() => _purchaseFactories.removeAt(index));
@@ -1072,8 +1137,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             children: [
               Icon(Icons.factory_outlined, size: 40, color: Color(0xFF94A3B8)),
               SizedBox(height: 8),
-              Text('No factories added yet', style: TextStyle(color: Color(0xFF64748B))),
-              Text('Click "Add Factory" to add one', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+              Text('No factories added yet',
+                  style: TextStyle(color: Color(0xFF64748B))),
+              Text('Click "Add Factory" to add one',
+                  style:
+                  TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
             ],
           ),
         ),
@@ -1102,13 +1170,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             scrollDirection: Axis.horizontal,
             child: DataTable(
               columnSpacing: 20,
-              headingRowColor: WidgetStateProperty.all(const Color(0xFFF1F5F9)),
+              headingRowColor:
+              WidgetStateProperty.all(const Color(0xFFF1F5F9)),
               columns: const [
-                DataColumn(label: Text('SNO', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Factory Name', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Prog. Pur. (Qtls)', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('Prog. Pur. (Bales)', style: TextStyle(fontWeight: FontWeight.bold))),
-                DataColumn(label: Text('', style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('SNO',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('Factory Name',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('Prog. Pur. (Qtls)',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('Prog. Pur. (Bales)',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
               ],
               rows: _purchaseFactories.asMap().entries.map((entry) {
                 final index = entry.key;
@@ -1123,7 +1202,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                     children: [
                       IconButton(
                         onPressed: () => _openEditPurchaseFactoryDialog(index),
-                        icon: const Icon(Icons.edit, size: 18, color: Color(0xFFF59E0B)),
+                        icon: const Icon(Icons.edit,
+                            size: 18, color: Color(0xFFF59E0B)),
                         tooltip: 'Edit',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -1131,7 +1211,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                       const SizedBox(width: 8),
                       IconButton(
                         onPressed: () => _deletePurchaseFactory(index),
-                        icon: const Icon(Icons.delete, size: 18, color: Colors.red),
+                        icon: const Icon(Icons.delete,
+                            size: 18, color: Colors.red),
                         tooltip: 'Delete',
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
@@ -1146,10 +1227,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       ),
     );
   }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -1183,7 +1260,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         autofocus: true,
         child: CallbackShortcuts(
           bindings: {
-            const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.of(context).pop(),
+            const SingleActivator(LogicalKeyboardKey.escape): () =>
+                Navigator.of(context).pop(),
             const SingleActivator(LogicalKeyboardKey.arrowUp): _scrollUp,
             const SingleActivator(LogicalKeyboardKey.arrowDown): _scrollDown,
           },
@@ -1204,7 +1282,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Header
                         Row(
                           children: [
                             Container(
@@ -1235,16 +1312,18 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Header Information Section
                         if (widget.isModify)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment:
+                              MainAxisAlignment.spaceBetween,
                               children: [
-                                CommonFormWidgets.sectionHeader('Header Information'),
+                                CommonFormWidgets.sectionHeader(
+                                    'Header Information'),
                                 TextButton.icon(
-                                  onPressed: _isSubmitting ? null : _resetLookup,
+                                  onPressed:
+                                  _isSubmitting ? null : _resetLookup,
                                   icon: const Icon(Icons.search, size: 16),
                                   label: const Text('Change entry'),
                                   style: TextButton.styleFrom(
@@ -1255,7 +1334,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             ),
                           )
                         else
-                          CommonFormWidgets.sectionHeader('Header Information'),
+                          CommonFormWidgets.sectionHeader(
+                              'Header Information'),
 
                         CommonFormWidgets.centreDropdown(
                           selectedCentre: _selectedCentre,
@@ -1277,7 +1357,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             });
                             if (value != null) {
                               _rememberCentre(value);
-                              if (_selectedVariety != null && _selectedVariety!.isNotEmpty) {
+                              if (_selectedVariety != null &&
+                                  _selectedVariety!.isNotEmpty) {
                                 if (widget.isModify) {
                                   _fetchLatestProgressiveForModify();
                                 } else {
@@ -1298,23 +1379,28 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           keyboardType: TextInputType.number,
                           readOnly: widget.isModify,
                           validator: (value) {
-                            if (value == null || value.isEmpty) return 'Please enter report number';
+                            if (value == null || value.isEmpty)
+                              return 'Please enter report number';
                             return null;
                           },
                         ),
                         const SizedBox(height: 10),
 
                         InkWell(
-                          onTap: widget.isModify ? null : () => _selectDate(context),
+                          onTap: widget.isModify
+                              ? null
+                              : () => _selectDate(context),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 12),
                             decoration: BoxDecoration(
                               border: Border.all(color: Colors.grey[300]!),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
                               children: [
-                                const Icon(Icons.calendar_today, color: Color(0xFF64748B), size: 18),
+                                const Icon(Icons.calendar_today,
+                                    color: Color(0xFF64748B), size: 18),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
@@ -1329,21 +1415,26 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 10),
 
-                        // Variety dropdown - only 3 options
                         DropdownButtonFormField<String>(
                           value: _selectedVariety,
                           decoration: InputDecoration(
                             labelText: 'Variety',
                             hintText: 'Select variety',
                             prefixIcon: const Icon(Icons.eco, size: 18),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
+                              borderSide: const BorderSide(
+                                  color: Color(0xFF0F172A), width: 2),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
                           ),
-                          items: _varieties.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                          items: _varieties
+                              .map((v) =>
+                              DropdownMenuItem(value: v, child: Text(v)))
+                              .toList(),
                           onChanged: (value) {
                             setState(() {
                               _selectedVariety = value;
@@ -1369,11 +1460,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               _fetchOtherVarietiesProgressive();
                             }
                           },
-                          validator: (value) => value == null ? 'Please select a variety' : null,
+                          validator: (value) =>
+                          value == null ? 'Please select a variety' : null,
                         ),
                         const SizedBox(height: 14),
 
-                        // Purchase Details Section
                         CommonFormWidgets.sectionHeader('Purchase Details'),
                         if (!widget.isModify && _debugMessage.isNotEmpty)
                           Padding(
@@ -1398,7 +1489,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _farmersDayController,
-                                label: "Day's Kapas Purchased from No. of Farmers",
+                                label:
+                                "Day's Kapas Purchased from No. of Farmers",
                                 hint: 'e.g., 69',
                                 icon: Icons.people,
                                 keyboardType: TextInputType.number,
@@ -1426,7 +1518,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 label: 'CCI Purchases (In Qtls)',
                                 hint: 'e.g., 821.9',
                                 icon: Icons.scale,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -1448,7 +1542,20 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           label: 'Average Kapas rate (In Rs. per qtl)',
                           hint: 'e.g., 7928.68',
                           icon: Icons.currency_rupee,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType:
+                          const TextInputType.numberWithOptions(
+                              decimal: true),
+                        ),
+                        const SizedBox(height: 10),
+
+                        CommonFormWidgets.textField(
+                          controller: _moistureController,
+                          label: 'Moisture (%)',
+                          hint: 'e.g., 8.5',
+                          icon: Icons.water_drop,
+                          keyboardType:
+                          const TextInputType.numberWithOptions(
+                              decimal: true),
                         ),
                         const SizedBox(height: 10),
 
@@ -1460,7 +1567,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 label: 'Budgeted Lint Percentage (%)',
                                 hint: 'e.g., 0.321',
                                 icon: Icons.percent,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -1470,7 +1579,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 label: 'Budgeted Shortage Percentage (%)',
                                 hint: 'e.g., 0.027',
                                 icon: Icons.warning_amber_rounded,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                               ),
                             ),
                           ],
@@ -1507,20 +1618,26 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _proformaExpensesController,
-                                label: 'Proforma Expenses (In Rs. per Candy)',
+                                label:
+                                'Proforma Expenses (In Rs. per Candy)',
                                 hint: 'e.g., 4709.88',
                                 icon: Icons.money_off,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _budgetedPadthaController,
-                                label: 'Budgeted Padtha (In Rs. per candy)',
+                                label:
+                                'Budgeted Padtha (In Rs. per candy)',
                                 hint: 'e.g., 69502.94',
                                 icon: Icons.receipt,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                               ),
                             ),
                           ],
@@ -1536,13 +1653,15 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Market & CCI Rates
                         CommonFormWidgets.sectionHeader('Market & CCI Rates'),
                         const Padding(
                           padding: EdgeInsets.only(bottom: 4),
                           child: Text(
                             'Market Rates (In Rs. per qtl)',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B)),
                           ),
                         ),
                         Row(
@@ -1573,7 +1692,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           padding: EdgeInsets.only(bottom: 4),
                           child: Text(
                             'CCI Rates (In Rs. per qtl)',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B)),
                           ),
                         ),
                         Row(
@@ -1594,20 +1716,22 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 label: 'CCI Lowest',
                                 hint: 'e.g., 7689.6',
                                 icon: Icons.arrow_downward,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 14),
 
-                        // Progressive Values Section
                         CommonFormWidgets.sectionHeader('Progressive Values'),
                         const Padding(
                           padding: EdgeInsets.only(bottom: 4),
                           child: Text(
                             'Auto-calculated from previous entry + today\'s values',
-                            style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            style: TextStyle(
+                                fontSize: 10, color: Color(0xFF64748B)),
                           ),
                         ),
                         Row(
@@ -1616,7 +1740,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               child: CommonFormWidgets.textField(
                                 controller: _progPressedBalesController,
                                 label: 'Prog. Pressed Bales',
-                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                hint: _isLoadingPreviousProgressive
+                                    ? 'Loading...'
+                                    : 'Auto-calculated',
                                 icon: Icons.trending_up,
                                 keyboardType: TextInputType.number,
                                 readOnly: true,
@@ -1627,7 +1753,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               child: CommonFormWidgets.textField(
                                 controller: _progPurchaseQtlsController,
                                 label: 'Prog. Purchase (Qtls)',
-                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                hint: _isLoadingPreviousProgressive
+                                    ? 'Loading...'
+                                    : 'Auto-calculated',
                                 icon: Icons.trending_up,
                                 keyboardType: TextInputType.number,
                                 readOnly: true,
@@ -1642,7 +1770,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               child: CommonFormWidgets.textField(
                                 controller: _progPurchaseBalesController,
                                 label: 'Prog. Purchase (Bales)',
-                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                hint: _isLoadingPreviousProgressive
+                                    ? 'Loading...'
+                                    : 'Auto-calculated',
                                 icon: Icons.trending_up,
                                 keyboardType: TextInputType.number,
                                 readOnly: true,
@@ -1652,8 +1782,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _progFarmersController,
-                                label: 'Prog. Kapas Purchased from No. of Farmers',
-                                hint: _isLoadingPreviousProgressive ? 'Loading...' : 'Auto-calculated',
+                                label:
+                                'Prog. Kapas Purchased from No. of Farmers',
+                                hint: _isLoadingPreviousProgressive
+                                    ? 'Loading...'
+                                    : 'Auto-calculated',
                                 icon: Icons.trending_up,
                                 keyboardType: TextInputType.number,
                                 readOnly: true,
@@ -1663,7 +1796,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 14),
 
-                        // Factory Details
                         CommonFormWidgets.sectionHeaderWithAction(
                           'Factory Wise Day Purchase Details',
                           actionLabel: 'Add Factory',
@@ -1673,21 +1805,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                           padding: EdgeInsets.only(bottom: 4),
                           child: Text(
                             'Enter progressive purchase details for each factory',
-                            style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            style: TextStyle(
+                                fontSize: 10, color: Color(0xFF64748B)),
                           ),
                         ),
                         const SizedBox(height: 10),
                         _buildPurchaseFactoryListView(),
                         const SizedBox(height: 14),
 
-                        // Action Buttons
                         Row(
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                                onPressed: _isSubmitting
+                                    ? null
+                                    : () => Navigator.of(context).pop(),
                                 style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -1700,8 +1835,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               child: ElevatedButton(
                                 onPressed: _isSubmitting ? null : _submitForm,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF0F172A),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  backgroundColor:
+                                  const Color(0xFF0F172A),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   ),
@@ -1712,11 +1849,17 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                   width: 18,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    valueColor:
+                                    AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
                                   ),
                                 )
                                     : Text(
-                                  _isEntrySaved ? 'Update Report' : (widget.isModify ? 'Update' : 'Submit'),
+                                  _isEntrySaved
+                                      ? 'Update Report'
+                                      : (widget.isModify
+                                      ? 'Update'
+                                      : 'Submit'),
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w600,
@@ -1740,9 +1883,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   }
 }
 
-// ============================================================
-// FACTORY DATA MODEL FOR PURCHASE
-// ============================================================
 class PurchaseFactoryProgData {
   String factoryName;
   double progPurchaseQtls;
@@ -1760,9 +1900,11 @@ class PurchaseFactoryProgData {
     'progPurchaseBales': progPurchaseBales,
   };
 
-  factory PurchaseFactoryProgData.fromJson(Map<String, dynamic> json) => PurchaseFactoryProgData(
-    factoryName: json['factoryName'] as String? ?? '',
-    progPurchaseQtls: (json['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
-    progPurchaseBales: (json['progPurchaseBales'] as num?)?.toDouble() ?? 0,
-  );
+  factory PurchaseFactoryProgData.fromJson(Map<String, dynamic> json) =>
+      PurchaseFactoryProgData(
+        factoryName: json['factoryName'] as String? ?? '',
+        progPurchaseQtls: (json['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
+        progPurchaseBales:
+        (json['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+      );
 }

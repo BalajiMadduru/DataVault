@@ -19,8 +19,21 @@ class PreviewDialog extends StatelessWidget {
   String _v(Map<String, dynamic>? doc, String targetVariety, String field) {
     if (doc == null) return '0';
     final ownVariety = (doc['variety'] ?? '').toString();
+
+    if (field == 'moisture') {
+      debugPrint('[_v] target=$targetVariety own=$ownVariety');
+      debugPrint('[_v] top-level doc["moisture"]=${doc['moisture']}');
+      final others0 = doc['otherVarietiesProgressive'];
+      if (others0 is Map) {
+        debugPrint('[_v] others[$targetVariety]=${others0[targetVariety]}');
+      } else {
+        debugPrint('[_v] others = N/A');
+      }
+    }
+
     if (ownVariety == targetVariety) {
       final v = doc[field];
+      if (field == 'moisture') debugPrint('[_v] returning (own) = $v');
       return v?.toString() ?? '0';
     }
     final others = doc['otherVarietiesProgressive'];
@@ -28,9 +41,11 @@ class PreviewDialog extends StatelessWidget {
       final other = others[targetVariety];
       if (other is Map) {
         final v = other[field];
+        if (field == 'moisture') debugPrint('[_v] returning (other) = $v');
         return v?.toString() ?? '0';
       }
     }
+    if (field == 'moisture') debugPrint('[_v] returning 0 (no match)');
     return '0';
   }
 
@@ -78,8 +93,9 @@ class PreviewDialog extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    isPurchase ? Icons.shopping_basket_rounded : Icons
-                        .eco_rounded,
+                    isPurchase
+                        ? Icons.shopping_basket_rounded
+                        : Icons.eco_rounded,
                     color: const Color(0xFF0F172A),
                     size: 24,
                   ),
@@ -172,6 +188,19 @@ class PreviewDialog extends StatelessWidget {
 // ============================================================
 
   Widget _buildPurchasePreview(Map<String, dynamic>? data) {
+    // === DEBUG ===
+    debugPrint('========== PREVIEW DEBUG ==========');
+    debugPrint('data is null? ${data == null}');
+    debugPrint('data.variety = ${data?['variety']}');
+    debugPrint('data.centre = ${data?['centre']}');
+    debugPrint('data.reportNo = ${data?['reportNo']}');
+    debugPrint('data.moisture (top-level) = ${data?['moisture']}');
+    debugPrint('data.moisture type = ${data?['moisture'].runtimeType}');
+    debugPrint(
+        'data.otherVarietiesProgressive = ${data?['otherVarietiesProgressive']}');
+    debugPrint('===================================');
+    // === END DEBUG ===
+
     final dateStr = _formatDate(data?['date']);
     final centre =
     (data?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
@@ -181,90 +210,157 @@ class PreviewDialog extends StatelessWidget {
     (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
 
     final rows = <List<String>>[
-      ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
+      [
+        '4',
+        "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
         _v(data, 'BB MOD', 'farmersDay'),
         _v(data, 'BB SPL MOD', 'farmersDay'),
-        _v(data, 'MECH', 'farmersDay')],
-      ['5', 'Arrivals (In Bales)',
+        _v(data, 'MECH', 'farmersDay')
+      ],
+      [
+        '5',
+        'Arrivals (In Bales)',
         _v(data, 'BB MOD', 'arrivalsBales'),
         _v(data, 'BB SPL MOD', 'arrivalsBales'),
-        _v(data, 'MECH', 'arrivalsBales')],
-      ['6', 'CCI Purchases (In Qtls)',
+        _v(data, 'MECH', 'arrivalsBales')
+      ],
+      [
+        '6',
+        'CCI Purchases (In Qtls)',
         _v(data, 'BB MOD', 'cciPurchaseQtls'),
         _v(data, 'BB SPL MOD', 'cciPurchaseQtls'),
-        _v(data, 'MECH', 'cciPurchaseQtls')],
-      ['7', 'CCI Purchases (In Bales)',
+        _v(data, 'MECH', 'cciPurchaseQtls')
+      ],
+      [
+        '7',
+        'CCI Purchases (In Bales)',
         _v(data, 'BB MOD', 'cciPurchaseBales'),
         _v(data, 'BB SPL MOD', 'cciPurchaseBales'),
-        _v(data, 'MECH', 'cciPurchaseBales')],
-      ['8', 'Avarage Kapas rate (In Rs. per qtl)',
+        _v(data, 'MECH', 'cciPurchaseBales')
+      ],
+      [
+        '8',
+        'Avarage Kapas rate (In Rs. per qtl)',
         _v(data, 'BB MOD', 'avgKapasRate'),
         _v(data, 'BB SPL MOD', 'avgKapasRate'),
-        _v(data, 'MECH', 'avgKapasRate')],
-      ['9', 'Budgeted Lint Percetage (%)',
+        _v(data, 'MECH', 'avgKapasRate')
+      ],
+      [
+        '9',
+        'Moisture (%)',
+        _v(data, 'BB MOD', 'moisture'),
+        _v(data, 'BB SPL MOD', 'moisture'),
+        _v(data, 'MECH', 'moisture')
+      ],
+      [
+        '10',
+        'Budgeted Lint Percetage (%)',
         _v(data, 'BB MOD', 'budgetedLint'),
         _v(data, 'BB SPL MOD', 'budgetedLint'),
-        _v(data, 'MECH', 'budgetedLint')],
-      ['10', 'Budgeted Shortage Percetage (%)',
+        _v(data, 'MECH', 'budgetedLint')
+      ],
+      [
+        '11',
+        'Budgeted Shortage Percetage (%)',
         _v(data, 'BB MOD', 'budgetedShortage'),
         _v(data, 'BB SPL MOD', 'budgetedShortage'),
-        _v(data, 'MECH', 'budgetedShortage')],
-      ['11', 'Cotton seed Percetage (%)',
+        _v(data, 'MECH', 'budgetedShortage')
+      ],
+      [
+        '12',
+        'Cotton seed Percetage (%)',
         _v(data, 'BB MOD', 'cottonSeedPct'),
         _v(data, 'BB SPL MOD', 'cottonSeedPct'),
-        _v(data, 'MECH', 'cottonSeedPct')],
-      ['12', 'Cotton seed rate  (In Rs. per qtl)',
+        _v(data, 'MECH', 'cottonSeedPct')
+      ],
+      [
+        '13',
+        'Cotton seed rate  (In Rs. per qtl)',
         _v(data, 'BB MOD', 'cottonSeedRate'),
         _v(data, 'BB SPL MOD', 'cottonSeedRate'),
-        _v(data, 'MECH', 'cottonSeedRate')],
-      ['13', "Processing cycle (In day's)",
+        _v(data, 'MECH', 'cottonSeedRate')
+      ],
+      [
+        '14',
+        "Processing cycle (In day's)",
         _v(data, 'BB MOD', 'processingCycle'),
         _v(data, 'BB SPL MOD', 'processingCycle'),
-        _v(data, 'MECH', 'processingCycle')],
-      ['14', 'Proforma Expenses (In Rs. per Candy)',
+        _v(data, 'MECH', 'processingCycle')
+      ],
+      [
+        '15',
+        'Proforma Expenses (In Rs. per Candy)',
         _v(data, 'BB MOD', 'proformaExpenses'),
         _v(data, 'BB SPL MOD', 'proformaExpenses'),
-        _v(data, 'MECH', 'proformaExpenses')],
-      ['15', 'Budgeted Padtha (In Rs. per candy)',
+        _v(data, 'MECH', 'proformaExpenses')
+      ],
+      [
+        '16',
+        'Budgeted Padtha (In Rs. per candy)',
         _v(data, 'BB MOD', 'budgetedPadtha'),
         _v(data, 'BB SPL MOD', 'budgetedPadtha'),
-        _v(data, 'MECH', 'budgetedPadtha')],
-      ['16', "Day's pressed bales (In Bales)",
+        _v(data, 'MECH', 'budgetedPadtha')
+      ],
+      [
+        '17',
+        "Day's pressed bales (In Bales)",
         _v(data, 'BB MOD', 'dayPressedBales'),
         _v(data, 'BB SPL MOD', 'dayPressedBales'),
-        _v(data, 'MECH', 'dayPressedBales')],
-      ['17', 'Market Highest Rate (In Rs. per qtl)',
+        _v(data, 'MECH', 'dayPressedBales')
+      ],
+      [
+        '18',
+        'Market Highest Rate (In Rs. per qtl)',
         _v(data, 'BB MOD', 'marketHighestRate'),
         _v(data, 'BB SPL MOD', 'marketHighestRate'),
-        _v(data, 'MECH', 'marketHighestRate')],
-      ['18', 'Market Lowest Rate (In Rs. per qtl)',
+        _v(data, 'MECH', 'marketHighestRate')
+      ],
+      [
+        '19',
+        'Market Lowest Rate (In Rs. per qtl)',
         _v(data, 'BB MOD', 'marketLowestRate'),
         _v(data, 'BB SPL MOD', 'marketLowestRate'),
-        _v(data, 'MECH', 'marketLowestRate')],
-      ['19', 'CCI Highest Rate (In Rs. per qtl)',
+        _v(data, 'MECH', 'marketLowestRate')
+      ],
+      [
+        '20',
+        'CCI Highest Rate (In Rs. per qtl)',
         _v(data, 'BB MOD', 'cciHighestRate'),
         _v(data, 'BB SPL MOD', 'cciHighestRate'),
-        _v(data, 'MECH', 'cciHighestRate')],
-      ['20', 'CCI Lowest Rate (In Rs. per qtl)',
+        _v(data, 'MECH', 'cciHighestRate')
+      ],
+      [
+        '21',
+        'CCI Lowest Rate (In Rs. per qtl)',
         _v(data, 'BB MOD', 'cciLowestRate'),
         _v(data, 'BB SPL MOD', 'cciLowestRate'),
-        _v(data, 'MECH', 'cciLowestRate')],
+        _v(data, 'MECH', 'cciLowestRate')
+      ],
 
 // ⭐ Progressive rows — other varieties read from otherVarietiesProgressive
-      ['21', 'Prog. Pressed Bales',
+      [
+        '22',
+        'Prog. Pressed Bales',
         _v(data, 'BB MOD', 'progPressedBales'),
         _v(data, 'BB SPL MOD', 'progPressedBales'),
-        _v(data, 'MECH', 'progPressedBales')],
-      ['22', 'Prog. Purchase in qtls',
+        _v(data, 'MECH', 'progPressedBales')
+      ],
+      [
+        '23',
+        'Prog. Purchase in qtls',
         _v(data, 'BB MOD', 'progPurchaseQtls'),
         _v(data, 'BB SPL MOD', 'progPurchaseQtls'),
-        _v(data, 'MECH', 'progPurchaseQtls')],
-      ['23', 'Prog. Purchase Bales',
-        _v(data, 'BB MOD', 'progPurchaseBales'),
-        _v(data, 'BB SPL MOD', 'progPurchaseBales'),
-        _v(data, 'MECH', 'progPurchaseBales')],
+        _v(data, 'MECH', 'progPurchaseQtls')
+      ],
       [
         '24',
+        'Prog. Purchase Bales',
+        _v(data, 'BB MOD', 'progPurchaseBales'),
+        _v(data, 'BB SPL MOD', 'progPurchaseBales'),
+        _v(data, 'MECH', 'progPurchaseBales')
+      ],
+      [
+        '25',
         'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
         _v(data, 'BB MOD', 'progFarmers'),
         _v(data, 'BB SPL MOD', 'progFarmers'),
@@ -295,7 +391,7 @@ class PreviewDialog extends StatelessWidget {
 
           ...rows.map((r) => _numRow(r[0], r[1], r[2], r[3], r[4])),
 
-          _numRow('25', 'Factory wise day purchase details',
+          _numRow('26', 'Factory wise day purchase details',
               'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
           _factorySubHeader(),
 
@@ -308,10 +404,7 @@ class PreviewDialog extends StatelessWidget {
               ),
             )
           else
-            ...factories
-                .asMap()
-                .entries
-                .map((e) {
+            ...factories.asMap().entries.map((e) {
               final i = e.key;
               final f = e.value;
               return _factoryRow(
@@ -478,8 +571,8 @@ class PreviewDialog extends StatelessWidget {
               child: Text(
                 sno,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w700),
+                style:
+                const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
               ),
             ),
           ),
@@ -596,8 +689,7 @@ class PreviewDialog extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.all(20),
               child: Text('No factory data available',
-                  style:
-                  TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
             ),
           )
         else
@@ -618,10 +710,7 @@ class PreviewDialog extends StatelessWidget {
                 DataColumn(label: Text('Total')),
                 DataColumn(label: Text('Base Rate')),
               ],
-              rows: factories
-                  .asMap()
-                  .entries
-                  .map((e) {
+              rows: factories.asMap().entries.map((e) {
                 final i = e.key;
                 final f = e.value;
                 final total = f['total'] ??

@@ -11,6 +11,9 @@ class CustomDrawer extends StatefulWidget {
   final VoidCallback onViewPurchaseReports;
   final VoidCallback onViewSeedReports;
   final VoidCallback? onViewProforma;
+  final VoidCallback? onCreateWeightList;
+  final VoidCallback? onModifyWeightList;
+  final VoidCallback? onViewWeightListReports;
 
   const CustomDrawer({
     super.key,
@@ -23,6 +26,9 @@ class CustomDrawer extends StatefulWidget {
     required this.onViewPurchaseReports,
     required this.onViewSeedReports,
     this.onViewProforma,
+    this.onCreateWeightList,
+    this.onModifyWeightList,
+    this.onViewWeightListReports,
   });
 
   @override
@@ -32,6 +38,7 @@ class CustomDrawer extends StatefulWidget {
 class _CustomDrawerState extends State<CustomDrawer> {
   bool _isPurchaseExpanded = true;
   bool _isSeedExpanded = false;
+  bool _isWeightListExpanded = false;
   bool _isReportsExpanded = false;
 
   @override
@@ -42,16 +49,12 @@ class _CustomDrawerState extends State<CustomDrawer> {
         child: SafeArea(
           child: Column(
             children: [
-              // Drawer Header
               Container(
                 padding: const EdgeInsets.all(20),
                 width: double.infinity,
                 decoration: const BoxDecoration(
                   border: Border(
-                    bottom: BorderSide(
-                      color: Color(0xFF1E293B),
-                      width: 1,
-                    ),
+                    bottom: BorderSide(color: Color(0xFF1E293B), width: 1),
                   ),
                 ),
                 child: Column(
@@ -59,11 +62,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   children: [
                     const Row(
                       children: [
-                        Icon(
-                          Icons.assignment_rounded,
-                          color: Colors.white,
-                          size: 32,
-                        ),
+                        Icon(Icons.assignment_rounded, color: Colors.white, size: 32),
                         SizedBox(width: 12),
                         Text(
                           'Reports',
@@ -78,35 +77,21 @@ class _CustomDrawerState extends State<CustomDrawer> {
                     const SizedBox(height: 8),
                     Text(
                       'Select report type',
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
                     ),
                   ],
                 ),
               ),
-
-              // Expandable Sections
               Expanded(
                 child: ListView(
                   padding: EdgeInsets.zero,
                   children: [
                     const SizedBox(height: 8),
-
-                    // ============ DAILY PURCHASE SECTION ============
                     _buildExpandableSection(
                       title: 'Daily Purchase',
                       icon: Icons.shopping_basket_rounded,
                       isExpanded: _isPurchaseExpanded,
-                      onTap: () {
-                        setState(() {
-                          _isPurchaseExpanded = !_isPurchaseExpanded;
-                          // Optionally collapse others
-                          // _isSeedExpanded = false;
-                          // _isReportsExpanded = false;
-                        });
-                      },
+                      onTap: () => setState(() => _isPurchaseExpanded = !_isPurchaseExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -128,20 +113,11 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         ),
                       ],
                     ),
-
-                    // ============ DAILY SEED SECTION ============
                     _buildExpandableSection(
                       title: 'Daily Seed',
                       icon: Icons.eco_rounded,
                       isExpanded: _isSeedExpanded,
-                      onTap: () {
-                        setState(() {
-                          _isSeedExpanded = !_isSeedExpanded;
-                          // Optionally collapse others
-                          // _isPurchaseExpanded = false;
-                          // _isReportsExpanded = false;
-                        });
-                      },
+                      onTap: () => setState(() => _isSeedExpanded = !_isSeedExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -163,20 +139,37 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         ),
                       ],
                     ),
-
-                    // ============ REPORTS SECTION ============
+                    _buildExpandableSection(
+                      title: 'Weight List',
+                      icon: Icons.scale_rounded,
+                      isExpanded: _isWeightListExpanded,
+                      onTap: () => setState(() => _isWeightListExpanded = !_isWeightListExpanded),
+                      children: [
+                        _buildSubItem(
+                          context: context,
+                          title: 'Create Weight List',
+                          icon: Icons.add_circle_outline,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onCreateWeightList?.call();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'Modify Weight List',
+                          icon: Icons.edit_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onModifyWeightList?.call();
+                          },
+                        ),
+                      ],
+                    ),
                     _buildExpandableSection(
                       title: 'Reports',
                       icon: Icons.list_alt,
                       isExpanded: _isReportsExpanded,
-                      onTap: () {
-                        setState(() {
-                          _isReportsExpanded = !_isReportsExpanded;
-                          // Optionally collapse others
-                          // _isPurchaseExpanded = false;
-                          // _isSeedExpanded = false;
-                        });
-                      },
+                      onTap: () => setState(() => _isReportsExpanded = !_isReportsExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -194,6 +187,15 @@ class _CustomDrawerState extends State<CustomDrawer> {
                           onTap: () {
                             Navigator.pop(context);
                             widget.onViewSeedReports();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'View Weight List Reports',
+                          icon: Icons.visibility_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onViewWeightListReports?.call();
                           },
                         ),
                         if (widget.onViewProforma != null)
@@ -228,14 +230,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
   }) {
     return Column(
       children: [
-        // Main section header
         Material(
           color: Colors.transparent,
           child: ListTile(
-            leading: Icon(
-              icon,
-              color: Colors.grey[400],
-            ),
+            leading: Icon(icon, color: Colors.grey[400]),
             title: Text(
               title,
               style: TextStyle(
@@ -255,13 +253,10 @@ class _CustomDrawerState extends State<CustomDrawer> {
             splashColor: Colors.grey[800]?.withOpacity(0.3),
           ),
         ),
-        // Children (sub-items)
         if (isExpanded)
           Container(
             padding: const EdgeInsets.only(left: 16),
-            child: Column(
-              children: children,
-            ),
+            child: Column(children: children),
           ),
         const Divider(color: Color(0xFF1E293B), height: 1),
       ],

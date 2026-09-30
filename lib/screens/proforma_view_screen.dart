@@ -9,9 +9,7 @@ class ProformaViewScreen extends StatefulWidget {
   final String purchaseEntryId;
   final String proformaId;
   // If provided (e.g. from a filtered list screen), this data is used
-  // directly instead of re-fetching the full, unfiltered document by ID —
-  // keeping the detail view and export consistent with whatever date
-  // range / centre / variety filter the user applied on the list screen.
+  // directly instead of re-fetching the full, unfiltered document by ID.
   final Map<String, dynamic>? initialData;
 
   const ProformaViewScreen({
@@ -25,9 +23,103 @@ class ProformaViewScreen extends StatefulWidget {
   State<ProformaViewScreen> createState() => _ProformaViewScreenState();
 }
 
+// ============================================================
+// Row model - every derived value is computed in ONE place
+// ============================================================
+class _Row {
+  final String? label; // overrides the date cell (used for PROG. AVG.)
+  final DateTime? date;
+  final String centre;
+  final String factory;
+  final String variety;
+  final double qty;
+  final double rate;
+  final double amount; // qty * rate
+  final double farmers;
+  final double moisture;
+  final double moistureValue; // qty * moisture
+  final double shortage;
+  final double shortageValue; // qty * shortage
+  final double padtha;
+  final double padthaValue; // qty * padtha
+  final double lint;
+  final double lintValue; // qty * lint
+  final double seed; // 100 - lint - shortage
+  final double seedValue; // qty * seed
+  final double bales;
+
+  const _Row({
+    this.label,
+    this.date,
+    required this.centre,
+    required this.factory,
+    required this.variety,
+    required this.qty,
+    required this.rate,
+    required this.amount,
+    required this.farmers,
+    required this.moisture,
+    required this.moistureValue,
+    required this.shortage,
+    required this.shortageValue,
+    required this.padtha,
+    required this.padthaValue,
+    required this.lint,
+    required this.lintValue,
+    required this.seed,
+    required this.seedValue,
+    required this.bales,
+  });
+}
+
+class _Col {
+  final String label;
+  final double width;
+  final bool numeric;
+  final bool highlight;
+  final String Function(_Row r) cell;
+
+  const _Col(this.label, this.width, this.cell,
+      {this.numeric = true, this.highlight = false});
+}
+
+String _fmt(double v) => v.toStringAsFixed(2);
+
+String _fmtQty(double v) =>
+    v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+
+// Column order follows the requested field list.
+final List<_Col> _cols = [
+  _Col('DATE', 90,
+          (r) => r.label ??
+          (r.date != null ? DateFormat('dd/MM/yyyy').format(r.date!) : ''),
+      numeric: false),
+  _Col('CENTRE', 90, (r) => r.centre, numeric: false),
+  _Col('FACTORY', 110, (r) => r.factory, numeric: false),
+  _Col('VARIETY', 90, (r) => r.variety, numeric: false),
+  _Col('QUANTITY', 80, (r) => _fmtQty(r.qty)),
+  _Col('RATE', 75, (r) => _fmt(r.rate)),
+  _Col('AMOUNT', 95, (r) => _fmt(r.amount)),
+  _Col('FARMERS', 70, (r) => _fmtQty(r.farmers)),
+  _Col('MOISTURE', 75, (r) => _fmt(r.moisture)),
+  _Col('MOISTURE VALUE', 100, (r) => _fmt(r.moistureValue)),
+  _Col('SHORTAGE', 75, (r) => _fmt(r.shortage)),
+  _Col('SHORTAGE VALUE', 100, (r) => _fmt(r.shortageValue)),
+  _Col('PADTHA', 70, (r) => _fmt(r.padtha)),
+  _Col('PADTHA VALUE', 95, (r) => _fmt(r.padthaValue)),
+  _Col('LINT', 65, (r) => _fmt(r.lint)),
+  _Col('LINT VALUE', 90, (r) => _fmt(r.lintValue)),
+  _Col('SEED', 65, (r) => _fmt(r.seed)),
+  _Col('SEED VALUE', 95, (r) => _fmt(r.seedValue), highlight: true),
+  _Col('BALES', 65, (r) => _fmtQty(r.bales)),
+];
+
 class _ProformaViewScreenState extends State<ProformaViewScreen> {
   bool _isLoading = true;
   Map<String, dynamic>? _proformaData;
+  // Purchase entries keyed by document id - source of Lint, Shortage,
+  // Moisture and Padtha budget values.
+  Map<String, Map<String, dynamic>> _purchaseById = {};
   String? _error;
   final ScrollController _tableScrollController = ScrollController();
 
@@ -43,8 +135,33 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     super.dispose();
   }
 
+  Future<void> _loadPurchaseEntries() async {
+    try {
+      final response = await ApiService.getPurchaseEntries();
+      if (response.success && response.data != null) {
+        final list = response.data!['entries'] as List? ?? [];
+        final map = <String, Map<String, dynamic>>{};
+        for (final item in list) {
+          final m = Map<String, dynamic>.from(item as Map);
+          final id = m['id']?.toString();
+          if (id != null) map[id] = m;
+        }
+        _purchaseById = map;
+      }
+    } catch (_) {
+      // Non-fatal: rows fall back to the values stored on the proforma entry.
+      _purchaseById = {};
+    }
+  }
+
   Future<void> _loadProforma() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    await _loadPurchaseEntries();
+    if (!mounted) return;
 
     if (widget.initialData != null) {
       setState(() {
@@ -59,7 +176,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     if (widget.proformaId.isNotEmpty) {
       response = await ApiService.getProformaById(widget.proformaId);
     } else if (widget.purchaseEntryId.isNotEmpty) {
-      response = await ApiService.getProformaByPurchaseEntry(widget.purchaseEntryId);
+      response =
+      await ApiService.getProformaByPurchaseEntry(widget.purchaseEntryId);
     } else {
       setState(() {
         _error = 'No proforma ID or purchase entry ID provided';
@@ -82,6 +200,128 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       });
     }
   }
+
+  // ============================================================
+  // Calculation
+  // ============================================================
+
+  double _n(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  /// First candidate that is a real number (null/empty are skipped).
+  double _pick(List<dynamic> candidates) {
+    for (final c in candidates) {
+      if (c == null) continue;
+      if (c is num) return c.toDouble();
+      if (c is String) {
+        final p = double.tryParse(c);
+        if (p != null) return p;
+      }
+    }
+    return 0;
+  }
+
+  _Row _buildRow(
+      String purchaseId,
+      Map<String, dynamic> e,
+      Map<String, dynamic> doc,
+      ) {
+    final p = _purchaseById[purchaseId];
+
+    final qty = _n(e['quantity']);
+    final rate = _n(e['rate']);
+    final farmers = _pick([e['farmers'], p?['farmersDay']]);
+
+    final moisture = _pick([e['moisture'], p?['moisture']]);
+    final padtha = _pick([e['padtha'], p?['budgetedPadtha']]);
+
+    // Lint & Shortage come from the purchase entry (budgeted values).
+    final lint = _pick([p?['budgetedLint'], e['lint']]);
+    final shortage = _pick([p?['budgetedShortage'], e['shortage']]);
+    final seed = 100 - lint - shortage;
+
+    return _Row(
+      date: DateTime.tryParse(e['entryDate']?.toString() ?? ''),
+      centre: (e['centre'] ?? doc['centre'] ?? '').toString(),
+      factory: (e['factory'] ?? e['factoryName'] ?? '').toString(),
+      variety: (e['variety'] ?? doc['variety'] ?? '').toString(),
+      qty: qty,
+      rate: rate,
+      amount: qty * rate,
+      farmers: farmers,
+      moisture: moisture,
+      moistureValue: qty * moisture,
+      shortage: shortage,
+      shortageValue: qty * shortage,
+      padtha: padtha,
+      padthaValue: qty * padtha,
+      lint: lint,
+      lintValue: qty * lint,
+      seed: seed,
+      seedValue: qty * seed,
+      bales: _n(e['bales']),
+    );
+  }
+
+  List<_Row> _buildRows(Map<String, dynamic> doc) {
+    final entries = doc['entries'] as Map<String, dynamic>? ?? {};
+    final rows = <_Row>[];
+    entries.forEach((id, value) {
+      if (value is Map) {
+        rows.add(_buildRow(id, Map<String, dynamic>.from(value), doc));
+      }
+    });
+    rows.sort((a, b) {
+      if (a.date == null || b.date == null) return 0;
+      return a.date!.compareTo(b.date!);
+    });
+    return rows;
+  }
+
+  /// PROG. AVG. row: sums for quantities/values, weighted averages
+  /// (value / total quantity) for rate, moisture, shortage, etc.
+  _Row _buildProgAvg(List<_Row> rows, Map<String, dynamic> doc) {
+    double sum(double Function(_Row r) f) =>
+        rows.fold(0.0, (a, r) => a + f(r));
+
+    final qty = sum((r) => r.qty);
+    final amount = sum((r) => r.amount);
+    final moistureValue = sum((r) => r.moistureValue);
+    final shortageValue = sum((r) => r.shortageValue);
+    final padthaValue = sum((r) => r.padthaValue);
+    final lintValue = sum((r) => r.lintValue);
+    final seedValue = sum((r) => r.seedValue);
+    double avg(double v) => qty > 0 ? v / qty : 0;
+
+    return _Row(
+      label: 'PROG. AVG.',
+      centre: (doc['centre'] ?? '').toString(),
+      factory: '',
+      variety: (doc['variety'] ?? '').toString(),
+      qty: qty,
+      rate: avg(amount),
+      amount: amount,
+      farmers: sum((r) => r.farmers),
+      moisture: avg(moistureValue),
+      moistureValue: moistureValue,
+      shortage: avg(shortageValue),
+      shortageValue: shortageValue,
+      padtha: avg(padthaValue),
+      padthaValue: padthaValue,
+      lint: avg(lintValue),
+      lintValue: lintValue,
+      seed: avg(seedValue),
+      seedValue: seedValue,
+      bales: sum((r) => r.bales),
+    );
+  }
+
+  // ============================================================
+  // Build
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +347,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
           children: [
             const Icon(Icons.error_outline, size: 48, color: Colors.red),
             const SizedBox(height: 16),
-            Text(_error!, style: const TextStyle(color: Color(0xFF64748B))),
+            Text(_error!,
+                style: const TextStyle(color: Color(0xFF64748B))),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _loadProforma,
@@ -120,136 +361,62 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     );
   }
 
+  // ============================================================
+  // Excel export
+  // ============================================================
+
   Future<void> _exportToExcel() async {
     if (_proformaData == null) return;
 
     try {
-      var excel = excel_lib.Excel.createExcel();
-      var sheet = excel['Proforma'];
+      final excel = excel_lib.Excel.createExcel();
+      final sheet = excel['Proforma'];
 
       final data = _proformaData!;
       final centre = data['centre'] ?? '';
       final variety = data['variety'] ?? '';
-      final entries = data['entries'] as Map<String, dynamic>? ?? {};
+      final rows = _buildRows(data);
+      final progAvg = _buildProgAvg(rows, data);
 
-      final entryList = entries.entries.toList();
-      entryList.sort((a, b) {
-        final dateA = DateTime.tryParse(a.value['entryDate']?.toString() ?? '');
-        final dateB = DateTime.tryParse(b.value['entryDate']?.toString() ?? '');
-        if (dateA == null || dateB == null) return 0;
-        return dateA.compareTo(dateB);
-      });
-
-      // Calculate PROG AVG values
-      final quantity = data['quantity'] as num? ?? 0;
-      final amount = data['amount'] as num? ?? 0;
-      final farmers = data['farmers'] as num? ?? 0;
-      final moistureValue = data['moistureValue'] as num? ?? 0;
-      final shortageValue = data['shortageValue'] as num? ?? 0;
-      final padthaValue = data['padthaValue'] as num? ?? 0;
-      final outTurnValue = data['outTurnValue'] as num? ?? 0;
-      final seedValue = data['seedValue'] as num? ?? 0;
-      final bales = data['bales'] as num? ?? 0;
-
-      final rate = quantity > 0 ? amount / quantity : 0;
-      final moisture = quantity > 0 ? moistureValue / quantity : 0;
-      final shortage = quantity > 0 ? shortageValue / quantity : 0;
-      final padtha = quantity > 0 ? padthaValue / quantity : 0;
-      final outTurn = quantity > 0 ? outTurnValue / quantity : 0;
-      final seed = quantity > 0 ? seedValue / quantity : 0;
-
-      // Company Header
-      sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
+      sheet.appendRow(
+          ['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
       sheet.appendRow([]);
-
-      // Proforma Title with Centre and Variety
       sheet.appendRow([
         'PROFORMA FOR KAPAS PURCHASE',
         'CENTRE: $centre',
-        'VARIETY: $variety'
+        'VARIETY: $variety',
       ]);
       sheet.appendRow([]);
 
-      // Column Headers
-      final headers = [
-        'DATE', 'QTY', 'RATE', 'AMOUNT', 'FARMERS', 'MOISTURE',
-        'Moi. Value', 'SHORTAGE', 'Shortage value', 'PADATHA',
-        'Padtha value', 'out Turn', 'Out Turn value', 'seed',
-        'seed value', 'bales'
-      ];
-      sheet.appendRow(headers);
-
-      // Data Rows for each entry
-      for (final entry in entryList) {
-        final e = entry.value as Map<String, dynamic>;
-        final date = DateTime.tryParse(e['entryDate']?.toString() ?? '');
-        sheet.appendRow([
-          date != null ? DateFormat('dd/MM/yyyy').format(date) : '',
-          e['quantity']?.toString() ?? '0',
-          e['rate']?.toString() ?? '0',
-          (e['amount'] ?? 0).toStringAsFixed(2),
-          e['farmers']?.toString() ?? '0',
-          e['moisture']?.toString() ?? '0',
-          (e['moistureValue'] ?? 0).toStringAsFixed(2),
-          e['shortage']?.toString() ?? '0',
-          (e['shortageValue'] ?? 0).toStringAsFixed(2),
-          e['padtha']?.toString() ?? '0',
-          (e['padthaValue'] ?? 0).toStringAsFixed(2),
-          e['outTurn']?.toString() ?? '0',
-          (e['outTurnValue'] ?? 0).toStringAsFixed(2),
-          (e['seed'] ?? 0).toStringAsFixed(2),
-          (e['seedValue'] ?? 0).toStringAsFixed(2),
-          e['bales']?.toString() ?? ''
-        ]);
+      sheet.appendRow(_cols.map((c) => c.label).toList());
+      for (final r in rows) {
+        sheet.appendRow(_cols.map((c) => c.cell(r)).toList());
       }
+      sheet.appendRow(_cols.map((c) => c.cell(progAvg)).toList());
 
-      // PROG. AVG. row (inside the table)
-      sheet.appendRow([
-        'PROG. AVG.',
-        quantity.toString(),
-        rate.toStringAsFixed(2),
-        amount.toStringAsFixed(2),
-        farmers.toString(),
-        moisture.toStringAsFixed(2),
-        moistureValue.toStringAsFixed(2),
-        shortage.toStringAsFixed(2),
-        shortageValue.toStringAsFixed(2),
-        padtha.toStringAsFixed(2),
-        padthaValue.toStringAsFixed(2),
-        outTurn.toStringAsFixed(2),
-        outTurnValue.toStringAsFixed(2),
-        seed.toStringAsFixed(2),
-        seedValue.toStringAsFixed(2),
-        bales.toString()
-      ]);
-
-      // Total Seed Value (outside the table)
       sheet.appendRow([]);
       sheet.appendRow([
         'Total Seed Value',
-        '', '', '', '', '', '', '', '', '', '', '', '', '',
-        '₹${(data['seedValue'] ?? 0).toStringAsFixed(2)}'
+        ...List.filled(_cols.length - 3, ''),
+        '₹${_fmt(progAvg.seedValue)}',
       ]);
 
       final fileBytes = excel.save();
       if (fileBytes != null) {
-        String fileName = 'Proforma_${centre}_${variety}_${DateFormat('ddMMyyyy').format(DateTime.now())}.xlsx';
+        final fileName =
+            'Proforma_${centre}_${variety}_${DateFormat('ddMMyyyy').format(DateTime.now())}.xlsx';
         String? savePath;
 
         if (Platform.isAndroid || Platform.isIOS) {
           final directory = await getExternalStorageDirectory();
-          if (directory != null) {
-            savePath = '${directory.path}/$fileName';
-          }
+          if (directory != null) savePath = '${directory.path}/$fileName';
         } else {
           final directory = await getApplicationDocumentsDirectory();
           savePath = '${directory.path}/$fileName';
         }
 
         if (savePath != null) {
-          final file = File(savePath);
-          await file.writeAsBytes(fileBytes);
-
+          await File(savePath).writeAsBytes(fileBytes);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -273,29 +440,47 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     }
   }
 
+  // ============================================================
+  // UI
+  // ============================================================
+
+  Widget _headerStat(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _divider() => Container(
+    width: 1,
+    height: 40,
+    margin: const EdgeInsets.symmetric(horizontal: 24),
+    color: const Color(0xFFE2E8F0),
+  );
+
   Widget _buildProformaContent() {
     final data = _proformaData!;
-    final centre = data['centre'] ?? '';
-    final variety = data['variety'] ?? '';
-    final entries = data['entries'] as Map<String, dynamic>? ?? {};
-
-    // Calculate PROG. AVG. values
-    final quantity = data['quantity'] as num? ?? 0;
-    final amount = data['amount'] as num? ?? 0;
-    final farmers = data['farmers'] as num? ?? 0;
-    final moistureValue = data['moistureValue'] as num? ?? 0;
-    final shortageValue = data['shortageValue'] as num? ?? 0;
-    final padthaValue = data['padthaValue'] as num? ?? 0;
-    final outTurnValue = data['outTurnValue'] as num? ?? 0;
-    final seedValue = data['seedValue'] as num? ?? 0;
-    final bales = data['bales'] as num? ?? 0;
-
-    final rate = quantity > 0 ? amount / quantity : 0;
-    final moisture = quantity > 0 ? moistureValue / quantity : 0;
-    final shortage = quantity > 0 ? shortageValue / quantity : 0;
-    final padtha = quantity > 0 ? padthaValue / quantity : 0;
-    final outTurn = quantity > 0 ? outTurnValue / quantity : 0;
-    final seed = quantity > 0 ? seedValue / quantity : 0;
+    final centre = (data['centre'] ?? '').toString();
+    final variety = (data['variety'] ?? '').toString();
+    final rows = _buildRows(data);
+    final progAvg = _buildProgAvg(rows, data);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -310,9 +495,9 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
               Center(
                 child: Column(
                   children: [
-                    Text(
+                    const Text(
                       'PROFORMA FOR KAPAS PURCHASE',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF0F172A),
@@ -321,7 +506,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                     const SizedBox(height: 8),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 8, horizontal: 16),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF8FAFC),
                         borderRadius: BorderRadius.circular(8),
@@ -330,84 +516,13 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'CENTRE',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                centre.isNotEmpty ? centre : 'N/A',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            width: 1,
-                            height: 40,
-                            margin: const EdgeInsets.symmetric(horizontal: 24),
-                            color: const Color(0xFFE2E8F0),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'VARIETY',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                variety.isNotEmpty ? variety : 'N/A',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            width: 1,
-                            height: 40,
-                            margin: const EdgeInsets.symmetric(horizontal: 24),
-                            color: const Color(0xFFE2E8F0),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'ENTRIES',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${entries.length}',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                            ],
-                          ),
+                          _headerStat(
+                              'CENTRE', centre.isNotEmpty ? centre : 'N/A'),
+                          _divider(),
+                          _headerStat(
+                              'VARIETY', variety.isNotEmpty ? variety : 'N/A'),
+                          _divider(),
+                          _headerStat('ENTRIES', '${rows.length}'),
                         ],
                       ),
                     ),
@@ -440,19 +555,15 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                     controller: _tableScrollController,
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: _buildProformaTable(data, quantity, amount, farmers, moistureValue, shortageValue, padthaValue, outTurnValue, seedValue, bales, rate, moisture, shortage, padtha, outTurn, seed),
+                    child: _buildProformaTable(rows, progAvg),
                   ),
                 ),
               ),
               const SizedBox(height: 20),
-              _buildProgAvgSummary(
-                quantity, rate, amount, farmers, moisture, moistureValue,
-                shortage, shortageValue, padtha, padthaValue,
-                outTurn, outTurnValue, seed, seedValue, bales,
-              ),
+              _buildProgAvgSummary(progAvg),
               const SizedBox(height: 8),
               Text(
-                'Total Entries: ${entries.length}',
+                'Total Entries: ${rows.length}',
                 style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
               ),
             ],
@@ -462,165 +573,82 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     );
   }
 
-  Widget _buildProformaTable(
-      Map<String, dynamic> data,
-      num quantity,
-      num amount,
-      num farmers,
-      num moistureValue,
-      num shortageValue,
-      num padthaValue,
-      num outTurnValue,
-      num seedValue,
-      num bales,
-      num rate,
-      num moisture,
-      num shortage,
-      num padtha,
-      num outTurn,
-      num seed,
-      ) {
-    final entries = data['entries'] as Map<String, dynamic>? ?? {};
+  Widget _cell(_Col col, String text,
+      {bool header = false, bool bold = false, Color? color}) {
+    return Container(
+      width: col.width,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: (header || bold) ? FontWeight.bold : FontWeight.normal,
+          color: color ?? const Color(0xFF0F172A),
+        ),
+        textAlign: col.numeric ? TextAlign.right : TextAlign.center,
+      ),
+    );
+  }
 
-    final entryList = entries.entries.toList();
-    entryList.sort((a, b) {
-      final dateA = DateTime.tryParse(a.value['entryDate']?.toString() ?? '');
-      final dateB = DateTime.tryParse(b.value['entryDate']?.toString() ?? '');
-      if (dateA == null || dateB == null) return 0;
-      return dateA.compareTo(dateB);
-    });
-
-    final headers = [
-      'DATE', 'QTY', 'RATE', 'AMOUNT', 'FARMERS', 'MOISTURE',
-      'Moi. Value', 'SHORTAGE', 'Shortage value', 'PADATHA',
-      'Padtha value', 'out Turn', 'Out Turn value', 'seed',
-      'seed value', 'bales'
-    ];
-
-    final numericFields = ['QTY', 'RATE', 'AMOUNT', 'Moi. Value', 'Shortage value',
-      'Padtha value', 'Out Turn value', 'seed', 'seed value', 'bales'];
-    final boldFields = ['seed value'];
-
+  Widget _buildProformaTable(List<_Row> rows, _Row progAvg) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header Row
+        // Header row
         Container(
           color: const Color(0xFFF1F5F9),
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
           child: Row(
-            children: headers.map((header) {
-              final isNumeric = numericFields.contains(header);
-              return Container(
-                width: _columnWidth(header),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Text(
-                  header,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 10,
-                    color: Color(0xFF0F172A),
-                  ),
-                  textAlign: isNumeric ? TextAlign.right : TextAlign.center,
-                ),
-              );
-            }).toList(),
+            children: _cols.map((c) => _cell(c, c.label, header: true)).toList(),
           ),
         ),
 
-        // Data Rows
-        ...entryList.map((entry) {
-          final e = entry.value as Map<String, dynamic>;
-          final date = DateTime.tryParse(e['entryDate']?.toString() ?? '');
-          final values = [
-            date != null ? DateFormat('dd/MM/yyyy').format(date) : '',
-            e['quantity']?.toString() ?? '0',
-            e['rate']?.toString() ?? '0',
-            (e['amount'] ?? 0).toStringAsFixed(2),
-            e['farmers']?.toString() ?? '0',
-            e['moisture']?.toString() ?? '0',
-            (e['moistureValue'] ?? 0).toStringAsFixed(2),
-            e['shortage']?.toString() ?? '0',
-            (e['shortageValue'] ?? 0).toStringAsFixed(2),
-            e['padtha']?.toString() ?? '0',
-            (e['padthaValue'] ?? 0).toStringAsFixed(2),
-            e['outTurn']?.toString() ?? '0',
-            (e['outTurnValue'] ?? 0).toStringAsFixed(2),
-            (e['seed'] ?? 0).toStringAsFixed(2),
-            (e['seedValue'] ?? 0).toStringAsFixed(2),
-            e['bales']?.toString() ?? ''
-          ];
-
+        // Data rows
+        ...rows.map((r) {
           return Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               border: Border(
-                bottom: BorderSide(color: const Color(0xFFE2E8F0), width: 0.5),
+                bottom: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
               ),
             ),
             child: Row(
-              children: List.generate(values.length, (index) {
-                final isNumeric = numericFields.contains(headers[index]);
-                final isBold = boldFields.contains(headers[index]);
-                return Container(
-                  width: _columnWidth(headers[index]),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Text(
-                    values[index],
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-                      color: isBold ? const Color(0xFF059669) : const Color(0xFF0F172A),
-                    ),
-                    textAlign: isNumeric ? TextAlign.right : TextAlign.center,
-                  ),
-                );
-              }),
+              children: _cols
+                  .map((c) => _cell(
+                c,
+                c.cell(r),
+                bold: c.highlight,
+                color: c.highlight ? const Color(0xFF059669) : null,
+              ))
+                  .toList(),
             ),
           );
-        }).toList(),
+        }),
+
+        // PROG. AVG. row (inside the table)
+        Container(
+          color: const Color(0xFFF1F5F9),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            children: _cols
+                .map((c) => _cell(
+              c,
+              c.cell(progAvg),
+              bold: true,
+              color: c.highlight ? const Color(0xFF059669) : null,
+            ))
+                .toList(),
+          ),
+        ),
       ],
     );
   }
 
-  // PROG. AVG. summary card - shown outside the table, where "Total Seed
-  // Value" used to be.
-  Widget _buildProgAvgSummary(
-      num quantity,
-      num rate,
-      num amount,
-      num farmers,
-      num moisture,
-      num moistureValue,
-      num shortage,
-      num shortageValue,
-      num padtha,
-      num padthaValue,
-      num outTurn,
-      num outTurnValue,
-      num seed,
-      num seedValue,
-      num bales,
-      ) {
-    final items = <_ProgAvgItem>[
-      _ProgAvgItem('QTY', quantity.toString()),
-      _ProgAvgItem('RATE', rate.toStringAsFixed(2)),
-      _ProgAvgItem('AMOUNT', amount.toStringAsFixed(2)),
-      _ProgAvgItem('FARMERS', farmers.toString()),
-      _ProgAvgItem('MOISTURE', moisture.toStringAsFixed(2)),
-      _ProgAvgItem('Moi. Value', moistureValue.toStringAsFixed(2)),
-      _ProgAvgItem('SHORTAGE', shortage.toStringAsFixed(2)),
-      _ProgAvgItem('Shortage value', shortageValue.toStringAsFixed(2)),
-      _ProgAvgItem('PADATHA', padtha.toStringAsFixed(2)),
-      _ProgAvgItem('Padtha value', padthaValue.toStringAsFixed(2)),
-      _ProgAvgItem('out Turn', outTurn.toStringAsFixed(2)),
-      _ProgAvgItem('Out Turn value', outTurnValue.toStringAsFixed(2)),
-      _ProgAvgItem('seed', seed.toStringAsFixed(2)),
-      _ProgAvgItem('seed value', '₹${seedValue.toStringAsFixed(2)}',
-          highlight: true),
-      _ProgAvgItem('bales', bales.toString()),
-    ];
+  // PROG. AVG. summary card shown below the table.
+  Widget _buildProgAvgSummary(_Row progAvg) {
+    // Text-only columns (date/centre/factory/variety/heap) aren't averaged.
+    final items = _cols.where((c) => c.numeric).toList();
 
     return Container(
       width: double.infinity,
@@ -645,14 +673,15 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
           Wrap(
             spacing: 20,
             runSpacing: 12,
-            children: items.map((item) {
+            children: items.map((c) {
+              final value = c.cell(progAvg);
               return SizedBox(
                 width: 110,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.label,
+                      c.label,
                       style: const TextStyle(
                         fontSize: 10,
                         color: Color(0xFF94A3B8),
@@ -661,11 +690,11 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      item.value,
+                      c.highlight ? '₹$value' : value,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: item.highlight
+                        color: c.highlight
                             ? const Color(0xFF4ADE80)
                             : Colors.white,
                       ),
@@ -679,44 +708,4 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       ),
     );
   }
-
-  double _columnWidth(String header) {
-    switch (header) {
-      case 'DATE':
-        return 90;
-      case 'QTY':
-      case 'RATE':
-      case 'AMOUNT':
-        return 80;
-      case 'FARMERS':
-        return 70;
-      case 'MOISTURE':
-        return 80;
-      case 'Moi. Value':
-      case 'Shortage value':
-      case 'Padtha value':
-      case 'Out Turn value':
-        return 85;
-      case 'SHORTAGE':
-      case 'PADATHA':
-      case 'out Turn':
-        return 80;
-      case 'seed':
-        return 60;
-      case 'seed value':
-        return 80;
-      case 'bales':
-        return 60;
-      default:
-        return 60;
-    }
-  }
-}
-
-class _ProgAvgItem {
-  final String label;
-  final String value;
-  final bool highlight;
-
-  const _ProgAvgItem(this.label, this.value, {this.highlight = false});
 }
