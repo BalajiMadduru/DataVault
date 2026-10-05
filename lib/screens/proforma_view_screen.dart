@@ -30,7 +30,6 @@ class _Row {
   final String? label; // overrides the date cell (used for PROG. AVG.)
   final DateTime? date;
   final String centre;
-  final String factory;
   final String variety;
   final double qty;
   final double rate;
@@ -52,7 +51,6 @@ class _Row {
     this.label,
     this.date,
     required this.centre,
-    required this.factory,
     required this.variety,
     required this.qty,
     required this.rate,
@@ -95,7 +93,6 @@ final List<_Col> _cols = [
           (r.date != null ? DateFormat('dd/MM/yyyy').format(r.date!) : ''),
       numeric: false),
   _Col('CENTRE', 90, (r) => r.centre, numeric: false),
-  _Col('FACTORY', 110, (r) => r.factory, numeric: false),
   _Col('VARIETY', 90, (r) => r.variety, numeric: false),
   _Col('QUANTITY', 80, (r) => _fmtQty(r.qty)),
   _Col('RATE', 75, (r) => _fmt(r.rate)),
@@ -246,7 +243,6 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     return _Row(
       date: DateTime.tryParse(e['entryDate']?.toString() ?? ''),
       centre: (e['centre'] ?? doc['centre'] ?? '').toString(),
-      factory: (e['factory'] ?? e['factoryName'] ?? '').toString(),
       variety: (e['variety'] ?? doc['variety'] ?? '').toString(),
       qty: qty,
       rate: rate,
@@ -299,7 +295,6 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     return _Row(
       label: 'PROG. AVG.',
       centre: (doc['centre'] ?? '').toString(),
-      factory: '',
       variety: (doc['variety'] ?? '').toString(),
       qty: qty,
       rate: avg(amount),

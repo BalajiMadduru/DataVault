@@ -13,27 +13,11 @@ class PreviewDialog extends StatelessWidget {
 
   static const List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
 
-  /// Reads a field for a specific variety.
-  /// - Own variety → reads top-level field directly.
-  /// - Other two   → reads from `otherVarietiesProgressive[<variety>][field]`.
   String _v(Map<String, dynamic>? doc, String targetVariety, String field) {
     if (doc == null) return '0';
     final ownVariety = (doc['variety'] ?? '').toString();
-
-    if (field == 'moisture') {
-      debugPrint('[_v] target=$targetVariety own=$ownVariety');
-      debugPrint('[_v] top-level doc["moisture"]=${doc['moisture']}');
-      final others0 = doc['otherVarietiesProgressive'];
-      if (others0 is Map) {
-        debugPrint('[_v] others[$targetVariety]=${others0[targetVariety]}');
-      } else {
-        debugPrint('[_v] others = N/A');
-      }
-    }
-
     if (ownVariety == targetVariety) {
       final v = doc[field];
-      if (field == 'moisture') debugPrint('[_v] returning (own) = $v');
       return v?.toString() ?? '0';
     }
     final others = doc['otherVarietiesProgressive'];
@@ -41,11 +25,9 @@ class PreviewDialog extends StatelessWidget {
       final other = others[targetVariety];
       if (other is Map) {
         final v = other[field];
-        if (field == 'moisture') debugPrint('[_v] returning (other) = $v');
         return v?.toString() ?? '0';
       }
     }
-    if (field == 'moisture') debugPrint('[_v] returning 0 (no match)');
     return '0';
   }
 
@@ -69,10 +51,48 @@ class PreviewDialog extends StatelessWidget {
     }
   }
 
+  String _fq(dynamic v) {
+    if (v == null) return '0';
+    final d = v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0;
+    if (d == d.roundToDouble()) return d.toInt().toString();
+    return d.toStringAsFixed(2);
+  }
+
+  String get _title {
+    switch (type) {
+      case ReportType.dailyPurchase:
+        return 'Purchase Report Preview';
+      case ReportType.dailySeed:
+        return 'Seed Report Preview';
+      case ReportType.weightList:
+        return 'Weight List Preview';
+    }
+  }
+
+  IconData get _icon {
+    switch (type) {
+      case ReportType.dailyPurchase:
+        return Icons.shopping_basket_rounded;
+      case ReportType.dailySeed:
+        return Icons.eco_rounded;
+      case ReportType.weightList:
+        return Icons.scale_rounded;
+    }
+  }
+
+  Color get _headerColor {
+    switch (type) {
+      case ReportType.dailyPurchase:
+        return const Color(0xFFE0F2FE);
+      case ReportType.dailySeed:
+        return const Color(0xFFD1FAE5);
+      case ReportType.weightList:
+        return const Color(0xFFFEF3C7);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isPurchase = type == ReportType.dailyPurchase;
-
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       child: Container(
@@ -87,23 +107,15 @@ class PreviewDialog extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: isPurchase
-                        ? const Color(0xFFE0F2FE)
-                        : const Color(0xFFD1FAE5),
+                    color: _headerColor,
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
-                    isPurchase
-                        ? Icons.shopping_basket_rounded
-                        : Icons.eco_rounded,
-                    color: const Color(0xFF0F172A),
-                    size: 24,
-                  ),
+                  child: Icon(_icon, color: const Color(0xFF0F172A), size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '${isPurchase ? 'Purchase' : 'Seed'} Report Preview',
+                    _title,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -141,9 +153,7 @@ class PreviewDialog extends StatelessWidget {
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: SingleChildScrollView(
-                  child: isPurchase
-                      ? _buildPurchasePreview(data)
-                      : _buildSeedPreview(data),
+                  child: _buildBody(),
                 ),
               ),
             ),
@@ -183,189 +193,74 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-// ============================================================
-// PURCHASE PREVIEW
-// ============================================================
+  Widget _buildBody() {
+    switch (type) {
+      case ReportType.dailyPurchase:
+        return _buildPurchasePreview(data);
+      case ReportType.dailySeed:
+        return _buildSeedPreview(data);
+      case ReportType.weightList:
+        return _buildWeightListPreview(data);
+    }
+  }
+
+  // ============================================================
+  // PURCHASE PREVIEW (unchanged)
+  // ============================================================
 
   Widget _buildPurchasePreview(Map<String, dynamic>? data) {
-    // === DEBUG ===
-    debugPrint('========== PREVIEW DEBUG ==========');
-    debugPrint('data is null? ${data == null}');
-    debugPrint('data.variety = ${data?['variety']}');
-    debugPrint('data.centre = ${data?['centre']}');
-    debugPrint('data.reportNo = ${data?['reportNo']}');
-    debugPrint('data.moisture (top-level) = ${data?['moisture']}');
-    debugPrint('data.moisture type = ${data?['moisture'].runtimeType}');
-    debugPrint(
-        'data.otherVarietiesProgressive = ${data?['otherVarietiesProgressive']}');
-    debugPrint('===================================');
-    // === END DEBUG ===
-
     final dateStr = _formatDate(data?['date']);
     final centre =
     (data?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
-    final reportNo = (data?['reportNo'] ?? '1').toString();
     final cropSeason = (data?['cropSeason'] ?? '2025-26').toString();
     final branchOffice =
     (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
 
     final rows = <List<String>>[
-      [
-        '4',
-        "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
-        _v(data, 'BB MOD', 'farmersDay'),
-        _v(data, 'BB SPL MOD', 'farmersDay'),
-        _v(data, 'MECH', 'farmersDay')
-      ],
-      [
-        '5',
-        'Arrivals (In Bales)',
-        _v(data, 'BB MOD', 'arrivalsBales'),
-        _v(data, 'BB SPL MOD', 'arrivalsBales'),
-        _v(data, 'MECH', 'arrivalsBales')
-      ],
-      [
-        '6',
-        'CCI Purchases (In Qtls)',
-        _v(data, 'BB MOD', 'cciPurchaseQtls'),
-        _v(data, 'BB SPL MOD', 'cciPurchaseQtls'),
-        _v(data, 'MECH', 'cciPurchaseQtls')
-      ],
-      [
-        '7',
-        'CCI Purchases (In Bales)',
-        _v(data, 'BB MOD', 'cciPurchaseBales'),
-        _v(data, 'BB SPL MOD', 'cciPurchaseBales'),
-        _v(data, 'MECH', 'cciPurchaseBales')
-      ],
-      [
-        '8',
-        'Avarage Kapas rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'avgKapasRate'),
-        _v(data, 'BB SPL MOD', 'avgKapasRate'),
-        _v(data, 'MECH', 'avgKapasRate')
-      ],
-      [
-        '9',
-        'Moisture (%)',
-        _v(data, 'BB MOD', 'moisture'),
-        _v(data, 'BB SPL MOD', 'moisture'),
-        _v(data, 'MECH', 'moisture')
-      ],
-      [
-        '10',
-        'Budgeted Lint Percetage (%)',
-        _v(data, 'BB MOD', 'budgetedLint'),
-        _v(data, 'BB SPL MOD', 'budgetedLint'),
-        _v(data, 'MECH', 'budgetedLint')
-      ],
-      [
-        '11',
-        'Budgeted Shortage Percetage (%)',
-        _v(data, 'BB MOD', 'budgetedShortage'),
-        _v(data, 'BB SPL MOD', 'budgetedShortage'),
-        _v(data, 'MECH', 'budgetedShortage')
-      ],
-      [
-        '12',
-        'Cotton seed Percetage (%)',
-        _v(data, 'BB MOD', 'cottonSeedPct'),
-        _v(data, 'BB SPL MOD', 'cottonSeedPct'),
-        _v(data, 'MECH', 'cottonSeedPct')
-      ],
-      [
-        '13',
-        'Cotton seed rate  (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'cottonSeedRate'),
-        _v(data, 'BB SPL MOD', 'cottonSeedRate'),
-        _v(data, 'MECH', 'cottonSeedRate')
-      ],
-      [
-        '14',
-        "Processing cycle (In day's)",
-        _v(data, 'BB MOD', 'processingCycle'),
-        _v(data, 'BB SPL MOD', 'processingCycle'),
-        _v(data, 'MECH', 'processingCycle')
-      ],
-      [
-        '15',
-        'Proforma Expenses (In Rs. per Candy)',
-        _v(data, 'BB MOD', 'proformaExpenses'),
-        _v(data, 'BB SPL MOD', 'proformaExpenses'),
-        _v(data, 'MECH', 'proformaExpenses')
-      ],
-      [
-        '16',
-        'Budgeted Padtha (In Rs. per candy)',
-        _v(data, 'BB MOD', 'budgetedPadtha'),
-        _v(data, 'BB SPL MOD', 'budgetedPadtha'),
-        _v(data, 'MECH', 'budgetedPadtha')
-      ],
-      [
-        '17',
-        "Day's pressed bales (In Bales)",
-        _v(data, 'BB MOD', 'dayPressedBales'),
-        _v(data, 'BB SPL MOD', 'dayPressedBales'),
-        _v(data, 'MECH', 'dayPressedBales')
-      ],
-      [
-        '18',
-        'Market Highest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'marketHighestRate'),
-        _v(data, 'BB SPL MOD', 'marketHighestRate'),
-        _v(data, 'MECH', 'marketHighestRate')
-      ],
-      [
-        '19',
-        'Market Lowest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'marketLowestRate'),
-        _v(data, 'BB SPL MOD', 'marketLowestRate'),
-        _v(data, 'MECH', 'marketLowestRate')
-      ],
-      [
-        '20',
-        'CCI Highest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'cciHighestRate'),
-        _v(data, 'BB SPL MOD', 'cciHighestRate'),
-        _v(data, 'MECH', 'cciHighestRate')
-      ],
-      [
-        '21',
-        'CCI Lowest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'cciLowestRate'),
-        _v(data, 'BB SPL MOD', 'cciLowestRate'),
-        _v(data, 'MECH', 'cciLowestRate')
-      ],
-
-// ⭐ Progressive rows — other varieties read from otherVarietiesProgressive
-      [
-        '22',
-        'Prog. Pressed Bales',
-        _v(data, 'BB MOD', 'progPressedBales'),
-        _v(data, 'BB SPL MOD', 'progPressedBales'),
-        _v(data, 'MECH', 'progPressedBales')
-      ],
-      [
-        '23',
-        'Prog. Purchase in qtls',
-        _v(data, 'BB MOD', 'progPurchaseQtls'),
-        _v(data, 'BB SPL MOD', 'progPurchaseQtls'),
-        _v(data, 'MECH', 'progPurchaseQtls')
-      ],
-      [
-        '24',
-        'Prog. Purchase Bales',
-        _v(data, 'BB MOD', 'progPurchaseBales'),
-        _v(data, 'BB SPL MOD', 'progPurchaseBales'),
-        _v(data, 'MECH', 'progPurchaseBales')
-      ],
-      [
-        '25',
-        'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
-        _v(data, 'BB MOD', 'progFarmers'),
-        _v(data, 'BB SPL MOD', 'progFarmers'),
-        _v(data, 'MECH', 'progFarmers')
-      ],
+      ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
+        _v(data, 'BB MOD', 'farmersDay'), _v(data, 'BB SPL MOD', 'farmersDay'), _v(data, 'MECH', 'farmersDay')],
+      ['5', 'Arrivals (In Bales)',
+        _v(data, 'BB MOD', 'arrivalsBales'), _v(data, 'BB SPL MOD', 'arrivalsBales'), _v(data, 'MECH', 'arrivalsBales')],
+      ['6', 'CCI Purchases (In Qtls)',
+        _v(data, 'BB MOD', 'cciPurchaseQtls'), _v(data, 'BB SPL MOD', 'cciPurchaseQtls'), _v(data, 'MECH', 'cciPurchaseQtls')],
+      ['7', 'CCI Purchases (In Bales)',
+        _v(data, 'BB MOD', 'cciPurchaseBales'), _v(data, 'BB SPL MOD', 'cciPurchaseBales'), _v(data, 'MECH', 'cciPurchaseBales')],
+      ['8', 'Avarage Kapas rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'avgKapasRate'), _v(data, 'BB SPL MOD', 'avgKapasRate'), _v(data, 'MECH', 'avgKapasRate')],
+      ['9', 'Moisture (%)',
+        _v(data, 'BB MOD', 'moisture'), _v(data, 'BB SPL MOD', 'moisture'), _v(data, 'MECH', 'moisture')],
+      ['10', 'Budgeted Lint Percetage (%)',
+        _v(data, 'BB MOD', 'budgetedLint'), _v(data, 'BB SPL MOD', 'budgetedLint'), _v(data, 'MECH', 'budgetedLint')],
+      ['11', 'Budgeted Shortage Percetage (%)',
+        _v(data, 'BB MOD', 'budgetedShortage'), _v(data, 'BB SPL MOD', 'budgetedShortage'), _v(data, 'MECH', 'budgetedShortage')],
+      ['12', 'Cotton seed Percetage (%)',
+        _v(data, 'BB MOD', 'cottonSeedPct'), _v(data, 'BB SPL MOD', 'cottonSeedPct'), _v(data, 'MECH', 'cottonSeedPct')],
+      ['13', 'Cotton seed rate  (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'cottonSeedRate'), _v(data, 'BB SPL MOD', 'cottonSeedRate'), _v(data, 'MECH', 'cottonSeedRate')],
+      ['14', "Processing cycle (In day's)",
+        _v(data, 'BB MOD', 'processingCycle'), _v(data, 'BB SPL MOD', 'processingCycle'), _v(data, 'MECH', 'processingCycle')],
+      ['15', 'Proforma Expenses (In Rs. per Candy)',
+        _v(data, 'BB MOD', 'proformaExpenses'), _v(data, 'BB SPL MOD', 'proformaExpenses'), _v(data, 'MECH', 'proformaExpenses')],
+      ['16', 'Budgeted Padtha (In Rs. per candy)',
+        _v(data, 'BB MOD', 'budgetedPadtha'), _v(data, 'BB SPL MOD', 'budgetedPadtha'), _v(data, 'MECH', 'budgetedPadtha')],
+      ['17', "Day's pressed bales (In Bales)",
+        _v(data, 'BB MOD', 'dayPressedBales'), _v(data, 'BB SPL MOD', 'dayPressedBales'), _v(data, 'MECH', 'dayPressedBales')],
+      ['18', 'Market Highest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'marketHighestRate'), _v(data, 'BB SPL MOD', 'marketHighestRate'), _v(data, 'MECH', 'marketHighestRate')],
+      ['19', 'Market Lowest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'marketLowestRate'), _v(data, 'BB SPL MOD', 'marketLowestRate'), _v(data, 'MECH', 'marketLowestRate')],
+      ['20', 'CCI Highest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'cciHighestRate'), _v(data, 'BB SPL MOD', 'cciHighestRate'), _v(data, 'MECH', 'cciHighestRate')],
+      ['21', 'CCI Lowest Rate (In Rs. per qtl)',
+        _v(data, 'BB MOD', 'cciLowestRate'), _v(data, 'BB SPL MOD', 'cciLowestRate'), _v(data, 'MECH', 'cciLowestRate')],
+      ['22', 'Prog. Pressed Bales',
+        _v(data, 'BB MOD', 'progPressedBales'), _v(data, 'BB SPL MOD', 'progPressedBales'), _v(data, 'MECH', 'progPressedBales')],
+      ['23', 'Prog. Purchase in qtls',
+        _v(data, 'BB MOD', 'progPurchaseQtls'), _v(data, 'BB SPL MOD', 'progPurchaseQtls'), _v(data, 'MECH', 'progPurchaseQtls')],
+      ['24', 'Prog. Purchase Bales',
+        _v(data, 'BB MOD', 'progPurchaseBales'), _v(data, 'BB SPL MOD', 'progPurchaseBales'), _v(data, 'MECH', 'progPurchaseBales')],
+      ['25', 'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
+        _v(data, 'BB MOD', 'progFarmers'), _v(data, 'BB SPL MOD', 'progFarmers'), _v(data, 'MECH', 'progFarmers')],
     ];
 
     List<Map<String, dynamic>> factories = [];
@@ -384,24 +279,18 @@ class PreviewDialog extends StatelessWidget {
           _plainRow('DAILY PURCHASE REPORT', bold: true),
           _plainRow('CROP SEASON $cropSeason', bold: true, trailing: 'MSP'),
           const Divider(height: 1, thickness: 1, color: Color(0xFF94A3B8)),
-
           _numRow('1', 'Purchase Date', dateStr, dateStr, dateStr),
           _numRow('2', 'Centre', centre, centre, centre),
           _numRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
-
           ...rows.map((r) => _numRow(r[0], r[1], r[2], r[3], r[4])),
-
           _numRow('26', 'Factory wise day purchase details',
               'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
           _factorySubHeader(),
-
           if (factories.isEmpty)
             const Padding(
               padding: EdgeInsets.all(12),
-              child: Text(
-                'No factory data available',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
-              ),
+              child: Text('No factory data available',
+                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
             )
           else
             ...factories.asMap().entries.map((e) {
@@ -414,7 +303,6 @@ class PreviewDialog extends StatelessWidget {
                 f['progPurchaseBales']?.toString() ?? '0',
               );
             }),
-
           _totalRow(data),
         ],
       ),
@@ -429,24 +317,20 @@ class PreviewDialog extends StatelessWidget {
         children: [
           const SizedBox(width: 32),
           Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-                color: const Color(0xFF0F172A),
-              ),
-            ),
+            child: Text(text,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+                  color: const Color(0xFF0F172A),
+                )),
           ),
           if (trailing != null)
-            Text(
-              trailing,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF0F172A),
-              ),
-            ),
+            Text(trailing,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                )),
         ],
       ),
     );
@@ -464,29 +348,25 @@ class PreviewDialog extends StatelessWidget {
             width: 32,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(
-                n,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF64748B),
-                ),
-              ),
+              child: Text(n,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF64748B),
+                  )),
             ),
           ),
           Expanded(
             flex: 4,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-                  color: const Color(0xFF334155),
-                ),
-              ),
+              child: Text(label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                    color: const Color(0xFF334155),
+                  )),
             ),
           ),
           _cell(v1, bold: bold),
@@ -502,15 +382,13 @@ class PreviewDialog extends StatelessWidget {
       flex: 2,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-        child: Text(
-          value,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-            color: const Color(0xFF0F172A),
-          ),
-        ),
+        child: Text(value,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+              color: const Color(0xFF0F172A),
+            )),
       ),
     );
   }
@@ -544,15 +422,13 @@ class PreviewDialog extends StatelessWidget {
       flex: 2,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF0F172A),
-          ),
-        ),
+        child: Text(text,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF0F172A),
+            )),
       ),
     );
   }
@@ -568,23 +444,19 @@ class PreviewDialog extends StatelessWidget {
             width: 32,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(
-                sno,
-                textAlign: TextAlign.center,
-                style:
-                const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-              ),
+              child: Text(sno,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700)),
             ),
           ),
           Expanded(
             flex: 4,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(
-                name,
-                style: const TextStyle(fontSize: 11),
-                overflow: TextOverflow.ellipsis,
-              ),
+              child: Text(name,
+                  style: const TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis),
             ),
           ),
           _cell(qtls),
@@ -607,10 +479,8 @@ class PreviewDialog extends StatelessWidget {
             flex: 4,
             child: Padding(
               padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(
-                'TOTAL',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-              ),
+              child: Text('TOTAL',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
             ),
           ),
           _cell(_v(data, 'BB MOD', 'progPurchaseQtls'), bold: true),
@@ -624,15 +494,14 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-// ============================================================
-// SEED PREVIEW
-// ============================================================
+  // ============================================================
+  // SEED PREVIEW (unchanged)
+  // ============================================================
 
   Widget _buildSeedPreview(Map<String, dynamic>? data) {
     final dateStr = _formatDate(data?['date']);
-    final centre = (data?['centre'] ?? 'DEVADURGA').toString();
+    final centre = (data?['centre'] ?? '').toString();
     final reportNo = (data?['reportNo'] ?? '1').toString();
-    final currentVariety = (data?['variety'] ?? 'BB MOD').toString();
 
     List<Map<String, dynamic>> factories = [];
     final src = data?['seedFactories'] ?? data?['factories'];
@@ -640,9 +509,57 @@ class PreviewDialog extends StatelessWidget {
       factories = List<Map<String, dynamic>>.from(src);
     }
 
+    // --- helpers ---
+    double _n(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0;
+      return 0;
+    }
+
+    String _fmt(double v) =>
+        v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+
+    // --- derived values (same formulas as SeedFactoryRow) ---
+    Map<String, String> computeRow(Map<String, dynamic> f) {
+      final realisable = _n(f['realisable']);
+      final realised = _n(f['realised']);
+      final soldQty = _n(f['soldQty']);
+      final progDelivery = _n(f['progDelivery']);
+
+      // Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
+      final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
+      // Kaps_1 = Realisable − Sold Qty − Ready_1
+      final kaps1 = realisable - soldQty - ready1;
+      // Total_1 = Kaps_1 + Ready_1
+      final total1 = kaps1 + ready1;
+
+      // Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
+      final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
+      // Ready_2 = Sold Qty − Prog Delivery − Kaps_2
+      final ready2 = soldQty - progDelivery - kaps2;
+      // Total_2 = Kaps_2 + Ready_2
+      final total2 = kaps2 + ready2;
+
+      return {
+        'realisable': _fmt(realisable),
+        'realised': _fmt(realised),
+        'soldQty': _fmt(soldQty),
+        'progDelivery': _fmt(progDelivery),
+        'kaps1': _fmt(kaps1),
+        'ready1': _fmt(ready1),
+        'total1': _fmt(total1),
+        'kaps2': _fmt(kaps2),
+        'ready2': _fmt(ready2),
+        'total2': _fmt(total2),
+        'marketRateMin': _fmt(_n(f['marketRateMin'])),
+        'marketRateMax': _fmt(_n(f['marketRateMax'])),
+      };
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Title bar
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -662,15 +579,19 @@ class PreviewDialog extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+
+        // Header
         Row(
           children: [
             const Text('CENTRE:',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
             const SizedBox(width: 4),
             Expanded(
-              child: Text(centre.toUpperCase(),
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w500)),
+              child: Text(
+                centre.isEmpty ? 'N/A' : centre.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w500),
+              ),
             ),
             const Text('DATE:',
                 style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
@@ -684,12 +605,16 @@ class PreviewDialog extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+
+        // Factory table
         if (factories.isEmpty)
           const Center(
             child: Padding(
               padding: EdgeInsets.all(20),
-              child: Text('No factory data available',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 13)),
+              child: Text(
+                'No factory data available',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 13),
+              ),
             ),
           )
         else
@@ -698,39 +623,394 @@ class PreviewDialog extends StatelessWidget {
             child: DataTable(
               headingRowColor:
               WidgetStateProperty.all(const Color(0xFFE2E8F0)),
+              columnSpacing: 18,
               columns: const [
                 DataColumn(label: Text('S.No.')),
                 DataColumn(label: Text('Factory Name')),
                 DataColumn(label: Text('Variety')),
-                DataColumn(label: Text('Prog. Realisable')),
-                DataColumn(label: Text('Prog. Sold')),
-                DataColumn(label: Text("Day's Unsold")),
-                DataColumn(label: Text('Kapas Form')),
-                DataColumn(label: Text('Ready Form')),
+                DataColumn(label: Text('Realisable')),
+                DataColumn(label: Text('Realised')),
+                DataColumn(label: Text('Sold Qty')),
+                DataColumn(label: Text('Prog. Delivery')),
+                DataColumn(label: Text('Kaps')),
+                DataColumn(label: Text('Ready')),
                 DataColumn(label: Text('Total')),
-                DataColumn(label: Text('Base Rate')),
+                DataColumn(label: Text('Kaps')),
+                DataColumn(label: Text('Ready')),
+                DataColumn(label: Text('Total')),
+                DataColumn(label: Text('Market Min')),
+                DataColumn(label: Text('Market Max')),
               ],
               rows: factories.asMap().entries.map((e) {
                 final i = e.key;
                 final f = e.value;
-                final total = f['total'] ??
-                    ((f['kapasForm'] ?? 0) + (f['readyForm'] ?? 0));
+                final c = computeRow(f);
+                final variety =
+                (f['variety'] ?? '').toString().isEmpty
+                    ? '—'
+                    : f['variety'].toString();
+
                 return DataRow(cells: [
                   DataCell(Text('${i + 1}')),
                   DataCell(Text(f['factoryName']?.toString() ?? '')),
-                  DataCell(Text(f['variety']?.toString() ?? currentVariety)),
-                  DataCell(Text(f['progressiveRealisable']?.toString() ?? '0')),
-                  DataCell(Text(f['progressiveSold']?.toString() ?? '0')),
-                  DataCell(Text(f['dayUnsold']?.toString() ?? '0')),
-                  DataCell(Text(f['kapasForm']?.toString() ?? '0')),
-                  DataCell(Text(f['readyForm']?.toString() ?? '0')),
-                  DataCell(Text(total.toString())),
-                  DataCell(Text(f['baseRate']?.toString() ?? '0')),
+                  DataCell(Text(variety)),
+                  // PROG. QTY.
+                  DataCell(Text(c['realisable']!)),
+                  DataCell(Text(c['realised']!)),
+                  DataCell(Text(c['soldQty']!)),
+                  DataCell(Text(c['progDelivery']!)),
+                  // UNSOLD (Kaps / Ready / Total)
+                  DataCell(Text(c['kaps1']!)),
+                  DataCell(Text(c['ready1']!)),
+                  DataCell(Text(c['total1']!)),
+                  // SOLD BUT NOT LIFTED (Kaps / Ready / Total)
+                  DataCell(Text(c['kaps2']!)),
+                  DataCell(Text(c['ready2']!)),
+                  DataCell(Text(c['total2']!)),
+                  // Market rate
+                  DataCell(Text(c['marketRateMin']!)),
+                  DataCell(Text(c['marketRateMax']!)),
                 ]);
               }).toList(),
             ),
           ),
       ],
     );
+  }
+
+  // ============================================================
+  // WEIGHT LIST PREVIEW (NEW)
+  // ============================================================
+
+  Widget _buildWeightListPreview(Map<String, dynamic>? data) {
+    if (data == null) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Text('No data available',
+              style: TextStyle(color: Color(0xFF64748B))),
+        ),
+      );
+    }
+
+    final centre = (data['centre'] ?? '').toString().toUpperCase();
+    final reportNo = (data['reportNo'] ?? '').toString();
+    final variety = (data['variety'] ?? '').toString();
+    final pmNo = (data['pmNo'] ?? '').toString();
+    final pmarkNo = (data['pmarkNo'] ?? '').toString();
+    final prNo = (data['prNo'] ?? '').toString();
+    final lotNo = (data['lotNo'] ?? '').toString();
+    final sampleBaleNo = (data['sampleBaleNo'] ?? '').toString();
+    final godown = (data['godown'] ?? '').toString();
+    final noOfBales = (data['noOfBales'] ?? '').toString();
+    final moisture = (data['moisture'] ?? '').toString();
+    final pressingFactory = (data['pressingFactory'] ?? '').toString();
+    final tareWeight = (data['tareWeight'] ?? '').toString();
+    final totalGross = (data['totalGrossWeight'] ?? '').toString();
+    final totalNett = (data['totalNettWeight'] ?? '').toString();
+    final dateStr = _formatDate(data['date']);
+
+    final bales = <Map<String, dynamic>>[];
+    final raw = data['baleEntries'];
+    if (raw is List) {
+      for (final b in raw) {
+        if (b is Map) bales.add(Map<String, dynamic>.from(b));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ---------- Header block ----------
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: const Color(0xFF94A3B8)),
+            color: const Color(0xFFF8FAFC),
+          ),
+          child: Column(
+            children: [
+              const Text('THE COTTON CORPORATION OF INDIA LTD',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A))),
+              const SizedBox(height: 2),
+              const Text('BRANCH OFFICE :: MAHABUBNAGAR',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155))),
+              const SizedBox(height: 2),
+              Text('CENTRE :: $centre',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155))),
+              const SizedBox(height: 8),
+              _wMetaRow('REPORT NO', reportNo, 'DATE OF PRESSING', dateStr),
+              _wMetaRow('P.MARK NO', pmarkNo, 'P.R.NO', prNo),
+              _wMetaRow('VARIETY', variety, 'SAMPLE BALE NO', sampleBaleNo),
+              _wMetaRow('LOT NO', lotNo, 'GODOWN', godown),
+              _wMetaRow('NO OF BALES', noOfBales, 'MOISTURE', moisture),
+              if (pmNo.isNotEmpty) _wMetaRow('PM NO', pmNo, '', ''),
+              if (pressingFactory.isNotEmpty)
+                _wMetaRow('PRESSING FACTORY', pressingFactory, '', ''),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // ---------- Bale grid ----------
+        if (bales.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('No bale weights entered yet',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFF94A3B8)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  color: const Color(0xFFF1F5F9),
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: const Row(
+                    children: [
+                      Expanded(child: _PreviewHeaderCell('NO')),
+                      Expanded(child: _PreviewHeaderCell('Kgs.')),
+                      Expanded(child: _PreviewHeaderCell('NO')),
+                      Expanded(child: _PreviewHeaderCell('Kgs.')),
+                      Expanded(child: _PreviewHeaderCell('NO')),
+                      Expanded(child: _PreviewHeaderCell('Kgs.')),
+                      Expanded(child: _PreviewHeaderCell('NO')),
+                      Expanded(child: _PreviewHeaderCell('Kgs.')),
+                      Expanded(child: _PreviewHeaderCell('NO')),
+                      Expanded(child: _PreviewHeaderCell('Kgs.')),
+                    ],
+                  ),
+                ),
+                // rows
+                ..._buildBaleRows(bales),
+                // totals
+                Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF1F5F9),
+                    border: Border(
+                      top: BorderSide(color: Color(0xFF94A3B8), width: 1.2),
+                    ),
+                  ),
+                  padding:
+                  const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                  child: Row(
+                    children: [
+                      for (int c = 0; c < 5; c++) ...[
+                        const Expanded(
+                          child: _PreviewDataCell('', bold: true),
+                        ),
+                        Expanded(
+                          child: _PreviewDataCell(
+                            _columnSum(bales, c),
+                            bold: true,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        const SizedBox(height: 12),
+
+        // ---------- Summary ----------
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              _summaryRow('Total Gross Weight', totalGross, false),
+              const SizedBox(height: 4),
+              _summaryRow('Tare Weight', tareWeight, false),
+              const SizedBox(height: 4),
+              _summaryRow('Total Nett Weight', totalNett, true),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Bale rows — 5 columns × N rows, matching the entry dialog layout.
+  /// Bale rows — 5 columns × N rows, matching the entry dialog layout.
+  List<Widget> _buildBaleRows(List<Map<String, dynamic>> bales) {
+    const cols = 5;
+    final total = bales.length;
+    final rows = (total / cols).ceil();
+    final widgets = <Widget>[];
+
+    for (int r = 0; r < rows; r++) {
+      final cells = <Widget>[];
+      for (int c = 0; c < cols; c++) {
+        final idx = r + (c * rows);
+        if (idx >= total) {
+          cells.add(const Expanded(child: _PreviewDataCell('')));
+          cells.add(const Expanded(child: _PreviewDataCell('')));
+        } else {
+          final baleNo = (bales[idx]['baleNo'] ?? (idx + 1)).toString();
+          final w = bales[idx]['weight'];
+          cells.add(Expanded(child: _PreviewDataCell(baleNo)));
+          cells.add(Expanded(child: _PreviewDataCell(_fq(w))));
+        }
+      }
+
+      widgets.add(Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Row(children: cells),
+      ));
+    }
+    return widgets;
+  }
+  /// Sum of bales in column `c` (using the same 5-column layout).
+  String _columnSum(List<Map<String, dynamic>> bales, int c) {
+    const cols = 5;
+    final total = bales.length;
+    final rows = (total / cols).ceil();
+    double sum = 0;
+    for (int r = 0; r < rows; r++) {
+      final idx = r + (c * rows);
+      if (idx >= total) break;
+      final w = bales[idx]['weight'];
+      sum += w is num ? w.toDouble() : double.tryParse(w.toString()) ?? 0;
+    }
+    return _fq(sum);
+  }
+
+  Widget _wMetaRow(String l1, String v1, String l2, String v2) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                Text('$l1 : ',
+                    style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B))),
+                Expanded(
+                  child: Text(v1,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF0F172A))),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                Text('$l2 : ',
+                    style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B))),
+                Expanded(
+                  child: Text(v2,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF0F172A))),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value, bool highlight) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF334155))),
+        const SizedBox(width: 16),
+        Container(
+          constraints: const BoxConstraints(minWidth: 100),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            value.isEmpty ? '—' : value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: highlight
+                  ? const Color(0xFF0F172A)
+                  : const Color(0xFF334155),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// Small helper widgets used inside the weight-list preview
+// ============================================================
+
+class _PreviewHeaderCell extends StatelessWidget {
+  final String text;
+  const _PreviewHeaderCell(this.text);
+  @override
+  Widget build(BuildContext context) {
+    return Text(text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF0F172A)));
+  }
+}
+
+class _PreviewDataCell extends StatelessWidget {
+  final String text;
+  final bool bold;
+  const _PreviewDataCell(this.text, {this.bold = false});
+  @override
+  Widget build(BuildContext context) {
+    return Text(text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+          color: const Color(0xFF0F172A),
+        ));
   }
 }

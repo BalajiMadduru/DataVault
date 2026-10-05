@@ -8,6 +8,7 @@ import '../enums/report_type.dart';
 import '../widgets/drawer_widget.dart';
 import '../widgets/create_entry_dialog_base.dart';
 import 'proforma_list_screen.dart';
+import 'proformafactoryscreen.dart';
 import 'reports_listscreen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -84,6 +85,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => const ProformaListScreen(),
+      ),
+    );
+  }
+
+  void _handleViewProformaFactory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ProformaFactoryListScreen(),
       ),
     );
   }
@@ -401,6 +411,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
         // Proforma
         onViewProforma: _handleViewProforma,
+        onViewProformaFactory: _handleViewProformaFactory,
       ),
       body: Column(
         children: [

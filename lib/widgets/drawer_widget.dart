@@ -10,7 +10,8 @@ class CustomDrawer extends StatefulWidget {
   final VoidCallback onModifySeed;
   final VoidCallback onViewPurchaseReports;
   final VoidCallback onViewSeedReports;
-  final VoidCallback? onViewProforma;
+  final VoidCallback? onViewProforma; // Proforma - Centre wise
+  final VoidCallback? onViewProformaFactory; // Proforma - Factory wise
   final VoidCallback? onCreateWeightList;
   final VoidCallback? onModifyWeightList;
   final VoidCallback? onViewWeightListReports;
@@ -26,6 +27,7 @@ class CustomDrawer extends StatefulWidget {
     required this.onViewPurchaseReports,
     required this.onViewSeedReports,
     this.onViewProforma,
+    this.onViewProformaFactory,
     this.onCreateWeightList,
     this.onModifyWeightList,
     this.onViewWeightListReports,
@@ -201,11 +203,22 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         if (widget.onViewProforma != null)
                           _buildSubItem(
                             context: context,
-                            title: 'Proforma Reports',
+                            title: 'Proforma - Centre wise',
                             icon: Icons.picture_as_pdf,
                             onTap: () {
                               Navigator.pop(context);
                               widget.onViewProforma!();
+                            },
+                            accentColor: const Color(0xFF059669),
+                          ),
+                        if (widget.onViewProformaFactory != null)
+                          _buildSubItem(
+                            context: context,
+                            title: 'Proforma - Factory wise',
+                            icon: Icons.factory,
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onViewProformaFactory!();
                             },
                             accentColor: const Color(0xFF059669),
                           ),

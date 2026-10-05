@@ -1010,6 +1010,14 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         text: factoryData?.progPurchaseQtls.toString() ?? '');
     final progBalesController = TextEditingController(
         text: factoryData?.progPurchaseBales.toString() ?? '');
+    String numText(double? v) =>
+        (v == null || v == 0) ? '' : _formatNumber(v);
+    final farmersController =
+    TextEditingController(text: numText(factoryData?.farmers));
+    final moistureController =
+    TextEditingController(text: numText(factoryData?.moisture));
+    final seedRateController =
+    TextEditingController(text: numText(factoryData?.seedRate));
 
     final isEditing = factoryData != null;
 
@@ -1057,6 +1065,40 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CommonFormWidgets.textField(
+                          controller: farmersController,
+                          label: 'Farmers',
+                          hint: 'e.g., 26',
+                          icon: Icons.people,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CommonFormWidgets.textField(
+                          controller: moistureController,
+                          label: 'Moisture (%)',
+                          hint: 'e.g., 10',
+                          icon: Icons.water_drop,
+                          keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  CommonFormWidgets.textField(
+                    controller: seedRateController,
+                    label: 'Seed Rate (Rs. per qtl)',
+                    hint: 'e.g., 3500',
+                    icon: Icons.attach_money,
+                    keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                  ),
                 ],
               ),
             ),
@@ -1075,6 +1117,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                   double.tryParse(progQtlsController.text) ?? 0,
                   progPurchaseBales:
                   double.tryParse(progBalesController.text) ?? 0,
+                  farmers: double.tryParse(farmersController.text) ?? 0,
+                  moisture: double.tryParse(moistureController.text) ?? 0,
+                  seedRate: double.tryParse(seedRateController.text) ?? 0,
                 );
 
                 setState(() {
@@ -1186,6 +1231,15 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                     label: Text('Prog. Pur. (Bales)',
                         style: TextStyle(fontWeight: FontWeight.bold))),
                 DataColumn(
+                    label: Text('Farmers',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('Moisture',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('Seed Rate',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
                     label: Text('',
                         style: TextStyle(fontWeight: FontWeight.bold))),
               ],
@@ -1197,6 +1251,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                   DataCell(Text(factory.factoryName)),
                   DataCell(Text(factory.progPurchaseQtls.toString())),
                   DataCell(Text(factory.progPurchaseBales.toString())),
+                  DataCell(Text(_formatNumber(factory.farmers))),
+                  DataCell(Text(_formatNumber(factory.moisture))),
+                  DataCell(Text(_formatNumber(factory.seedRate))),
                   DataCell(Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1888,16 +1945,28 @@ class PurchaseFactoryProgData {
   double progPurchaseQtls;
   double progPurchaseBales;
 
+  // Factory-wise proforma inputs. Stored with the purchase entry, but NOT
+  // shown in the purchase report view / export.
+  double farmers;
+  double moisture;
+  double seedRate;
+
   PurchaseFactoryProgData({
     required this.factoryName,
     required this.progPurchaseQtls,
     required this.progPurchaseBales,
+    this.farmers = 0,
+    this.moisture = 0,
+    this.seedRate = 0,
   });
 
   Map<String, dynamic> toJson() => {
     'factoryName': factoryName,
     'progPurchaseQtls': progPurchaseQtls,
     'progPurchaseBales': progPurchaseBales,
+    'farmers': farmers,
+    'moisture': moisture,
+    'seedRate': seedRate,
   };
 
   factory PurchaseFactoryProgData.fromJson(Map<String, dynamic> json) =>
@@ -1906,5 +1975,8 @@ class PurchaseFactoryProgData {
         progPurchaseQtls: (json['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
         progPurchaseBales:
         (json['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+        farmers: (json['farmers'] as num?)?.toDouble() ?? 0,
+        moisture: (json['moisture'] as num?)?.toDouble() ?? 0,
+        seedRate: (json['seedRate'] as num?)?.toDouble() ?? 0,
       );
 }

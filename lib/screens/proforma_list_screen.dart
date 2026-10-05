@@ -77,6 +77,41 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
     });
   }
 
+  Future<void> _delete(Map<String, dynamic> p) async {
+    final id = p['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    final label = '${p['centre'] ?? '—'} — ${p['variety'] ?? '—'}';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Proforma'),
+        content: Text('Delete the proforma for $label?\n'
+            'This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    final response = await ApiService.deleteProforma(id);
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(response.success ? 'Proforma deleted' : response.message),
+      backgroundColor: response.success ? Colors.green : Colors.red,
+    ));
+    if (response.success) _load();
+  }
+
   String _fmtDate(dynamic raw) {
     if (raw == null) return '';
     try {
@@ -97,7 +132,7 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Proforma Reports'),
+        title: const Text('Proforma – Centre wise'),
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
         actions: [
@@ -263,7 +298,18 @@ class _ProformaListScreenState extends State<ProformaListScreen> {
                           ),
                       ],
                     ),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.red),
+                          tooltip: 'Delete',
+                          onPressed: () => _delete(p),
+                        ),
+                        const Icon(Icons.chevron_right),
+                      ],
+                    ),
                     onTap: () {
                       final id = p['id']?.toString();
                       if (id == null || id.isEmpty) return;

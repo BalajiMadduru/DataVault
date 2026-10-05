@@ -5,6 +5,7 @@ import '../models/report_modals.dart';
 import '../screens/find_entry_dialog.dart';
 import '../services/apiservice.dart';
 import '../widgets/common_form_widgets.dart';
+import 'preview_dialog.dart';
 
 class SeedEntryDialog extends StatefulWidget {
   final bool isModify;
@@ -303,6 +304,24 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       setState(() => _selectedDate = picked);
       await _autoGenerateReportNo();
     }
+  }
+
+  void _showPreview() {
+    final previewData = {
+      'reportType': ReportType.dailySeed.label,
+      'date': _selectedDate.toIso8601String(),
+      'centre': _selectedCentre ?? '',
+      'reportNo': int.tryParse(_reportNoController.text) ?? 0,
+      'seedFactories': _seedFactories.map((f) => f.toJson()).toList(),
+    };
+
+    showDialog(
+      context: context,
+      builder: (_) => PreviewDialog(
+        type: ReportType.dailySeed,
+        data: previewData,
+      ),
+    );
   }
 
   void _showCelebration() {
@@ -649,11 +668,11 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ---- UNSOLD QTY (IN QTLS) ----
+                      // ---- PROGRESSIVE DELIVERY (IN QTLS) ----
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'UNSOLD QTY (IN QTLS)',
+                          'PROGRESSIVE DELIVERY (IN QTLS)',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -663,7 +682,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 6),
 
-                      // 8. Progressive Delivery (input)
+                      // 8. Unsold Qty (input)
                       TextFormField(
                         controller: progDeliveryController,
                         keyboardType:
@@ -671,7 +690,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                             decimal: true),
                         onChanged: (_) => setDialogState(recompute),
                         decoration: InputDecoration(
-                          labelText: 'Progressive Delivery (in Qtls)',
+                          labelText: 'UNSOLD QTY (IN QTLS)',
                           hintText: 'e.g., 14800',
                           prefixIcon:
                           const Icon(Icons.local_shipping_outlined,
@@ -1069,7 +1088,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // UNSOLD (4 cols: Progressive Delivery + KAPAS + READY + TOTAL)
+                        // PROGRESSIVE DELIVERY (4 cols: Unsold Qty + KAPAS + READY + TOTAL)
                         Expanded(
                           flex: 4,
                           child: Container(
@@ -1078,7 +1097,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                 vertical: 8, horizontal: 4),
                             alignment: Alignment.center,
                             child: const Text(
-                                'UNSOLD QTY (IN QTLS)',
+                                'PROGRESSIVE DELIVERY (IN QTLS)',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                     fontSize: 10,
@@ -1164,7 +1183,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                         headerCell('REALISABLE', flex: 1),
                         headerCell('REALISED', flex: 1),
                         headerCell('SOLD QTY', flex: 1),
-                        headerCell('PROG.\nDELIVERY', flex: 1),
+                        headerCell('UNSOLD\nQTY', flex: 1),
                         headerCell('KAPAS', flex: 1),
                         headerCell('READY', flex: 1),
                         headerCell('TOTAL', flex: 1),
@@ -1455,6 +1474,25 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
 
                               Row(
                                 children: [
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: _isSubmitting
+                                          ? null
+                                          : _showPreview,
+                                      icon: const Icon(Icons.visibility,
+                                          size: 16),
+                                      label: const Text('Preview'),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 14),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                          BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: OutlinedButton(
                                       onPressed: _isSubmitting

@@ -10,6 +10,7 @@ import '../models/report_modals.dart';
 import '../screens/find_entry_dialog.dart';
 import '../services/apiservice.dart';
 import '../widgets/common_form_widgets.dart';
+import 'preview_dialog.dart';
 
 class WeightListEntryDialog extends StatefulWidget {
   final bool isModify;
@@ -208,15 +209,38 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   }
 
   // ============================================================
-  // UNIQUE WHOLE-NUMBER GENERATOR
+  // BALE WEIGHT GENERATOR
   //
-  //  * Gross (user input) = the maximum a bale can weigh
-  //  * Tare  (user input)
-  //  * Nett  = Gross - Tare
+  //  Window of allowed bale weights depends on the gross weight:
+  //
+  //   gross below 165  -> 5 values :  gross-2 .. gross+2
+  //        150 -> 148..152      151 -> 149..153
+  //   gross 165 and up -> 10 values:  gross-4 .. gross+5
+  //        165 -> 161..170      166 -> 162..171   (up to 190 and beyond)
+  //
   //  * Every bale gets a WHOLE number (no decimals)
-  //  * Every bale is <= Gross
-  //  * No value is repeated across the bale cells
+  //  * Repeated values ARE allowed
   // ============================================================
+
+  /// Gross at which the wider (10 value) window starts.
+  static const int _wideWindowFrom = 165;
+
+  /// Returns [back, forward] = how far below / above gross a bale may go.
+  List<int> _spreadFor(int gross) {
+    if (gross >= _wideWindowFrom) return [4, 5];
+    return [2, 2];
+  }
+
+  /// Lowest / highest allowed bale weight for the current gross.
+  int get _minAllowed {
+    final g = _summaryGross.floor();
+    return max(1, g - _spreadFor(g)[0]);
+  }
+
+  int get _maxAllowed {
+    final g = _summaryGross.floor();
+    return g + _spreadFor(g)[1];
+  }
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -237,44 +261,40 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       return;
     }
 
-    // Highest allowed value = gross (whole number, never above it)
-    final hi = gross.floor();
-
-    // Need `count` different whole numbers between 1 and hi
-    if (hi < count) {
-      _showError(
-          'Gross weight ${_fmt(gross)} is too low to give $count unique '
-              'whole-number bale weights. Increase the gross weight.');
-      return;
-    }
-
-    // Window just below gross, a bit larger than needed so it looks random
-    final windowSize = min(hi, max(count, (count * 1.25).ceil()));
-    final lo = hi - windowSize + 1;
-
-    final values = List<int>.generate(windowSize, (i) => lo + i)
-      ..shuffle(Random());
-    final picked = values.take(count).toList();
+    final lo = _minAllowed;
+    final hi = _maxAllowed;
+    final rng = Random();
 
     setState(() {
       for (int i = 0; i < count; i++) {
-        _baleEntries[i] =
-            _baleEntries[i].copyWith(weight: picked[i].toDouble());
+        final w = lo + rng.nextInt(hi - lo + 1); // lo..hi inclusive
+        _baleEntries[i] = _baleEntries[i].copyWith(weight: w.toDouble());
       }
       _gridVersion++; // refresh the text fields
     });
   }
 
-  /// Weights (> 0) that appear in more than one cell.
-  Set<int> get _duplicateWeights {
-    final seen = <int>{};
-    final dup = <int>{};
-    for (final e in _baleEntries) {
-      final w = e.weight.round();
-      if (w <= 0) continue;
-      if (!seen.add(w)) dup.add(w);
-    }
-    return dup;
+  // ============================================================
+  // MODIFY MODE: BALE EDITS -> GROSS / NETT
+  //
+  //  Gross / Nett are per-bale figures, so when a bale weight is edited
+  //  by hand the Gross becomes the AVERAGE of the filled bale weights
+  //  and Nett = Gross - Tare.
+  // ============================================================
+
+  void _syncSummaryFromBales() {
+    final filled = _baleEntries.where((e) => e.weight > 0).toList();
+    if (filled.isEmpty) return;
+
+    final avg =
+        filled.fold<double>(0, (a, e) => a + e.weight) / filled.length;
+    final gross = double.parse(avg.toStringAsFixed(2));
+
+    _lastEdited = _SummarySource.gross;
+    _setSynced(() {
+      _totalGrossController.text = _fmt(gross);
+    });
+    _recalcNett();
   }
 
   // ============================================================
@@ -470,6 +490,41 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   }
 
   // ============================================================
+  // PREVIEW
+  // ============================================================
+
+  void _showPreview() {
+    final previewData = {
+      'reportType': 'WeightList',
+      'date': _selectedDate.toIso8601String(),
+      'centre': _selectedCentre ?? '',
+      'reportNo': int.tryParse(_reportNoController.text) ?? 0,
+      'variety': _selectedVariety ?? '',
+      'pmNo': _pmNoController.text.trim(),
+      'prNo': _prNoController.text.trim(),
+      'lotNo': _lotNoController.text.trim(),
+      'sampleBaleNo': _sampleBaleNoController.text.trim(),
+      'godown': _godownController.text.trim(),
+      'noOfBales': _currentBaleCount,
+      'moisture': double.tryParse(_moistureController.text) ?? 0,
+      'pressingFactory': _pressingFactoryController.text.trim(),
+      'pmarkNo': _pmarkNoController.text.trim(),
+      'tareWeight': _currentTare,
+      'totalGrossWeight': _summaryGross,
+      'totalNettWeight': _summaryNett,
+      'baleEntries': _baleEntries.map((e) => e.toJson()).toList(),
+    };
+
+    showDialog(
+      context: context,
+      builder: (_) => PreviewDialog(
+        type: ReportType.weightList,
+        data: previewData,
+      ),
+    );
+  }
+
+  // ============================================================
   // SUBMIT
   // ============================================================
 
@@ -520,16 +575,14 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       return;
     }
 
-    if (_summaryGross > 0 && _baleEntries.any((e) => e.weight > _summaryGross)) {
-      _showError('Some bale weights are above the Gross weight '
-          '(${_fmt(_summaryGross)}). Click "Generate Bale Weights" again '
-          'or correct the red values.');
-      return;
-    }
-
-    if (_duplicateWeights.isNotEmpty) {
-      _showError('Repeated bale weights found (${_duplicateWeights.join(', ')}). '
-          'Every bale must have a different whole-number weight.');
+    if (!widget.isModify &&
+        _summaryGross > 0 &&
+        _baleEntries.any((e) =>
+        e.weight > 0 &&
+            (e.weight < _minAllowed || e.weight > _maxAllowed))) {
+      _showError('Some bale weights are outside the allowed range '
+          '$_minAllowed - $_maxAllowed for Gross ${_fmt(_summaryGross)}. '
+          'Click "Generate Bale Weights" again or correct the red values.');
       return;
     }
 
@@ -808,9 +861,10 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       return Expanded(child: Container());
     }
     final entry = _baleEntries[baleIndex];
-    final isDuplicate = entry.weight > 0 &&
-        _duplicateWeights.contains(entry.weight.round());
-    final isAboveGross = _summaryGross > 0 && entry.weight > _summaryGross;
+    final isOutOfRange = !widget.isModify &&
+        _summaryGross > 0 &&
+        entry.weight > 0 &&
+        (entry.weight < _minAllowed || entry.weight > _maxAllowed);
 
     return Expanded(
       child: Container(
@@ -825,7 +879,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
-            color: (isDuplicate || isAboveGross) ? Colors.red : null,
+            color: isOutOfRange ? Colors.red : null,
           ),
           decoration: const InputDecoration(
             isDense: true,
@@ -838,6 +892,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
             setState(() {
               _baleEntries[baleIndex] =
                   _baleEntries[baleIndex].copyWith(weight: w);
+              if (widget.isModify) _syncSummaryFromBales();
             });
           },
         ),
@@ -1110,22 +1165,24 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                   color: Color(0xFF64748B)),
             ),
           ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: _generateBaleWeights,
-              icon: const Icon(Icons.auto_awesome,
-                  size: 16, color: Colors.white),
-              label: const Text('Generate Bale Weights',
-                  style: TextStyle(color: Colors.white, fontSize: 12)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F172A),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+          if (!widget.isModify) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: _generateBaleWeights,
+                icon: const Icon(Icons.auto_awesome,
+                    size: 16, color: Colors.white),
+                label: const Text('Generate Bale Weights',
+                    style: TextStyle(color: Colors.white, fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -1352,6 +1409,20 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isSubmitting ? null : _showPreview,
+                          icon: const Icon(Icons.visibility, size: 16),
+                          label: const Text('Preview'),
+                          style: OutlinedButton.styleFrom(
+                            padding:
+                            const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton(
                           onPressed: _isSubmitting
