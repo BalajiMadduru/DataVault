@@ -153,6 +153,11 @@ _FRow _progAvg(List<_FRow> rows, String centre, String variety) {
 }
 
 /// Turns purchase entries into factory + variety groups.
+/// Turns purchase entries into factory + variety groups.
+///
+/// Grouping is case-insensitive on both factory name and variety, so entries
+/// that differ only in casing (e.g. "Balu" vs "balu") are merged into a
+/// single report. The first spelling seen is kept as the display name.
 List<_FGroup> _buildGroups(List<Map<String, dynamic>> entries) {
   entries.sort((a, b) {
     final da = DateTime.tryParse(a['date']?.toString() ?? '');
@@ -169,7 +174,9 @@ List<_FGroup> _buildGroups(List<Map<String, dynamic>> entries) {
     if (factories is! List || factories.isEmpty) continue;
 
     final centre = (e['centre'] ?? '').toString();
-    final variety = (e['variety'] ?? '').toString();
+    final variety = (e['variety'] ?? '').toString().trim();
+    final varietyKey = variety.toLowerCase();
+
     final date = DateTime.tryParse(e['date']?.toString() ?? '');
     final rate = _n(e['avgKapasRate']);
     final entryMoisture = _n(e['moisture']);
@@ -182,8 +189,15 @@ List<_FGroup> _buildGroups(List<Map<String, dynamic>> entries) {
 
     for (final f in factories) {
       if (f is! Map) continue;
-      final name = (f['factoryName'] ?? '').toString().trim();
-      if (name.isEmpty) continue;
+
+      final nameRaw = (f['factoryName'] ?? '').toString().trim();
+      if (nameRaw.isEmpty) continue;
+
+      // Case-insensitive keys for both factory and variety, so entries
+      // that differ only in casing collapse into one group.
+      final nameKey = nameRaw.toLowerCase();
+      final groupKey = '$nameKey|$varietyKey';
+      final progKey = '$centre|$varietyKey|$nameKey';
 
       // Per-factory inputs; fall back to the entry-level value for older
       // entries saved before these fields existed.
@@ -195,19 +209,22 @@ List<_FGroup> _buildGroups(List<Map<String, dynamic>> entries) {
 
       final progQ = _n(f['progPurchaseQtls']);
       final progB = _n(f['progPurchaseBales']);
-      final key = '$centre|$variety|$name';
-      final prev = lastProg[key] ?? [0, 0];
-      // If progressive went down (reset), treat current value as the day's qty.
+      final prev = lastProg[progKey] ?? [0, 0];
+      // If progressive went down (reset), treat current value as day's qty.
       final qty = progQ >= prev[0] ? progQ - prev[0] : progQ;
       final bales = progB >= prev[1] ? progB - prev[1] : progB;
-      lastProg[key] = [progQ, progB];
+      lastProg[progKey] = [progQ, progB];
 
+      // Create the group on first sight; keep the first spelling seen.
       final g = groups.putIfAbsent(
-          '$name|$variety', () => _FGroup(name, variety));
+        groupKey,
+            () => _FGroup(nameRaw, variety),
+      );
+
       g.rows.add(_FRow(
         date: date,
         centre: centre,
-        factory: name, // ⭐ dynamic — whatever user entered in Add Factory
+        factory: nameRaw,
         variety: variety,
         qty: qty,
         rate: rate,
@@ -233,10 +250,13 @@ List<_FGroup> _buildGroups(List<Map<String, dynamic>> entries) {
   }
 
   final list = groups.values.toList()
-    ..sort((a, b) => a.factory.toLowerCase().compareTo(b.factory.toLowerCase()));
+    ..sort((a, b) {
+      final f = a.factory.toLowerCase().compareTo(b.factory.toLowerCase());
+      if (f != 0) return f;
+      return a.variety.toLowerCase().compareTo(b.variety.toLowerCase());
+    });
   return list;
 }
-
 // ============================================================
 // LIST SCREEN
 // ============================================================

@@ -205,7 +205,7 @@ class PreviewDialog extends StatelessWidget {
   }
 
   // ============================================================
-  // PURCHASE PREVIEW (unchanged)
+  // PURCHASE PREVIEW
   // ============================================================
 
   Widget _buildPurchasePreview(Map<String, dynamic>? data) {
@@ -263,10 +263,6 @@ class PreviewDialog extends StatelessWidget {
         _v(data, 'BB MOD', 'progFarmers'), _v(data, 'BB SPL MOD', 'progFarmers'), _v(data, 'MECH', 'progFarmers')],
     ];
 
-    List<Map<String, dynamic>> factories = [];
-    final src = data?['factories'];
-    if (src is List) factories = List<Map<String, dynamic>>.from(src);
-
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF94A3B8)),
@@ -286,28 +282,168 @@ class PreviewDialog extends StatelessWidget {
           _numRow('26', 'Factory wise day purchase details',
               'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
           _factorySubHeader(),
-          if (factories.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('No factory data available',
-                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-            )
-          else
-            ...factories.asMap().entries.map((e) {
-              final i = e.key;
-              final f = e.value;
-              return _factoryRow(
-                '${i + 1}',
-                f['factoryName']?.toString() ?? '',
-                f['progPurchaseQtls']?.toString() ?? '0',
-                f['progPurchaseBales']?.toString() ?? '0',
-              );
-            }),
+          ..._buildFactoryRows(data),
           _totalRow(data),
         ],
       ),
     );
   }
+
+  // ============================================================
+  // FACTORY-WISE SECTION — 2 columns per variety × 3 varieties
+  // ============================================================
+
+  /// Returns the factories list for a given variety from the preview data.
+  /// The primary variety's factories live under `data['factories']`,
+  /// while the other varieties' factories live under
+  /// `data['otherVarietiesProgressive'][variety]['factories']`.
+  List<Map<String, dynamic>> _factoriesForVariety(
+      Map<String, dynamic>? data, String variety) {
+    if (data == null) return [];
+
+    List<dynamic>? src;
+    final ownVariety = (data['variety'] ?? '').toString();
+
+    if (ownVariety == variety) {
+      src = data['factories'] as List?;
+    } else {
+      final others = data['otherVarietiesProgressive'];
+      if (others is Map) {
+        final bucket = others[variety];
+        if (bucket is Map) {
+          src = bucket['factories'] as List?;
+        }
+      }
+    }
+
+    if (src == null) return [];
+    return src
+        .whereType<Map>()
+        .map((f) => Map<String, dynamic>.from(f))
+        .toList();
+  }
+
+  /// Build a matrix: factoryName -> variety -> { qtls, bales }
+  /// Union over all 3 varieties so every factory appears exactly once,
+  /// with a column pair for each variety.
+  Map<String, Map<String, Map<String, String>>> _buildFactoryMatrix(
+      Map<String, dynamic>? data) {
+    final matrix = <String, Map<String, Map<String, String>>>{};
+
+    for (final v in _varieties) {
+      final list = _factoriesForVariety(data, v);
+      for (final f in list) {
+        final name = (f['factoryName'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+
+        matrix.putIfAbsent(name, () => <String, Map<String, String>>{});
+        matrix[name]![v] = {
+          'qtls': _fq(f['progPurchaseQtls']),
+          'bales': _fq(f['progPurchaseBales']),
+        };
+      }
+    }
+    return matrix;
+  }
+
+  /// Sub-header row: for each of the 3 varieties, two sub-columns
+  /// ("Prog. Pur. in qtls" and "Prog. Pur. in Bales").
+  Widget _factorySubHeader() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF1F5F9),
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 32),
+          const Expanded(
+            flex: 4,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text('Factory Name',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          // 3 varieties × 2 columns each = 6 columns
+          for (int i = 0; i < _varieties.length; i++) ...[
+            _subCell('Prog. Pur.\nin qtls'),
+            _subCell('Prog. Pur.\nin Bales'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// One row per factory (across all varieties), showing qty/bales for
+  /// each of the 3 varieties.
+  List<Widget> _buildFactoryRows(Map<String, dynamic>? data) {
+    final matrix = _buildFactoryMatrix(data);
+
+    if (matrix.isEmpty) {
+      return [
+        const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('No factory data available',
+              style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+        ),
+      ];
+    }
+
+    // Sort factory names alphabetically for stable output.
+    final names = matrix.keys.toList()..sort();
+
+    return names.asMap().entries.map((e) {
+      final i = e.key;
+      final name = e.value;
+      final row = matrix[name]!;
+      return _factoryRow3Variety('${i + 1}', name, row);
+    }).toList();
+  }
+
+  /// A single factory row with 6 numeric cells (2 per variety).
+  Widget _factoryRow3Variety(
+      String sno,
+      String name,
+      Map<String, Map<String, String>> row,
+      ) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 32,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(sno,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+              child: Text(name,
+                  style: const TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ),
+          for (final v in _varieties) ...[
+            _cell(row[v]?['qtls'] ?? '0'),
+            _cell(row[v]?['bales'] ?? '0'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // SHARED ROW / CELL HELPERS
+  // ============================================================
 
   Widget _plainRow(String text, {bool bold = false, String? trailing}) {
     return Container(
@@ -393,30 +529,6 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-  Widget _factorySubHeader() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF1F5F9),
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(width: 32),
-          const Expanded(
-            flex: 4,
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text('Factory Name',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
-            ),
-          ),
-          _subCell('Prog. Pur.\nin qtls'),
-          _subCell('Prog. Pur.\nin Bales'),
-        ],
-      ),
-    );
-  }
-
   Widget _subCell(String text) {
     return Expanded(
       flex: 2,
@@ -429,39 +541,6 @@ class PreviewDialog extends StatelessWidget {
               fontWeight: FontWeight.w700,
               color: Color(0xFF0F172A),
             )),
-      ),
-    );
-  }
-
-  Widget _factoryRow(String sno, String name, String qtls, String bales) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 32,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(sno,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700)),
-            ),
-          ),
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(name,
-                  style: const TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis),
-            ),
-          ),
-          _cell(qtls),
-          _cell(bales),
-        ],
       ),
     );
   }
@@ -495,7 +574,7 @@ class PreviewDialog extends StatelessWidget {
   }
 
   // ============================================================
-  // SEED PREVIEW (unchanged)
+  // SEED PREVIEW
   // ============================================================
 
   Widget _buildSeedPreview(Map<String, dynamic>? data) {
@@ -679,7 +758,7 @@ class PreviewDialog extends StatelessWidget {
   }
 
   // ============================================================
-  // WEIGHT LIST PREVIEW (NEW)
+  // WEIGHT LIST PREVIEW
   // ============================================================
 
   Widget _buildWeightListPreview(Map<String, dynamic>? data) {
@@ -851,7 +930,6 @@ class PreviewDialog extends StatelessWidget {
   }
 
   /// Bale rows — 5 columns × N rows, matching the entry dialog layout.
-  /// Bale rows — 5 columns × N rows, matching the entry dialog layout.
   List<Widget> _buildBaleRows(List<Map<String, dynamic>> bales) {
     const cols = 5;
     final total = bales.length;
@@ -885,6 +963,7 @@ class PreviewDialog extends StatelessWidget {
     }
     return widgets;
   }
+
   /// Sum of bales in column `c` (using the same 5-column layout).
   String _columnSum(List<Map<String, dynamic>> bales, int c) {
     const cols = 5;

@@ -220,6 +220,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   //
   //  * Every bale gets a WHOLE number (no decimals)
   //  * Repeated values ARE allowed
+  //  * Sum of all bales MUST equal Gross * No. of bales
   // ============================================================
 
   /// Gross at which the wider (10 value) window starts.
@@ -248,6 +249,9 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     );
   }
 
+  /// Exact total the bales must add up to (whole kgs, since bales are integers).
+  int _targetTotal(double gross, int count) => (gross * count).round();
+
   void _generateBaleWeights() {
     final gross = double.tryParse(_totalGrossController.text) ?? 0;
     final count = _baleEntries.length;
@@ -263,12 +267,42 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
 
     final lo = _minAllowed;
     final hi = _maxAllowed;
+    final targetTotal = _targetTotal(gross, count); // 164.32 x 100 = 16432
+
+    // Target must be reachable inside the allowed window
+    if (targetTotal < lo * count || targetTotal > hi * count) {
+      _showError('Cannot reach this gross within $lo - $hi per bale');
+      return;
+    }
+
     final rng = Random();
+
+    // 1) Start from the exact average: every bale = floor(avg),
+    //    and the remainder bales get +1  (164.32 -> 68 x 164, 32 x 165)
+    final base = targetTotal ~/ count;
+    final remainder = targetTotal - base * count;
+    final weights = List<int>.filled(count, base);
+    final idxs = List<int>.generate(count, (i) => i)..shuffle(rng);
+    for (int k = 0; k < remainder; k++) {
+      weights[idxs[k]] += 1;
+    }
+
+    // 2) Add natural variation WITHOUT changing the sum:
+    //    move 1 kg from one bale to another, many times
+    for (int n = 0; n < count * 20; n++) {
+      final a = rng.nextInt(count);
+      final b = rng.nextInt(count);
+      if (a == b) continue;
+      if (weights[a] < hi && weights[b] > lo) {
+        weights[a] += 1;
+        weights[b] -= 1;
+      }
+    }
 
     setState(() {
       for (int i = 0; i < count; i++) {
-        final w = lo + rng.nextInt(hi - lo + 1); // lo..hi inclusive
-        _baleEntries[i] = _baleEntries[i].copyWith(weight: w.toDouble());
+        _baleEntries[i] =
+            _baleEntries[i].copyWith(weight: weights[i].toDouble());
       }
       _gridVersion++; // refresh the text fields
     });
@@ -1157,8 +1191,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
           Align(
             alignment: Alignment.centerRight,
             child: Text(
-              'Sum of bales: ${_fmt(_baleEntries.fold<double>(0, (a, e) => a + e.weight))}'
-                  '   |   Average: ${_fmt(_baleEntries.isEmpty ? 0 : _baleEntries.fold<double>(0, (a, e) => a + e.weight) / _baleEntries.length)}',
+              'Sum of bales: ${_targetTotal(_summaryGross, _baleEntries.length)}',
               style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
