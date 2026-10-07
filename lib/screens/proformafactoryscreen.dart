@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:excel/excel.dart' as excel_lib;
 import '../services/apiservice.dart';
+import '../services/ExportHelper.java';
 
 // ============================================================
 // Proforma - Factory wise
@@ -597,6 +599,62 @@ class _ProformaFactoryViewScreenState extends State<ProformaFactoryViewScreen> {
     super.dispose();
   }
 
+  // ============================================================
+  // Excel export
+  // ============================================================
+
+  Future<void> _exportToExcel(List<_FRow> rows, _FRow avg) async {
+    try {
+      final excel = excel_lib.Excel.createExcel();
+      final sheet = ExportHelper.newSheet(excel, 'Proforma');
+
+      final factory = widget.factory;
+      final variety = widget.variety;
+
+      sheet.appendRow(
+          ['THE COTTON CORPORATION OF INDIA LTD :: BRANCH OFFICE HUBLI']);
+      sheet.appendRow([]);
+      sheet.appendRow([
+        'PROFORMA FOR KAPAS PURCHASE',
+        'FACTORY: $factory',
+        'VARIETY: $variety',
+      ]);
+      sheet.appendRow([]);
+
+      sheet.appendRow(_fCols.map((c) => c.label).toList());
+      for (final r in rows) {
+        sheet.appendRow(_fCols.map((c) => c.cell(r)).toList());
+      }
+      sheet.appendRow(_fCols.map((c) => c.cell(avg)).toList());
+
+      sheet.appendRow([]);
+      sheet.appendRow([
+        'Total Seed Value',
+        ...List.filled(_fCols.length - 3, ''),
+        '₹${_f2(avg.seedValue)}',
+      ]);
+
+      final fileName =
+          'Proforma_Factory_${ExportHelper.safe(factory)}_${ExportHelper.safe(variety)}_${ExportHelper.today()}.xlsx';
+      final path = await ExportHelper.saveExcel(excel, fileName);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(path != null
+            ? '✅ Proforma exported to: $path'
+            : '❌ Could not save the file'),
+        backgroundColor: path != null ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 4),
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('❌ Error exporting proforma: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
   Widget _cell(_FCol c, String t,
       {bool header = false, bool bold = false, Color? color}) {
     return Container(
@@ -649,6 +707,13 @@ class _ProformaFactoryViewScreenState extends State<ProformaFactoryViewScreen> {
         title: const Text('Proforma – Factory wise'),
         backgroundColor: const Color(0xFF0F172A),
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: 'Export to Excel',
+            onPressed: () => _exportToExcel(rows, avg),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),

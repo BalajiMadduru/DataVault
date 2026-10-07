@@ -1012,6 +1012,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         text: factoryData?.progPurchaseBales.toString() ?? '');
     String numText(double? v) =>
         (v == null || v == 0) ? '' : _formatNumber(v);
+    final purchaseQtlsController =
+    TextEditingController(text: numText(factoryData?.purchaseQtls));
+    final purchaseBalesController =
+    TextEditingController(text: numText(factoryData?.purchaseBales));
     final farmersController =
     TextEditingController(text: numText(factoryData?.farmers));
     final moistureController =
@@ -1020,6 +1024,31 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     TextEditingController(text: numText(factoryData?.seedRate));
 
     final isEditing = factoryData != null;
+
+    // Fills the read-only progressive fields from the purchase values.
+    void generateProgressive() {
+      progQtlsController.text = _formatNumber(
+          double.tryParse(purchaseQtlsController.text.trim()) ?? 0);
+      progBalesController.text = _formatNumber(
+          double.tryParse(purchaseBalesController.text.trim()) ?? 0);
+    }
+
+    Widget readOnlyField(
+        TextEditingController c, String label, IconData icon) {
+      return TextFormField(
+        controller: c,
+        readOnly: true,
+        style: const TextStyle(color: Color(0xFF64748B)),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: 'Tap Generate',
+          filled: true,
+          fillColor: const Color(0xFFF1F5F9),
+          prefixIcon: Icon(icon, color: const Color(0xFF64748B)),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    }
 
     showDialog(
       context: context,
@@ -1041,13 +1070,14 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                     icon: Icons.factory,
                   ),
                   const SizedBox(height: 12),
+                  // Day purchase values (entered by user)
                   Row(
                     children: [
                       Expanded(
                         child: CommonFormWidgets.textField(
-                          controller: progQtlsController,
-                          label: 'Prog. Purchase (Qtls)',
-                          hint: 'e.g., 22708.95',
+                          controller: purchaseQtlsController,
+                          label: 'Purchase (Qtls)',
+                          hint: 'e.g., 602.2',
                           icon: Icons.scale,
                           keyboardType: const TextInputType.numberWithOptions(
                               decimal: true),
@@ -1056,13 +1086,38 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: CommonFormWidgets.textField(
-                          controller: progBalesController,
-                          label: 'Prog. Purchase (Bales)',
-                          hint: 'e.g., 4268',
+                          controller: purchaseBalesController,
+                          label: 'Purchase (Bales)',
+                          hint: 'e.g., 112',
                           icon: Icons.inventory,
                           keyboardType: TextInputType.number,
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: generateProgressive,
+                      icon: const Icon(Icons.auto_awesome, size: 18),
+                      label: const Text('Generate Progressive'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF059669),
+                        side: const BorderSide(color: Color(0xFF059669)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Progressive values (read-only, filled by the button)
+                  Row(
+                    children: [
+                      Expanded(child: readOnlyField(
+                          progQtlsController, 'Prog. Purchase (Qtls)', Icons.scale)),
+                      const SizedBox(width: 12),
+                      Expanded(child: readOnlyField(
+                          progBalesController, 'Prog. Purchase (Bales)', Icons.inventory)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -1111,8 +1166,15 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           ElevatedButton(
             onPressed: () {
               if (_factoryFormKey.currentState!.validate()) {
+                // If purchase values were entered but progressive wasn't
+                // generated (or is stale), generate it now.
+                generateProgressive();
                 final factory = PurchaseFactoryProgData(
                   factoryName: nameController.text,
+                  purchaseQtls:
+                  double.tryParse(purchaseQtlsController.text) ?? 0,
+                  purchaseBales:
+                  double.tryParse(purchaseBalesController.text) ?? 0,
                   progPurchaseQtls:
                   double.tryParse(progQtlsController.text) ?? 0,
                   progPurchaseBales:
@@ -1225,6 +1287,12 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                     label: Text('Factory Name',
                         style: TextStyle(fontWeight: FontWeight.bold))),
                 DataColumn(
+                    label: Text('Purchase (Qtls)',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
+                    label: Text('Purchase (Bales)',
+                        style: TextStyle(fontWeight: FontWeight.bold))),
+                DataColumn(
                     label: Text('Prog. Pur. (Qtls)',
                         style: TextStyle(fontWeight: FontWeight.bold))),
                 DataColumn(
@@ -1249,6 +1317,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                 return DataRow(cells: [
                   DataCell(Text('${index + 1}')),
                   DataCell(Text(factory.factoryName)),
+                  DataCell(Text(_formatNumber(factory.purchaseQtls))),
+                  DataCell(Text(_formatNumber(factory.purchaseBales))),
                   DataCell(Text(factory.progPurchaseQtls.toString())),
                   DataCell(Text(factory.progPurchaseBales.toString())),
                   DataCell(Text(_formatNumber(factory.farmers))),
@@ -1942,8 +2012,14 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
 class PurchaseFactoryProgData {
   String factoryName;
+  // Progressive values (generated from the day purchase values below).
+  // These keys feed the View Purchase Reports factory-wise table.
   double progPurchaseQtls;
   double progPurchaseBales;
+
+  // Day purchase values entered by the user for this factory.
+  double purchaseQtls;
+  double purchaseBales;
 
   // Factory-wise proforma inputs. Stored with the purchase entry, but NOT
   // shown in the purchase report view / export.
@@ -1955,6 +2031,8 @@ class PurchaseFactoryProgData {
     required this.factoryName,
     required this.progPurchaseQtls,
     required this.progPurchaseBales,
+    this.purchaseQtls = 0,
+    this.purchaseBales = 0,
     this.farmers = 0,
     this.moisture = 0,
     this.seedRate = 0,
@@ -1964,6 +2042,8 @@ class PurchaseFactoryProgData {
     'factoryName': factoryName,
     'progPurchaseQtls': progPurchaseQtls,
     'progPurchaseBales': progPurchaseBales,
+    'purchaseQtls': purchaseQtls,
+    'purchaseBales': purchaseBales,
     'farmers': farmers,
     'moisture': moisture,
     'seedRate': seedRate,
@@ -1975,6 +2055,8 @@ class PurchaseFactoryProgData {
         progPurchaseQtls: (json['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
         progPurchaseBales:
         (json['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+        purchaseQtls: (json['purchaseQtls'] as num?)?.toDouble() ?? 0,
+        purchaseBales: (json['purchaseBales'] as num?)?.toDouble() ?? 0,
         farmers: (json['farmers'] as num?)?.toDouble() ?? 0,
         moisture: (json['moisture'] as num?)?.toDouble() ?? 0,
         seedRate: (json['seedRate'] as num?)?.toDouble() ?? 0,

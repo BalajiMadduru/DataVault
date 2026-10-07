@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:excel/excel.dart' as excel_lib;
 import '../enums/report_type.dart';
+import '../services/ExportHelper.java';
 
 class PreviewDialog extends StatelessWidget {
   final ReportType type;
@@ -167,19 +169,12 @@ class PreviewDialog extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Exporting to Excel...'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
+                  onPressed: data == null ? null : () => _export(context),
                   icon: const Icon(Icons.download, size: 18),
                   label: const Text('Export Excel'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -204,19 +199,9 @@ class PreviewDialog extends StatelessWidget {
     }
   }
 
-  // ============================================================
-  // PURCHASE PREVIEW
-  // ============================================================
-
-  Widget _buildPurchasePreview(Map<String, dynamic>? data) {
-    final dateStr = _formatDate(data?['date']);
-    final centre =
-    (data?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
-    final cropSeason = (data?['cropSeason'] ?? '2025-26').toString();
-    final branchOffice =
-    (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
-
-    final rows = <List<String>>[
+  /// Numbered rows 4–25 of the purchase report (shared by preview + export).
+  List<List<String>> _purchaseRows(Map<String, dynamic>? data) {
+    return <List<String>>[
       ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
         _v(data, 'BB MOD', 'farmersDay'), _v(data, 'BB SPL MOD', 'farmersDay'), _v(data, 'MECH', 'farmersDay')],
       ['5', 'Arrivals (In Bales)',
@@ -262,6 +247,21 @@ class PreviewDialog extends StatelessWidget {
       ['25', 'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
         _v(data, 'BB MOD', 'progFarmers'), _v(data, 'BB SPL MOD', 'progFarmers'), _v(data, 'MECH', 'progFarmers')],
     ];
+  }
+
+  // ============================================================
+  // PURCHASE PREVIEW
+  // ============================================================
+
+  Widget _buildPurchasePreview(Map<String, dynamic>? data) {
+    final dateStr = _formatDate(data?['date']);
+    final centre =
+    (data?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
+    final cropSeason = (data?['cropSeason'] ?? '2025-26').toString();
+    final branchOffice =
+    (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
+
+    final rows = _purchaseRows(data);
 
     return Container(
       decoration: BoxDecoration(
@@ -442,6 +442,221 @@ class PreviewDialog extends StatelessWidget {
   }
 
   // ============================================================
+  // EXCEL EXPORT
+  // ============================================================
+
+  Future<void> _export(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+
+    try {
+      final excel = excel_lib.Excel.createExcel();
+      String fileName;
+      switch (type) {
+        case ReportType.dailyPurchase:
+          fileName = _fillPurchaseSheet(excel);
+          break;
+        case ReportType.dailySeed:
+          fileName = _fillSeedSheet(excel);
+          break;
+        case ReportType.weightList:
+          fileName = _fillWeightListSheet(excel);
+          break;
+      }
+
+      final path = await ExportHelper.saveExcel(excel, fileName);
+      messenger.showSnackBar(SnackBar(
+        content: Text(path != null
+            ? '✅ Exported to: $path'
+            : '❌ Could not save the file'),
+        backgroundColor: path != null ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 4),
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('❌ Error exporting report: $e'),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
+  String _fileDate(String dateStr) =>
+      dateStr.isEmpty ? ExportHelper.today() : dateStr.replaceAll('.', '');
+
+  /// Builds the purchase report sheet; returns the file name.
+  String _fillPurchaseSheet(excel_lib.Excel excel) {
+    final sheet = ExportHelper.newSheet(excel, 'Purchase Report');
+    final dateStr = _formatDate(data?['date']);
+    final centre = (data?['centre'] ?? 'DEVADURGA').toString().toUpperCase();
+    final cropSeason = (data?['cropSeason'] ?? '2025-26').toString();
+    final branchOffice =
+    (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
+
+    sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD']);
+    sheet.appendRow(['BRANCH OFFICE :: $branchOffice.']);
+    sheet.appendRow(['DAILY PURCHASE REPORT']);
+    sheet.appendRow(['CROP SEASON $cropSeason', '', '', '', 'MSP']);
+    sheet.appendRow([]);
+
+    sheet.appendRow(['S.No.', 'Particulars', 'BB MOD', 'BB SPL MOD', 'MECH']);
+    sheet.appendRow(['1', 'Purchase Date', dateStr, dateStr, dateStr]);
+    sheet.appendRow(['2', 'Centre', centre, centre, centre]);
+    sheet.appendRow(['3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH']);
+    for (final r in _purchaseRows(data)) {
+      sheet.appendRow(r);
+    }
+
+    // Factory-wise section: 2 columns (qtls, bales) per variety.
+    sheet.appendRow([]);
+    sheet.appendRow([
+      '26', 'Factory wise day purchase details',
+      'BB MOD', '', 'BB SPL MOD', '', 'MECH', '',
+    ]);
+    sheet.appendRow([
+      '', 'Factory Name',
+      for (int i = 0; i < _varieties.length; i++) ...[
+        'Prog. Pur. in qtls',
+        'Prog. Pur. in Bales',
+      ],
+    ]);
+
+    final matrix = _buildFactoryMatrix(data);
+    final names = matrix.keys.toList()..sort();
+    for (int i = 0; i < names.length; i++) {
+      final row = matrix[names[i]]!;
+      sheet.appendRow([
+        '${i + 1}',
+        names[i],
+        for (final v in _varieties) ...[
+          row[v]?['qtls'] ?? '0',
+          row[v]?['bales'] ?? '0',
+        ],
+      ]);
+    }
+    sheet.appendRow([
+      '', 'TOTAL',
+      for (final v in _varieties) ...[
+        _v(data, v, 'progPurchaseQtls'),
+        _v(data, v, 'progPurchaseBales'),
+      ],
+    ]);
+
+    return 'PurchaseReport_${ExportHelper.safe(centre)}_${_fileDate(dateStr)}.xlsx';
+  }
+
+  /// Builds the seed report sheet; returns the file name.
+  String _fillSeedSheet(excel_lib.Excel excel) {
+    final sheet = ExportHelper.newSheet(excel, 'Seed Report');
+    final dateStr = _formatDate(data?['date']);
+    final centre = (data?['centre'] ?? '').toString();
+    final reportNo = (data?['reportNo'] ?? '1').toString();
+    final factories = _seedFactoryList(data);
+
+    sheet.appendRow(['SEED REPORT']);
+    sheet.appendRow([
+      'CENTRE: ${centre.isEmpty ? 'N/A' : centre.toUpperCase()}',
+      'DATE: $dateStr',
+      'REPORT NO.: $reportNo',
+    ]);
+    sheet.appendRow([]);
+
+    // Group headings above the column headings.
+    sheet.appendRow([
+      '', '', '',
+      'PROG. QTY.', '', '', '',
+      'UNSOLD', '', '',
+      'SOLD BUT NOT LIFTED', '', '',
+      'MARKET RATE', '',
+    ]);
+    sheet.appendRow([
+      'S.No.', 'Factory Name', 'Variety',
+      'Realisable', 'Realised', 'Sold Qty', 'Prog. Delivery',
+      'Kaps', 'Ready', 'Total',
+      'Kaps', 'Ready', 'Total',
+      'Market Min', 'Market Max',
+    ]);
+
+    for (int i = 0; i < factories.length; i++) {
+      final f = factories[i];
+      final c = _computeSeedRow(f);
+      final variety = (f['variety'] ?? '').toString();
+      sheet.appendRow([
+        '${i + 1}',
+        f['factoryName']?.toString() ?? '',
+        variety.isEmpty ? '—' : variety,
+        c['realisable']!, c['realised']!, c['soldQty']!, c['progDelivery']!,
+        c['kaps1']!, c['ready1']!, c['total1']!,
+        c['kaps2']!, c['ready2']!, c['total2']!,
+        c['marketRateMin']!, c['marketRateMax']!,
+      ]);
+    }
+
+    return 'SeedReport_${ExportHelper.safe(centre)}_${_fileDate(dateStr)}.xlsx';
+  }
+
+  /// Builds the weight list sheet; returns the file name.
+  String _fillWeightListSheet(excel_lib.Excel excel) {
+    final sheet = ExportHelper.newSheet(excel, 'Weight List');
+    final d = data ?? <String, dynamic>{};
+
+    String f(String k) => (d[k] ?? '').toString();
+    final centre = f('centre').toUpperCase();
+    final dateStr = _formatDate(d['date']);
+
+    sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD']);
+    sheet.appendRow(['BRANCH OFFICE :: MAHABUBNAGAR']);
+    sheet.appendRow(['CENTRE :: $centre']);
+    sheet.appendRow([]);
+    sheet.appendRow(['REPORT NO', f('reportNo'), '', 'DATE OF PRESSING', dateStr]);
+    sheet.appendRow(['P.MARK NO', f('pmarkNo'), '', 'P.R.NO', f('prNo')]);
+    sheet.appendRow(['VARIETY', f('variety'), '', 'SAMPLE BALE NO', f('sampleBaleNo')]);
+    sheet.appendRow(['LOT NO', f('lotNo'), '', 'GODOWN', f('godown')]);
+    sheet.appendRow(['NO OF BALES', f('noOfBales'), '', 'MOISTURE', f('moisture')]);
+    if (f('pmNo').isNotEmpty) sheet.appendRow(['PM NO', f('pmNo')]);
+    if (f('pressingFactory').isNotEmpty) {
+      sheet.appendRow(['PRESSING FACTORY', f('pressingFactory')]);
+    }
+    sheet.appendRow([]);
+
+    // Bale grid: 5 column-pairs (NO, Kgs.), same layout as the preview.
+    final bales = <Map<String, dynamic>>[];
+    final raw = d['baleEntries'];
+    if (raw is List) {
+      for (final b in raw) {
+        if (b is Map) bales.add(Map<String, dynamic>.from(b));
+      }
+    }
+
+    sheet.appendRow([for (int c = 0; c < 5; c++) ...['NO', 'Kgs.']]);
+
+    const cols = 5;
+    final total = bales.length;
+    final rowCount = (total / cols).ceil();
+    for (int r = 0; r < rowCount; r++) {
+      final cells = <String>[];
+      for (int c = 0; c < cols; c++) {
+        final idx = r + (c * rowCount);
+        if (idx >= total) {
+          cells..add('')..add('');
+        } else {
+          cells.add((bales[idx]['baleNo'] ?? (idx + 1)).toString());
+          cells.add(_fq(bales[idx]['weight']));
+        }
+      }
+      sheet.appendRow(cells);
+    }
+    sheet.appendRow([for (int c = 0; c < 5; c++) ...['', _columnSum(bales, c)]]);
+
+    sheet.appendRow([]);
+    sheet.appendRow(['Total Gross Weight', f('totalGrossWeight')]);
+    sheet.appendRow(['Tare Weight', f('tareWeight')]);
+    sheet.appendRow(['Total Nett Weight', f('totalNettWeight')]);
+
+    final report = f('reportNo');
+    return 'WeightList_${ExportHelper.safe(centre)}_${report.isEmpty ? '' : '${ExportHelper.safe(report)}_'}${_fileDate(dateStr)}.xlsx';
+  }
+
+  // ============================================================
   // SHARED ROW / CELL HELPERS
   // ============================================================
 
@@ -574,6 +789,65 @@ class PreviewDialog extends StatelessWidget {
   }
 
   // ============================================================
+  // SEED HELPERS (shared by preview + export)
+  // ============================================================
+
+  double _num(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  String _fmtNum(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
+
+  List<Map<String, dynamic>> _seedFactoryList(Map<String, dynamic>? data) {
+    final src = data?['seedFactories'] ?? data?['factories'];
+    if (src is! List) return [];
+    return src
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  // Derived values (same formulas as SeedFactoryRow).
+  Map<String, String> _computeSeedRow(Map<String, dynamic> f) {
+    final realisable = _num(f['realisable']);
+    final realised = _num(f['realised']);
+    final soldQty = _num(f['soldQty']);
+    final progDelivery = _num(f['progDelivery']);
+
+    // Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
+    final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
+    // Kaps_1 = Realisable − Sold Qty − Ready_1
+    final kaps1 = realisable - soldQty - ready1;
+    // Total_1 = Kaps_1 + Ready_1
+    final total1 = kaps1 + ready1;
+
+    // Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
+    final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
+    // Ready_2 = Sold Qty − Prog Delivery − Kaps_2
+    final ready2 = soldQty - progDelivery - kaps2;
+    // Total_2 = Kaps_2 + Ready_2
+    final total2 = kaps2 + ready2;
+
+    return {
+      'realisable': _fmtNum(realisable),
+      'realised': _fmtNum(realised),
+      'soldQty': _fmtNum(soldQty),
+      'progDelivery': _fmtNum(progDelivery),
+      'kaps1': _fmtNum(kaps1),
+      'ready1': _fmtNum(ready1),
+      'total1': _fmtNum(total1),
+      'kaps2': _fmtNum(kaps2),
+      'ready2': _fmtNum(ready2),
+      'total2': _fmtNum(total2),
+      'marketRateMin': _fmtNum(_num(f['marketRateMin'])),
+      'marketRateMax': _fmtNum(_num(f['marketRateMax'])),
+    };
+  }
+
+  // ============================================================
   // SEED PREVIEW
   // ============================================================
 
@@ -582,58 +856,7 @@ class PreviewDialog extends StatelessWidget {
     final centre = (data?['centre'] ?? '').toString();
     final reportNo = (data?['reportNo'] ?? '1').toString();
 
-    List<Map<String, dynamic>> factories = [];
-    final src = data?['seedFactories'] ?? data?['factories'];
-    if (src is List) {
-      factories = List<Map<String, dynamic>>.from(src);
-    }
-
-    // --- helpers ---
-    double _n(dynamic v) {
-      if (v is num) return v.toDouble();
-      if (v is String) return double.tryParse(v) ?? 0;
-      return 0;
-    }
-
-    String _fmt(double v) =>
-        v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
-
-    // --- derived values (same formulas as SeedFactoryRow) ---
-    Map<String, String> computeRow(Map<String, dynamic> f) {
-      final realisable = _n(f['realisable']);
-      final realised = _n(f['realised']);
-      final soldQty = _n(f['soldQty']);
-      final progDelivery = _n(f['progDelivery']);
-
-      // Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
-      final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
-      // Kaps_1 = Realisable − Sold Qty − Ready_1
-      final kaps1 = realisable - soldQty - ready1;
-      // Total_1 = Kaps_1 + Ready_1
-      final total1 = kaps1 + ready1;
-
-      // Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
-      final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
-      // Ready_2 = Sold Qty − Prog Delivery − Kaps_2
-      final ready2 = soldQty - progDelivery - kaps2;
-      // Total_2 = Kaps_2 + Ready_2
-      final total2 = kaps2 + ready2;
-
-      return {
-        'realisable': _fmt(realisable),
-        'realised': _fmt(realised),
-        'soldQty': _fmt(soldQty),
-        'progDelivery': _fmt(progDelivery),
-        'kaps1': _fmt(kaps1),
-        'ready1': _fmt(ready1),
-        'total1': _fmt(total1),
-        'kaps2': _fmt(kaps2),
-        'ready2': _fmt(ready2),
-        'total2': _fmt(total2),
-        'marketRateMin': _fmt(_n(f['marketRateMin'])),
-        'marketRateMax': _fmt(_n(f['marketRateMax'])),
-      };
-    }
+    final factories = _seedFactoryList(data);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -723,7 +946,7 @@ class PreviewDialog extends StatelessWidget {
               rows: factories.asMap().entries.map((e) {
                 final i = e.key;
                 final f = e.value;
-                final c = computeRow(f);
+                final c = _computeSeedRow(f);
                 final variety =
                 (f['variety'] ?? '').toString().isEmpty
                     ? '—'

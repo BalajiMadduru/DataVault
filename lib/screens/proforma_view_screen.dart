@@ -39,6 +39,8 @@ class _Row {
   final double moistureValue; // qty * moisture
   final double shortage;
   final double shortageValue; // qty * shortage
+  final double seedRate; // cotton seed rate
+  final double seedRateValue; // qty * seedRate
   final double padtha;
   final double padthaValue; // qty * padtha
   final double lint;
@@ -60,6 +62,8 @@ class _Row {
     required this.moistureValue,
     required this.shortage,
     required this.shortageValue,
+    required this.seedRate,
+    required this.seedRateValue,
     required this.padtha,
     required this.padthaValue,
     required this.lint,
@@ -102,6 +106,8 @@ final List<_Col> _cols = [
   _Col('MOISTURE VALUE', 100, (r) => _fmt(r.moistureValue)),
   _Col('SHORTAGE', 75, (r) => _fmt(r.shortage)),
   _Col('SHORTAGE VALUE', 100, (r) => _fmt(r.shortageValue)),
+  _Col('SEED RATE', 75, (r) => _fmt(r.seedRate)),
+  _Col('SEED RATE VALUE', 105, (r) => _fmt(r.seedRateValue)),
   _Col('PADTHA', 70, (r) => _fmt(r.padtha)),
   _Col('PADTHA VALUE', 95, (r) => _fmt(r.padthaValue)),
   _Col('LINT', 65, (r) => _fmt(r.lint)),
@@ -240,6 +246,13 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     final shortage = _pick([p?['budgetedShortage'], e['shortage']]);
     final seed = 100 - lint - shortage;
 
+    // Seed rate: use the value stored on the proforma entry if present,
+    // otherwise fall back to the purchase entry's cotton seed rate.
+    final storedSeedRate = _pick([e['seedRate'], e['cottonSeedRate']]);
+    final seedRate = storedSeedRate > 0
+        ? storedSeedRate
+        : _pick([p?['cottonSeedRate']]);
+
     return _Row(
       date: DateTime.tryParse(e['entryDate']?.toString() ?? ''),
       centre: (e['centre'] ?? doc['centre'] ?? '').toString(),
@@ -252,6 +265,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       moistureValue: qty * moisture,
       shortage: shortage,
       shortageValue: qty * shortage,
+      seedRate: seedRate,
+      seedRateValue: qty * seedRate,
       padtha: padtha,
       padthaValue: qty * padtha,
       lint: lint,
@@ -287,6 +302,7 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
     final amount = sum((r) => r.amount);
     final moistureValue = sum((r) => r.moistureValue);
     final shortageValue = sum((r) => r.shortageValue);
+    final seedRateValue = sum((r) => r.seedRateValue);
     final padthaValue = sum((r) => r.padthaValue);
     final lintValue = sum((r) => r.lintValue);
     final seedValue = sum((r) => r.seedValue);
@@ -304,6 +320,8 @@ class _ProformaViewScreenState extends State<ProformaViewScreen> {
       moistureValue: moistureValue,
       shortage: avg(shortageValue),
       shortageValue: shortageValue,
+      seedRate: avg(seedRateValue),
+      seedRateValue: seedRateValue,
       padtha: avg(padthaValue),
       padthaValue: padthaValue,
       lint: avg(lintValue),
