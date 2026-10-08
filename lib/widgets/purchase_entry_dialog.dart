@@ -60,6 +60,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   final _moistureController = TextEditingController();
   final _budgetedLintController = TextEditingController();
   final _budgetedShortageController = TextEditingController();
+  final _budgetedCottonSeedPctController = TextEditingController();
   final _cottonSeedRateController = TextEditingController();
   final _processingCycleController = TextEditingController();
   final _proformaExpensesController = TextEditingController();
@@ -126,6 +127,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       });
     }
 
+    // Listeners to auto-calculate Budgeted Cotton Seed Percentage
+    _budgetedLintController.addListener(_recalculateBudgetedCottonSeedPct);
+    _budgetedShortageController
+        .addListener(_recalculateBudgetedCottonSeedPct);
+
     if (!widget.isModify) {
       _dayPressedBalesController.addListener(_recalculateProgPressedBales);
       _cciPurchaseQtlsController.addListener(_recalculateProgPurchaseQtls);
@@ -160,6 +166,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     _moistureController.dispose();
     _budgetedLintController.dispose();
     _budgetedShortageController.dispose();
+    _budgetedCottonSeedPctController.dispose();
     _cottonSeedRateController.dispose();
     _processingCycleController.dispose();
     _proformaExpensesController.dispose();
@@ -179,6 +186,16 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   // ============================================================
   // RECALCULATION METHODS
   // ============================================================
+
+  /// Budgeted Cotton Seed Percentage = 100 - Budgeted Lint % - Budgeted Shortage %
+  void _recalculateBudgetedCottonSeedPct() {
+    final lint = double.tryParse(_budgetedLintController.text) ?? 0;
+    final shortage = double.tryParse(_budgetedShortageController.text) ?? 0;
+    final seedPct = 100 - lint - shortage;
+    _budgetedCottonSeedPctController.text = seedPct == seedPct.roundToDouble()
+        ? seedPct.toInt().toString()
+        : seedPct.toStringAsFixed(2);
+  }
 
   void _recalculateProgPressedBales() {
     final dayValue = double.tryParse(_dayPressedBalesController.text) ?? 0;
@@ -284,6 +301,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     _budgetedLintController.text = data['budgetedLint']?.toString() ?? '';
     _budgetedShortageController.text =
         data['budgetedShortage']?.toString() ?? '';
+    _budgetedCottonSeedPctController.text =
+        data['budgetedCottonSeedPct']?.toString() ?? '';
     _cottonSeedRateController.text = data['cottonSeedRate']?.toString() ?? '';
     _processingCycleController.text =
         data['processingCycle']?.toString() ?? '';
@@ -719,8 +738,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                 Expanded(
                   child: Text(
                     'Please change at least one of the above fields to create a new report.',
-                    style:
-                    TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
                 ),
               ],
@@ -839,9 +857,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       'budgetedLint': double.tryParse(_budgetedLintController.text) ?? 0,
       'budgetedShortage':
       double.tryParse(_budgetedShortageController.text) ?? 0,
+      'budgetedCottonSeedPct':
+      double.tryParse(_budgetedCottonSeedPctController.text) ?? 0,
       'cottonSeedRate': double.tryParse(_cottonSeedRateController.text) ?? 0,
-      'processingCycle':
-      int.tryParse(_processingCycleController.text) ?? 0,
+      'processingCycle': int.tryParse(_processingCycleController.text) ?? 0,
       'proformaExpenses':
       double.tryParse(_proformaExpensesController.text) ?? 0,
       'budgetedPadtha': double.tryParse(_budgetedPadthaController.text) ?? 0,
@@ -1010,8 +1029,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         text: factoryData?.progPurchaseQtls.toString() ?? '');
     final progBalesController = TextEditingController(
         text: factoryData?.progPurchaseBales.toString() ?? '');
-    String numText(double? v) =>
-        (v == null || v == 0) ? '' : _formatNumber(v);
+    String numText(double? v) => (v == null || v == 0) ? '' : _formatNumber(v);
     final purchaseQtlsController =
     TextEditingController(text: numText(factoryData?.purchaseQtls));
     final purchaseBalesController =
@@ -1113,11 +1131,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                   // Progressive values (read-only, filled by the button)
                   Row(
                     children: [
-                      Expanded(child: readOnlyField(
-                          progQtlsController, 'Prog. Purchase (Qtls)', Icons.scale)),
+                      Expanded(
+                          child: readOnlyField(progQtlsController,
+                              'Prog. Purchase (Qtls)', Icons.scale)),
                       const SizedBox(width: 12),
-                      Expanded(child: readOnlyField(
-                          progBalesController, 'Prog. Purchase (Bales)', Icons.inventory)),
+                      Expanded(
+                          child: readOnlyField(progBalesController,
+                              'Prog. Purchase (Bales)', Icons.inventory)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -1247,8 +1267,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
               Text('No factories added yet',
                   style: TextStyle(color: Color(0xFF64748B))),
               Text('Click "Add Factory" to add one',
-                  style:
-                  TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
             ],
           ),
         ),
@@ -1715,6 +1734,19 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 10),
 
+                        // Budgeted Cotton Seed Percentage (auto-calculated)
+                        CommonFormWidgets.textField(
+                          controller: _budgetedCottonSeedPctController,
+                          label: 'Budgeted Cotton Seed Percentage (%)',
+                          hint: 'Auto = 100 - Lint% - Shortage%',
+                          icon: Icons.grass,
+                          keyboardType:
+                          const TextInputType.numberWithOptions(
+                              decimal: true),
+                          readOnly: true,
+                        ),
+                        const SizedBox(height: 10),
+
                         Row(
                           children: [
                             Expanded(
@@ -1745,8 +1777,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _proformaExpensesController,
-                                label:
-                                'Proforma Expenses (In Rs. per Candy)',
+                                label: 'Proforma Expenses (In Rs. per Candy)',
                                 hint: 'e.g., 4709.88',
                                 icon: Icons.money_off,
                                 keyboardType:
@@ -1758,8 +1789,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                             Expanded(
                               child: CommonFormWidgets.textField(
                                 controller: _budgetedPadthaController,
-                                label:
-                                'Budgeted Padtha (In Rs. per candy)',
+                                label: 'Budgeted Padtha (In Rs. per candy)',
                                 hint: 'e.g., 69502.94',
                                 icon: Icons.receipt,
                                 keyboardType:
@@ -1962,8 +1992,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               child: ElevatedButton(
                                 onPressed: _isSubmitting ? null : _submitForm,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                  const Color(0xFF0F172A),
+                                  backgroundColor: const Color(0xFF0F172A),
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 12),
                                   shape: RoundedRectangleBorder(

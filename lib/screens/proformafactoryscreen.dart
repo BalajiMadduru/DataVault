@@ -16,7 +16,7 @@ class _FRow {
   final String? label;
   final DateTime? date;
   final String centre;
-  final String factory; // ⭐ NEW
+  final String factory;
   final String variety;
   final double qty, rate, amount;
   final double farmers;
@@ -82,11 +82,12 @@ final List<_FCol> _fCols = [
   _FCol(
       'DATE',
       90,
-          (r) => r.label ??
+          (r) =>
+      r.label ??
           (r.date != null ? DateFormat('dd/MM/yyyy').format(r.date!) : ''),
       numeric: false),
   _FCol('CENTRE', 90, (r) => r.centre, numeric: false),
-  _FCol('FACTORY', 120, (r) => r.factory, numeric: false), // ⭐ NEW
+  _FCol('FACTORY', 120, (r) => r.factory, numeric: false),
   _FCol('VARIETY', 90, (r) => r.variety, numeric: false),
   _FCol('QUANTITY', 80, (r) => _fq(r.qty)),
   _FCol('RATE', 75, (r) => _f2(r.rate)),
@@ -154,7 +155,6 @@ _FRow _progAvg(List<_FRow> rows, String centre, String variety) {
   );
 }
 
-/// Turns purchase entries into factory + variety groups.
 /// Turns purchase entries into factory + variety groups.
 ///
 /// Grouping is case-insensitive on both factory name and variety, so entries
@@ -259,6 +259,7 @@ List<_FGroup> _buildGroups(List<Map<String, dynamic>> entries) {
     });
   return list;
 }
+
 // ============================================================
 // LIST SCREEN
 // ============================================================
@@ -324,8 +325,8 @@ class _ProformaFactoryListScreenState extends State<ProformaFactoryListScreen> {
   static const _entryFields = [
     'reportType', 'date', 'variety', 'centre', 'reportNo', 'farmersDay',
     'arrivalsBales', 'cciPurchaseQtls', 'cciPurchaseBales', 'avgKapasRate',
-    'moisture', 'budgetedLint', 'budgetedShortage', 'cottonSeedRate',
-    'processingCycle', 'proformaExpenses', 'budgetedPadtha',
+    'moisture', 'budgetedLint', 'budgetedShortage', 'budgetedCottonSeedPct',
+    'cottonSeedRate', 'processingCycle', 'proformaExpenses', 'budgetedPadtha',
     'dayPressedBales', 'marketHighestRate', 'marketLowestRate',
     'cciHighestRate', 'cciLowestRate', 'progPressedBales',
     'progPurchaseQtls', 'progPurchaseBales', 'progFarmers',
@@ -517,10 +518,12 @@ class _ProformaFactoryListScreenState extends State<ProformaFactoryListScreen> {
                     title: Text(
                       '${g.factory} — ${g.variety.isEmpty ? '—' : g.variety}',
                       style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 16),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16),
                     ),
                     subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 4),
                         Text('Entries: ${g.rows.length}',

@@ -199,7 +199,10 @@ class PreviewDialog extends StatelessWidget {
     }
   }
 
-  /// Numbered rows 4–25 of the purchase report (shared by preview + export).
+  // ============================================================
+  // PURCHASE
+  // ============================================================
+
   List<List<String>> _purchaseRows(Map<String, dynamic>? data) {
     return <List<String>>[
       ['4', "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
@@ -218,8 +221,8 @@ class PreviewDialog extends StatelessWidget {
         _v(data, 'BB MOD', 'budgetedLint'), _v(data, 'BB SPL MOD', 'budgetedLint'), _v(data, 'MECH', 'budgetedLint')],
       ['11', 'Budgeted Shortage Percetage (%)',
         _v(data, 'BB MOD', 'budgetedShortage'), _v(data, 'BB SPL MOD', 'budgetedShortage'), _v(data, 'MECH', 'budgetedShortage')],
-      ['12', 'Cotton seed Percetage (%)',
-        _v(data, 'BB MOD', 'cottonSeedPct'), _v(data, 'BB SPL MOD', 'cottonSeedPct'), _v(data, 'MECH', 'cottonSeedPct')],
+      ['12', 'Budgeted Cotton Seed Percetage (%)',
+        _v(data, 'BB MOD', 'budgetedCottonSeedPct'), _v(data, 'BB SPL MOD', 'budgetedCottonSeedPct'), _v(data, 'MECH', 'budgetedCottonSeedPct')],
       ['13', 'Cotton seed rate  (In Rs. per qtl)',
         _v(data, 'BB MOD', 'cottonSeedRate'), _v(data, 'BB SPL MOD', 'cottonSeedRate'), _v(data, 'MECH', 'cottonSeedRate')],
       ['14', "Processing cycle (In day's)",
@@ -248,10 +251,6 @@ class PreviewDialog extends StatelessWidget {
         _v(data, 'BB MOD', 'progFarmers'), _v(data, 'BB SPL MOD', 'progFarmers'), _v(data, 'MECH', 'progFarmers')],
     ];
   }
-
-  // ============================================================
-  // PURCHASE PREVIEW
-  // ============================================================
 
   Widget _buildPurchasePreview(Map<String, dynamic>? data) {
     final dateStr = _formatDate(data?['date']);
@@ -289,14 +288,6 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-  // ============================================================
-  // FACTORY-WISE SECTION — 2 columns per variety × 3 varieties
-  // ============================================================
-
-  /// Returns the factories list for a given variety from the preview data.
-  /// The primary variety's factories live under `data['factories']`,
-  /// while the other varieties' factories live under
-  /// `data['otherVarietiesProgressive'][variety]['factories']`.
   List<Map<String, dynamic>> _factoriesForVariety(
       Map<String, dynamic>? data, String variety) {
     if (data == null) return [];
@@ -323,9 +314,6 @@ class PreviewDialog extends StatelessWidget {
         .toList();
   }
 
-  /// Build a matrix: factoryName -> variety -> { qtls, bales }
-  /// Union over all 3 varieties so every factory appears exactly once,
-  /// with a column pair for each variety.
   Map<String, Map<String, Map<String, String>>> _buildFactoryMatrix(
       Map<String, dynamic>? data) {
     final matrix = <String, Map<String, Map<String, String>>>{};
@@ -346,8 +334,6 @@ class PreviewDialog extends StatelessWidget {
     return matrix;
   }
 
-  /// Sub-header row: for each of the 3 varieties, two sub-columns
-  /// ("Prog. Pur. in qtls" and "Prog. Pur. in Bales").
   Widget _factorySubHeader() {
     return Container(
       decoration: const BoxDecoration(
@@ -365,7 +351,6 @@ class PreviewDialog extends StatelessWidget {
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
             ),
           ),
-          // 3 varieties × 2 columns each = 6 columns
           for (int i = 0; i < _varieties.length; i++) ...[
             _subCell('Prog. Pur.\nin qtls'),
             _subCell('Prog. Pur.\nin Bales'),
@@ -375,8 +360,6 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
-  /// One row per factory (across all varieties), showing qty/bales for
-  /// each of the 3 varieties.
   List<Widget> _buildFactoryRows(Map<String, dynamic>? data) {
     final matrix = _buildFactoryMatrix(data);
 
@@ -390,7 +373,6 @@ class PreviewDialog extends StatelessWidget {
       ];
     }
 
-    // Sort factory names alphabetically for stable output.
     final names = matrix.keys.toList()..sort();
 
     return names.asMap().entries.map((e) {
@@ -401,7 +383,6 @@ class PreviewDialog extends StatelessWidget {
     }).toList();
   }
 
-  /// A single factory row with 6 numeric cells (2 per variety).
   Widget _factoryRow3Variety(
       String sno,
       String name,
@@ -483,7 +464,6 @@ class PreviewDialog extends StatelessWidget {
   String _fileDate(String dateStr) =>
       dateStr.isEmpty ? ExportHelper.today() : dateStr.replaceAll('.', '');
 
-  /// Builds the purchase report sheet; returns the file name.
   String _fillPurchaseSheet(excel_lib.Excel excel) {
     final sheet = ExportHelper.newSheet(excel, 'Purchase Report');
     final dateStr = _formatDate(data?['date']);
@@ -506,7 +486,6 @@ class PreviewDialog extends StatelessWidget {
       sheet.appendRow(r);
     }
 
-    // Factory-wise section: 2 columns (qtls, bales) per variety.
     sheet.appendRow([]);
     sheet.appendRow([
       '26', 'Factory wise day purchase details',
@@ -544,7 +523,6 @@ class PreviewDialog extends StatelessWidget {
     return 'PurchaseReport_${ExportHelper.safe(centre)}_${_fileDate(dateStr)}.xlsx';
   }
 
-  /// Builds the seed report sheet; returns the file name.
   String _fillSeedSheet(excel_lib.Excel excel) {
     final sheet = ExportHelper.newSheet(excel, 'Seed Report');
     final dateStr = _formatDate(data?['date']);
@@ -560,7 +538,6 @@ class PreviewDialog extends StatelessWidget {
     ]);
     sheet.appendRow([]);
 
-    // Group headings above the column headings.
     sheet.appendRow([
       '', '', '',
       'PROG. QTY.', '', '', '',
@@ -594,7 +571,10 @@ class PreviewDialog extends StatelessWidget {
     return 'SeedReport_${ExportHelper.safe(centre)}_${_fileDate(dateStr)}.xlsx';
   }
 
-  /// Builds the weight list sheet; returns the file name.
+  // ============================================================
+  // WEIGHT LIST EXPORT
+  // ============================================================
+
   String _fillWeightListSheet(excel_lib.Excel excel) {
     final sheet = ExportHelper.newSheet(excel, 'Weight List');
     final d = data ?? <String, dynamic>{};
@@ -602,23 +582,172 @@ class PreviewDialog extends StatelessWidget {
     String f(String k) => (d[k] ?? '').toString();
     final centre = f('centre').toUpperCase();
     final dateStr = _formatDate(d['date']);
+    final bales = _weightBales(d);
 
-    sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD']);
-    sheet.appendRow(['BRANCH OFFICE :: MAHABUBNAGAR']);
-    sheet.appendRow(['CENTRE :: $centre']);
-    sheet.appendRow([]);
-    sheet.appendRow(['REPORT NO', f('reportNo'), '', 'DATE OF PRESSING', dateStr]);
-    sheet.appendRow(['P.MARK NO', f('pmarkNo'), '', 'P.R.NO', f('prNo')]);
-    sheet.appendRow(['VARIETY', f('variety'), '', 'SAMPLE BALE NO', f('sampleBaleNo')]);
-    sheet.appendRow(['LOT NO', f('lotNo'), '', 'GODOWN', f('godown')]);
-    sheet.appendRow(['NO OF BALES', f('noOfBales'), '', 'MOISTURE', f('moisture')]);
-    if (f('pmNo').isNotEmpty) sheet.appendRow(['PM NO', f('pmNo')]);
-    if (f('pressingFactory').isNotEmpty) {
-      sheet.appendRow(['PRESSING FACTORY', f('pressingFactory')]);
+    void put(String ref, dynamic v, [excel_lib.CellStyle? style]) {
+      final cell = sheet.cell(excel_lib.CellIndex.indexByString(ref));
+      if (v != null) cell.value = v;
+      if (style != null) cell.cellStyle = style;
     }
-    sheet.appendRow([]);
 
-    // Bale grid: 5 column-pairs (NO, Kgs.), same layout as the preview.
+    void merge(String a, String b) => sheet.merge(
+      excel_lib.CellIndex.indexByString(a),
+      excel_lib.CellIndex.indexByString(b),
+    );
+
+    excel_lib.CellStyle st({
+      bool bold = false,
+      int size = 12,
+      String font = 'Calibri',
+      excel_lib.HorizontalAlign align = excel_lib.HorizontalAlign.Left,
+      bool border = false,
+    }) {
+      final thin = excel_lib.Border(borderStyle: excel_lib.BorderStyle.Thin);
+      if (border) {
+        return excel_lib.CellStyle(
+          bold: bold,
+          fontSize: size,
+          fontFamily: font,
+          horizontalAlign: align,
+          leftBorder: thin,
+          rightBorder: thin,
+          topBorder: thin,
+          bottomBorder: thin,
+        );
+      }
+      return excel_lib.CellStyle(
+        bold: bold,
+        fontSize: size,
+        fontFamily: font,
+        horizontalAlign: align,
+      );
+    }
+
+    num? numOrNull(String v) => num.tryParse(v.trim());
+    const center = excel_lib.HorizontalAlign.Center;
+    const cols = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+    merge('A1', 'J1');
+    put('A1', 'THE COTTON CORPORATION OF INDIA LTD.',
+        st(size: 14, font: 'Arial Rounded MT Bold', align: center));
+    merge('A2', 'J2');
+    put('A2', 'CENTRE ::: $centre',
+        st(size: 14, font: 'Arial Rounded MT Bold', align: center));
+    merge('A3', 'J3');
+    put('A3', 'F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
+        st(align: center));
+
+    final label = st();
+    final value = st(bold: true);
+    void line(int r, String l1, String v1, String valueEnd, String l2,
+        dynamic v2) {
+      merge('A$r', 'B$r');
+      put('A$r', l1, label);
+      merge('C$r', '$valueEnd$r');
+      put('C$r', v1, value);
+      merge('G$r', 'H$r');
+      put('G$r', l2, label);
+      merge('I$r', 'J$r');
+      put('I$r', v2, value);
+    }
+
+    final pressingText = f('pressingDate').trim().isNotEmpty
+        ? f('pressingDate')
+        : _pressingDateText(d, bales.length);
+
+    line(5, 'VARIETY', f('variety'), 'D', 'LOT NO:',
+        numOrNull(f('lotNo')) ?? f('lotNo'));
+    line(6, 'DT.OF PRESSING', pressingText, 'F', 'P.R.NO:', f('prNo'));
+    line(7, 'P.M.NO', f('pmNo'), 'D', 'NO OF BALES :',
+        numOrNull(f('noOfBales')) ?? bales.length);
+    line(8, 'CROP YEAR', f('cropYear'), 'D', 'S.B.NO :', f('sampleBaleNo'));
+    line(9, 'UBIN NO', f('ubinNo'), 'F', 'LOT AVG MOISTURE',
+        numOrNull(f('moisture')) ?? f('moisture'));
+
+    merge('A10', 'J10');
+    put('A10', 'NAME OF THE GODOWN: ${f('godown')}', st(bold: true));
+
+    merge('A12', 'B12');
+    put('A12', 'FACTORY NAME :::', st(bold: true, align: center));
+    merge('C12', 'J12');
+    put('C12', f('pressingFactory'), st(bold: true));
+
+    final hdr = st(align: center, border: true);
+    final cell = st(align: center, border: true);
+    final tot = st(bold: true, align: center, border: true);
+
+    int row = 13;
+    final blockCount = bales.isEmpty ? 1 : (bales.length / 50).ceil();
+    for (int b = 0; b < blockCount; b++) {
+      final start = b * 50;
+      final remaining = bales.length - start;
+      final count = remaining > 50 ? 50 : (remaining < 0 ? 0 : remaining);
+      final rows = (count / 5).ceil();
+
+      for (int c = 0; c < 5; c++) {
+        put('${cols[c * 2]}$row', 'S.L.NO', hdr);
+        put('${cols[c * 2 + 1]}$row', 'KGS', hdr);
+      }
+
+      for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < 5; c++) {
+          final i = r + (c * rows);
+          final rr = row + 1 + r;
+          if (i < count) {
+            final e = bales[start + i];
+            put('${cols[c * 2]}$rr',
+                numOrNull('${e['baleNo'] ?? start + i + 1}'), cell);
+            put('${cols[c * 2 + 1]}$rr', _num(e['weight']), cell);
+          } else {
+            put('${cols[c * 2]}$rr', null, cell);
+            put('${cols[c * 2 + 1]}$rr', null, cell);
+          }
+        }
+      }
+
+      final totalRow = row + rows + 1;
+      for (int c = 0; c < 5; c++) {
+        put('${cols[c * 2]}$totalRow', c == 0 ? 'TOTAL ::' : null, tot);
+        put('${cols[c * 2 + 1]}$totalRow',
+            _blockColumnSum(bales, start, count, c), tot);
+      }
+
+      row = totalRow + 2;
+    }
+
+    final lbl = st(size: 11, align: center, border: true);
+    final big = st(bold: true, size: 14, align: center, border: true);
+    void summary(int r, String text, dynamic v, {bool strong = true}) {
+      merge('F$r', 'H$r');
+      put('F$r', text, lbl);
+      merge('I$r', 'J$r');
+      put('I$r', v, strong ? big : st(size: 11, align: center, border: true));
+    }
+
+    summary(row, 'TOTAL GROSS WT ::', _num(d['totalGrossWeight']));
+    summary(row + 1, 'TOTAL TARE WT    ::', _num(d['tareWeight']),
+        strong: false);
+    summary(row + 2, 'TOTAL NET WT     ::', _num(d['totalNettWeight']));
+
+    final footerRow = row + 4;
+    merge('F$footerRow', 'J$footerRow');
+    put('F$footerRow', 'For The Cotton Corporation of India Ltd.',
+        st(bold: true, size: 11, align: center));
+
+    final sig = footerRow + 3;
+    merge('A$sig', 'C$sig');
+    put('A$sig', 'Factory Owner / Rep', st(size: 11, align: center));
+    merge('G$sig', 'J$sig');
+    put('G$sig', 'Centre Incharge',
+        st(bold: true, size: 11, align: center));
+
+    final lot = f('lotNo');
+    return 'WeightList_${ExportHelper.safe(centre)}_${lot.isEmpty ? '' : 'Lot${ExportHelper.safe(lot)}_'}${_fileDate(dateStr)}.xlsx';
+  }
+
+  // ---- weight list helpers ------------------------------------------------
+
+  List<Map<String, dynamic>> _weightBales(Map<String, dynamic> d) {
     final bales = <Map<String, dynamic>>[];
     final raw = d['baleEntries'];
     if (raw is List) {
@@ -626,34 +755,41 @@ class PreviewDialog extends StatelessWidget {
         if (b is Map) bales.add(Map<String, dynamic>.from(b));
       }
     }
+    return bales;
+  }
 
-    sheet.appendRow([for (int c = 0; c < 5; c++) ...['NO', 'Kgs.']]);
+  num _num(dynamic v) {
+    if (v == null) return 0;
+    final d = v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0;
+    return d == d.roundToDouble()
+        ? d.toInt()
+        : double.parse(d.toStringAsFixed(2));
+  }
 
-    const cols = 5;
-    final total = bales.length;
-    final rowCount = (total / cols).ceil();
-    for (int r = 0; r < rowCount; r++) {
-      final cells = <String>[];
-      for (int c = 0; c < cols; c++) {
-        final idx = r + (c * rowCount);
-        if (idx >= total) {
-          cells..add('')..add('');
-        } else {
-          cells.add((bales[idx]['baleNo'] ?? (idx + 1)).toString());
-          cells.add(_fq(bales[idx]['weight']));
-        }
-      }
-      sheet.appendRow(cells);
+  String _pressingDateText(Map<String, dynamic> d, int baleCount) {
+    final typed = (d['pressingDate'] ?? '').toString().trim();
+    if (typed.isNotEmpty) return typed;
+
+    final n = (d['noOfBales'] ?? baleCount).toString();
+    DateTime? dt;
+    final v = d['date'];
+    if (v is DateTime) dt = v;
+    if (v is String) dt = DateTime.tryParse(v);
+    if (dt == null) return '$n BALES:';
+    return '$n BALES: ${dt.day}-${dt.month}-${dt.year}';
+  }
+
+  String _blockColumnSum(
+      List<Map<String, dynamic>> bales, int start, int count, int c) {
+    final rows = (count / 5).ceil();
+    double sum = 0;
+    for (int r = 0; r < rows; r++) {
+      final i = r + (c * rows);
+      if (i >= count) break;
+      final w = bales[start + i]['weight'];
+      sum += w is num ? w.toDouble() : double.tryParse(w.toString()) ?? 0;
     }
-    sheet.appendRow([for (int c = 0; c < 5; c++) ...['', _columnSum(bales, c)]]);
-
-    sheet.appendRow([]);
-    sheet.appendRow(['Total Gross Weight', f('totalGrossWeight')]);
-    sheet.appendRow(['Tare Weight', f('tareWeight')]);
-    sheet.appendRow(['Total Nett Weight', f('totalNettWeight')]);
-
-    final report = f('reportNo');
-    return 'WeightList_${ExportHelper.safe(centre)}_${report.isEmpty ? '' : '${ExportHelper.safe(report)}_'}${_fileDate(dateStr)}.xlsx';
+    return _fq(sum);
   }
 
   // ============================================================
@@ -789,16 +925,10 @@ class PreviewDialog extends StatelessWidget {
   }
 
   // ============================================================
-  // SEED HELPERS (shared by preview + export)
+  // SEED HELPERS
   // ============================================================
 
-  double _num(dynamic v) {
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v) ?? 0;
-    return 0;
-  }
-
-  String _fmtNum(double v) =>
+  String _fmtNum(num v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(2);
 
   List<Map<String, dynamic>> _seedFactoryList(Map<String, dynamic>? data) {
@@ -810,25 +940,18 @@ class PreviewDialog extends StatelessWidget {
         .toList();
   }
 
-  // Derived values (same formulas as SeedFactoryRow).
   Map<String, String> _computeSeedRow(Map<String, dynamic> f) {
-    final realisable = _num(f['realisable']);
-    final realised = _num(f['realised']);
-    final soldQty = _num(f['soldQty']);
-    final progDelivery = _num(f['progDelivery']);
+    final realisable = _num(f['realisable']).toDouble();
+    final realised = _num(f['realised']).toDouble();
+    final soldQty = _num(f['soldQty']).toDouble();
+    final progDelivery = _num(f['progDelivery']).toDouble();
 
-    // Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
     final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
-    // Kaps_1 = Realisable − Sold Qty − Ready_1
     final kaps1 = realisable - soldQty - ready1;
-    // Total_1 = Kaps_1 + Ready_1
     final total1 = kaps1 + ready1;
 
-    // Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
     final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
-    // Ready_2 = Sold Qty − Prog Delivery − Kaps_2
     final ready2 = soldQty - progDelivery - kaps2;
-    // Total_2 = Kaps_2 + Ready_2
     final total2 = kaps2 + ready2;
 
     return {
@@ -847,10 +970,6 @@ class PreviewDialog extends StatelessWidget {
     };
   }
 
-  // ============================================================
-  // SEED PREVIEW
-  // ============================================================
-
   Widget _buildSeedPreview(Map<String, dynamic>? data) {
     final dateStr = _formatDate(data?['date']);
     final centre = (data?['centre'] ?? '').toString();
@@ -861,7 +980,6 @@ class PreviewDialog extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Title bar
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -882,7 +1000,6 @@ class PreviewDialog extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
-        // Header
         Row(
           children: [
             const Text('CENTRE:',
@@ -908,7 +1025,6 @@ class PreviewDialog extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
-        // Factory table
         if (factories.isEmpty)
           const Center(
             child: Padding(
@@ -947,8 +1063,7 @@ class PreviewDialog extends StatelessWidget {
                 final i = e.key;
                 final f = e.value;
                 final c = _computeSeedRow(f);
-                final variety =
-                (f['variety'] ?? '').toString().isEmpty
+                final variety = (f['variety'] ?? '').toString().isEmpty
                     ? '—'
                     : f['variety'].toString();
 
@@ -956,20 +1071,16 @@ class PreviewDialog extends StatelessWidget {
                   DataCell(Text('${i + 1}')),
                   DataCell(Text(f['factoryName']?.toString() ?? '')),
                   DataCell(Text(variety)),
-                  // PROG. QTY.
                   DataCell(Text(c['realisable']!)),
                   DataCell(Text(c['realised']!)),
                   DataCell(Text(c['soldQty']!)),
                   DataCell(Text(c['progDelivery']!)),
-                  // UNSOLD (Kaps / Ready / Total)
                   DataCell(Text(c['kaps1']!)),
                   DataCell(Text(c['ready1']!)),
                   DataCell(Text(c['total1']!)),
-                  // SOLD BUT NOT LIFTED (Kaps / Ready / Total)
                   DataCell(Text(c['kaps2']!)),
                   DataCell(Text(c['ready2']!)),
                   DataCell(Text(c['total2']!)),
-                  // Market rate
                   DataCell(Text(c['marketRateMin']!)),
                   DataCell(Text(c['marketRateMax']!)),
                 ]);
@@ -995,35 +1106,14 @@ class PreviewDialog extends StatelessWidget {
       );
     }
 
-    final centre = (data['centre'] ?? '').toString().toUpperCase();
-    final reportNo = (data['reportNo'] ?? '').toString();
-    final variety = (data['variety'] ?? '').toString();
-    final pmNo = (data['pmNo'] ?? '').toString();
-    final pmarkNo = (data['pmarkNo'] ?? '').toString();
-    final prNo = (data['prNo'] ?? '').toString();
-    final lotNo = (data['lotNo'] ?? '').toString();
-    final sampleBaleNo = (data['sampleBaleNo'] ?? '').toString();
-    final godown = (data['godown'] ?? '').toString();
-    final noOfBales = (data['noOfBales'] ?? '').toString();
-    final moisture = (data['moisture'] ?? '').toString();
-    final pressingFactory = (data['pressingFactory'] ?? '').toString();
-    final tareWeight = (data['tareWeight'] ?? '').toString();
-    final totalGross = (data['totalGrossWeight'] ?? '').toString();
-    final totalNett = (data['totalNettWeight'] ?? '').toString();
-    final dateStr = _formatDate(data['date']);
-
-    final bales = <Map<String, dynamic>>[];
-    final raw = data['baleEntries'];
-    if (raw is List) {
-      for (final b in raw) {
-        if (b is Map) bales.add(Map<String, dynamic>.from(b));
-      }
-    }
+    String s(String k) => (data[k] ?? '').toString();
+    final centre = s('centre').toUpperCase();
+    final bales = _weightBales(data);
+    final blockCount = bales.isEmpty ? 0 : (bales.length / 50).ceil();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ---------- Header block ----------
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
@@ -1032,38 +1122,43 @@ class PreviewDialog extends StatelessWidget {
           ),
           child: Column(
             children: [
-              const Text('THE COTTON CORPORATION OF INDIA LTD',
+              const Text('THE COTTON CORPORATION OF INDIA LTD.',
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF0F172A))),
               const SizedBox(height: 2),
-              const Text('BRANCH OFFICE :: MAHABUBNAGAR',
+              Text('CENTRE ::: $centre',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A))),
+              const SizedBox(height: 2),
+              const Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF334155))),
-              const SizedBox(height: 2),
-              Text('CENTRE :: $centre',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155))),
               const SizedBox(height: 8),
-              _wMetaRow('REPORT NO', reportNo, 'DATE OF PRESSING', dateStr),
-              _wMetaRow('P.MARK NO', pmarkNo, 'P.R.NO', prNo),
-              _wMetaRow('VARIETY', variety, 'SAMPLE BALE NO', sampleBaleNo),
-              _wMetaRow('LOT NO', lotNo, 'GODOWN', godown),
-              _wMetaRow('NO OF BALES', noOfBales, 'MOISTURE', moisture),
-              if (pmNo.isNotEmpty) _wMetaRow('PM NO', pmNo, '', ''),
-              if (pressingFactory.isNotEmpty)
-                _wMetaRow('PRESSING FACTORY', pressingFactory, '', ''),
+              _wMetaRow('VARIETY', s('variety'), 'LOT NO:', s('lotNo')),
+              _wMetaRow(
+                  'DT.OF PRESSING',
+                  _pressingDateText(data, bales.length),
+                  'P.R.NO:',
+                  s('prNo')),
+              _wMetaRow('P.M.NO', s('pmNo'), 'NO OF BALES :',
+                  s('noOfBales')),
+              _wMetaRow('CROP YEAR', s('cropYear'), 'S.B.NO :',
+                  s('sampleBaleNo')),
+              _wMetaRow('UBIN NO', s('ubinNo'), 'LOT AVG MOISTURE',
+                  s('moisture')),
+              _wMetaRow('NAME OF THE GODOWN:', s('godown'), '', ''),
+              _wMetaRow('FACTORY NAME :::', s('pressingFactory'), '', ''),
             ],
           ),
         ),
         const SizedBox(height: 12),
 
-        // ---------- Bale grid ----------
         if (bales.isEmpty)
           const Padding(
             padding: EdgeInsets.all(16),
@@ -1071,66 +1166,10 @@ class PreviewDialog extends StatelessWidget {
                 style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
           )
         else
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: const Color(0xFF94A3B8)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  color: const Color(0xFFF1F5F9),
-                  padding:
-                  const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                  child: const Row(
-                    children: [
-                      Expanded(child: _PreviewHeaderCell('NO')),
-                      Expanded(child: _PreviewHeaderCell('Kgs.')),
-                      Expanded(child: _PreviewHeaderCell('NO')),
-                      Expanded(child: _PreviewHeaderCell('Kgs.')),
-                      Expanded(child: _PreviewHeaderCell('NO')),
-                      Expanded(child: _PreviewHeaderCell('Kgs.')),
-                      Expanded(child: _PreviewHeaderCell('NO')),
-                      Expanded(child: _PreviewHeaderCell('Kgs.')),
-                      Expanded(child: _PreviewHeaderCell('NO')),
-                      Expanded(child: _PreviewHeaderCell('Kgs.')),
-                    ],
-                  ),
-                ),
-                // rows
-                ..._buildBaleRows(bales),
-                // totals
-                Container(
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF1F5F9),
-                    border: Border(
-                      top: BorderSide(color: Color(0xFF94A3B8), width: 1.2),
-                    ),
-                  ),
-                  padding:
-                  const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                  child: Row(
-                    children: [
-                      for (int c = 0; c < 5; c++) ...[
-                        const Expanded(
-                          child: _PreviewDataCell('', bold: true),
-                        ),
-                        Expanded(
-                          child: _PreviewDataCell(
-                            _columnSum(bales, c),
-                            bold: true,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          for (int b = 0; b < blockCount; b++) _buildWeightBlock(bales, b),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
 
-        // ---------- Summary ----------
         Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
           decoration: BoxDecoration(
@@ -1140,109 +1179,159 @@ class PreviewDialog extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _summaryRow('Total Gross Weight', totalGross, false),
+              _summaryRow('TOTAL GROSS WT ::', s('totalGrossWeight'), false),
               const SizedBox(height: 4),
-              _summaryRow('Tare Weight', tareWeight, false),
+              _summaryRow('TOTAL TARE WT ::', s('tareWeight'), false),
               const SizedBox(height: 4),
-              _summaryRow('Total Nett Weight', totalNett, true),
+              _summaryRow('TOTAL NET WT ::', s('totalNettWeight'), true),
             ],
           ),
+        ),
+        const SizedBox(height: 16),
+
+        const Align(
+          alignment: Alignment.centerRight,
+          child: Text('For The Cotton Corporation of India Ltd.',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A))),
+        ),
+        const SizedBox(height: 28),
+        const Row(
+          children: [
+            Expanded(
+              child: Text('Factory Owner / Rep',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11, color: Color(0xFF0F172A))),
+            ),
+            Expanded(
+              child: Text('Centre Incharge',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A))),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  /// Bale rows — 5 columns × N rows, matching the entry dialog layout.
-  List<Widget> _buildBaleRows(List<Map<String, dynamic>> bales) {
-    const cols = 5;
-    final total = bales.length;
-    final rows = (total / cols).ceil();
-    final widgets = <Widget>[];
+  Widget _buildWeightBlock(List<Map<String, dynamic>> bales, int block) {
+    final start = block * 50;
+    final remaining = bales.length - start;
+    final count = remaining > 50 ? 50 : remaining;
+    final rows = (count / 5).ceil();
 
+    final rowWidgets = <Widget>[];
     for (int r = 0; r < rows; r++) {
       final cells = <Widget>[];
-      for (int c = 0; c < cols; c++) {
-        final idx = r + (c * rows);
-        if (idx >= total) {
+      for (int c = 0; c < 5; c++) {
+        final i = r + (c * rows);
+        if (i >= count) {
           cells.add(const Expanded(child: _PreviewDataCell('')));
           cells.add(const Expanded(child: _PreviewDataCell('')));
         } else {
-          final baleNo = (bales[idx]['baleNo'] ?? (idx + 1)).toString();
-          final w = bales[idx]['weight'];
-          cells.add(Expanded(child: _PreviewDataCell(baleNo)));
-          cells.add(Expanded(child: _PreviewDataCell(_fq(w))));
+          final e = bales[start + i];
+          cells.add(Expanded(
+              child: _PreviewDataCell(
+                  (e['baleNo'] ?? (start + i + 1)).toString())));
+          cells.add(Expanded(child: _PreviewDataCell(_fq(e['weight']))));
         }
       }
-
-      widgets.add(Container(
+      rowWidgets.add(Container(
         decoration: const BoxDecoration(
-          border: Border(
-            top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
-          ),
+          border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
         ),
         padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
         child: Row(children: cells),
       ));
     }
-    return widgets;
-  }
 
-  /// Sum of bales in column `c` (using the same 5-column layout).
-  String _columnSum(List<Map<String, dynamic>> bales, int c) {
-    const cols = 5;
-    final total = bales.length;
-    final rows = (total / cols).ceil();
-    double sum = 0;
-    for (int r = 0; r < rows; r++) {
-      final idx = r + (c * rows);
-      if (idx >= total) break;
-      final w = bales[idx]['weight'];
-      sum += w is num ? w.toDouble() : double.tryParse(w.toString()) ?? 0;
-    }
-    return _fq(sum);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF94A3B8)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            color: const Color(0xFFF1F5F9),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: const Row(
+              children: [
+                Expanded(child: _PreviewHeaderCell('S.L.NO')),
+                Expanded(child: _PreviewHeaderCell('KGS')),
+                Expanded(child: _PreviewHeaderCell('S.L.NO')),
+                Expanded(child: _PreviewHeaderCell('KGS')),
+                Expanded(child: _PreviewHeaderCell('S.L.NO')),
+                Expanded(child: _PreviewHeaderCell('KGS')),
+                Expanded(child: _PreviewHeaderCell('S.L.NO')),
+                Expanded(child: _PreviewHeaderCell('KGS')),
+                Expanded(child: _PreviewHeaderCell('S.L.NO')),
+                Expanded(child: _PreviewHeaderCell('KGS')),
+              ],
+            ),
+          ),
+          ...rowWidgets,
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF1F5F9),
+              border: Border(
+                top: BorderSide(color: Color(0xFF94A3B8), width: 1.2),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            child: Row(
+              children: [
+                for (int c = 0; c < 5; c++) ...[
+                  Expanded(
+                    child: _PreviewDataCell(c == 0 ? 'TOTAL ::' : '',
+                        bold: true),
+                  ),
+                  Expanded(
+                    child: _PreviewDataCell(
+                      _blockColumnSum(bales, start, count, c),
+                      bold: true,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _wMetaRow(String l1, String v1, String l2, String v2) {
+    Widget half(String l, String v) => Expanded(
+      child: Row(
+        children: [
+          Text('$l ',
+              style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B))),
+          Expanded(
+            child: Text(v,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A))),
+          ),
+        ],
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          Expanded(
-            child: Row(
-              children: [
-                Text('$l1 : ',
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B))),
-                Expanded(
-                  child: Text(v1,
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF0F172A))),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Row(
-              children: [
-                Text('$l2 : ',
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF64748B))),
-                Expanded(
-                  child: Text(v2,
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF0F172A))),
-                ),
-              ],
-            ),
-          ),
+          half(l1, v1),
+          if (l2.isNotEmpty) half(l2, v2) else const Spacer(),
         ],
       ),
     );

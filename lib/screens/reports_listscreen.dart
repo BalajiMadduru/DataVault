@@ -94,6 +94,7 @@ class _PurchaseGroup {
       'moisture',
       'budgetedLint',
       'budgetedShortage',
+      'budgetedCottonSeedPct',
       'cottonSeedPct',
       'cottonSeedRate',
       'processingCycle',
@@ -390,8 +391,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       context: context,
       builder: (ctx) => _buildDeleteDialog(
         title: 'Delete Report',
-        message:
-        'This will permanently delete the report and all $varietyCount '
+        message: 'This will permanently delete the report and all $varietyCount '
             'variety entr${varietyCount == 1 ? 'y' : 'ies'} in it. '
             'This action cannot be undone.',
         label: label,
@@ -514,11 +514,10 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           onPressed: () => Navigator.pop(context, true),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.red,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8)),
+            shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          child: const Text('Delete',
-              style: TextStyle(color: Colors.white)),
+          child: const Text('Delete', style: TextStyle(color: Colors.white)),
         ),
       ],
     );
@@ -658,7 +657,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   }
 
   // ------------------------------------------------------------
-  // SEED + WEIGHT LIST — one card per entry (unchanged)
+  // SEED + WEIGHT LIST — one card per entry
   // ------------------------------------------------------------
 
   Widget _buildSimpleList() {

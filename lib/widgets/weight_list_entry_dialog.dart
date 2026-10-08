@@ -42,47 +42,48 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   // Header fields
   String? _selectedCentre;
   final _reportNoController = TextEditingController();
-  final _pmNoController = TextEditingController();
   final _prNoController = TextEditingController();
   final _lotNoController = TextEditingController();
   final _sampleBaleNoController = TextEditingController();
-  final _godownController = TextEditingController();
+  final _ubinNoController = TextEditingController();
   final _noOfBalesController = TextEditingController(text: '100');
   final _moistureController = TextEditingController(text: '8.1');
   final _pressingFactoryController = TextEditingController();
-  final _pmarkNoController = TextEditingController();
 
+  /// DT.OF PRESSING — now a free-text field ("100 BALES: 7-12-2025").
+  final _pressingDateController = TextEditingController();
+
+  // ---- Dropdown (DD) fields from the Excel format -------------------------
   final List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
-  String? _selectedVariety;
+  final List<String> _pmNos = ['SCGF'];
+  final List<String> _cropYears = ['2025-26', '2026-27'];
+  final List<String> _godowns = ['SRISAI WAREHOUSE,HYDERABADROAD,RAICHUR'];
 
+  String? _selectedVariety;
+  String? _selectedPmNo;
+  String? _selectedCropYear = '2026-27';
+  String? _selectedGodown;
+
+  /// Kept for lookup (Find Entry dialog still queries by date).
   DateTime _selectedDate = DateTime.now();
-  bool _isLoadingReportNo = false;
 
   // Bale data
   List<WeightBaleEntry> _baleEntries = [];
   static const int defaultBaleCount = 100;
 
-  // Summary controllers (per-bale figures, all user editable)
+  // Summary controllers
   final _totalGrossController = TextEditingController();
-  final _tareWeightController = TextEditingController(text: '1.30');
+  final _tareWeightController = TextEditingController(text: '1.2');
   final _totalNettController = TextEditingController();
 
-  // Guards
   bool _isSyncingSummary = false;
-
-  /// Which of Gross / Nett the user typed last. Tare changes recalculate
-  /// the OTHER field, so the value the user typed is never overwritten.
   _SummarySource _lastEdited = _SummarySource.gross;
-
-  /// Bumped after generate / load so the bale text fields rebuild.
-  /// Not bumped while typing, so focus is kept.
   int _gridVersion = 0;
 
   @override
   void initState() {
     super.initState();
     _initializeBaleEntries();
-
     _noOfBalesController.addListener(_onBaleCountChanged);
 
     if (widget.isModify && widget.existingData != null) {
@@ -91,12 +92,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       _entryFound = true;
     } else if (!widget.isModify) {
       _entryFound = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await _loadDefaultCentre();
-        if (_selectedCentre != null && _selectedCentre!.isNotEmpty) {
-          await _autoGenerateReportNo();
-        }
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadDefaultCentre());
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -115,19 +111,17 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   @override
   void dispose() {
     _noOfBalesController.removeListener(_onBaleCountChanged);
-
     _scrollController.dispose();
     _dialogFocusNode.dispose();
     _reportNoController.dispose();
-    _pmNoController.dispose();
     _prNoController.dispose();
+    _ubinNoController.dispose();
     _lotNoController.dispose();
     _sampleBaleNoController.dispose();
-    _godownController.dispose();
     _noOfBalesController.dispose();
     _moistureController.dispose();
     _pressingFactoryController.dispose();
-    _pmarkNoController.dispose();
+    _pressingDateController.dispose();
     _totalGrossController.dispose();
     _tareWeightController.dispose();
     _totalNettController.dispose();
@@ -147,21 +141,18 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     }
   }
 
-  /// User typed Gross  -> Nett  = Gross - Tare
   void _onGrossChanged(String _) {
     if (_isSyncingSummary) return;
     _lastEdited = _SummarySource.gross;
     _recalcNett();
   }
 
-  /// User typed Nett   -> Gross = Nett + Tare
   void _onNettChanged(String _) {
     if (_isSyncingSummary) return;
     _lastEdited = _SummarySource.nett;
     _recalcGross();
   }
 
-  /// User typed Tare   -> recalc whichever field was NOT typed last
   void _onTareChanged(String _) {
     if (_isSyncingSummary) return;
     if (_lastEdited == _SummarySource.nett) {
@@ -185,11 +176,9 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     _setSynced(() {
       _totalGrossController.text = nett <= 0 ? '' : _fmt(nett + tare);
     });
-    // Gross drives the bale colouring / generator, so refresh the UI
     if (mounted) setState(() {});
   }
 
-  /// No. of bales changed → rebuild grid (keeps existing values)
   void _onBaleCountChanged() {
     final count = int.tryParse(_noOfBalesController.text) ?? 0;
     if (count <= 0 || count > 1000) return;
@@ -210,29 +199,15 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
 
   // ============================================================
   // BALE WEIGHT GENERATOR
-  //
-  //  Window of allowed bale weights depends on the gross weight:
-  //
-  //   gross below 165  -> 5 values :  gross-2 .. gross+2
-  //        150 -> 148..152      151 -> 149..153
-  //   gross 165 and up -> 10 values:  gross-4 .. gross+5
-  //        165 -> 161..170      166 -> 162..171   (up to 190 and beyond)
-  //
-  //  * Every bale gets a WHOLE number (no decimals)
-  //  * Repeated values ARE allowed
-  //  * Sum of all bales MUST equal Gross * No. of bales
   // ============================================================
 
-  /// Gross at which the wider (10 value) window starts.
   static const int _wideWindowFrom = 165;
 
-  /// Returns [back, forward] = how far below / above gross a bale may go.
   List<int> _spreadFor(int gross) {
     if (gross >= _wideWindowFrom) return [4, 5];
     return [2, 2];
   }
 
-  /// Lowest / highest allowed bale weight for the current gross.
   int get _minAllowed {
     final g = _summaryGross.floor();
     return max(1, g - _spreadFor(g)[0]);
@@ -249,7 +224,6 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     );
   }
 
-  /// Exact total the bales must add up to (whole kgs, since bales are integers).
   int _targetTotal(double gross, int count) => (gross * count).round();
 
   void _generateBaleWeights() {
@@ -267,18 +241,14 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
 
     final lo = _minAllowed;
     final hi = _maxAllowed;
-    final targetTotal = _targetTotal(gross, count); // 164.32 x 100 = 16432
+    final targetTotal = _targetTotal(gross, count);
 
-    // Target must be reachable inside the allowed window
     if (targetTotal < lo * count || targetTotal > hi * count) {
       _showError('Cannot reach this gross within $lo - $hi per bale');
       return;
     }
 
     final rng = Random();
-
-    // 1) Start from the exact average: every bale = floor(avg),
-    //    and the remainder bales get +1  (164.32 -> 68 x 164, 32 x 165)
     final base = targetTotal ~/ count;
     final remainder = targetTotal - base * count;
     final weights = List<int>.filled(count, base);
@@ -287,8 +257,6 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       weights[idxs[k]] += 1;
     }
 
-    // 2) Add natural variation WITHOUT changing the sum:
-    //    move 1 kg from one bale to another, many times
     for (int n = 0; n < count * 20; n++) {
       final a = rng.nextInt(count);
       final b = rng.nextInt(count);
@@ -304,16 +272,12 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
         _baleEntries[i] =
             _baleEntries[i].copyWith(weight: weights[i].toDouble());
       }
-      _gridVersion++; // refresh the text fields
+      _gridVersion++;
     });
   }
 
   // ============================================================
   // MODIFY MODE: BALE EDITS -> GROSS / NETT
-  //
-  //  Gross / Nett are per-bale figures, so when a bale weight is edited
-  //  by hand the Gross becomes the AVERAGE of the filled bale weights
-  //  and Nett = Gross - Tare.
   // ============================================================
 
   void _syncSummaryFromBales() {
@@ -347,46 +311,90 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     return v.toStringAsFixed(2);
   }
 
+  /// Parses the pressing date out of a free-text field like
+  /// "100 BALES: 7-12-2025". Returns null when it can't find a date.
+  DateTime? _parsePressingDate(String text) {
+    // Try common patterns: d-m-yyyy, dd-mm-yyyy, d/m/yyyy, dd/mm/yyyy
+    final match = RegExp(r'(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})')
+        .firstMatch(text);
+    if (match != null) {
+      final d = int.parse(match.group(1)!);
+      final m = int.parse(match.group(2)!);
+      var y = int.parse(match.group(3)!);
+      if (y < 100) y += 2000;
+      try {
+        return DateTime(y, m, d);
+      } catch (_) {
+        return null;
+      }
+    }
+    // Fallback: ISO parse
+    return DateTime.tryParse(text);
+  }
+
   // ============================================================
   // DATA LOADING
   // ============================================================
+
+  String? _pickOption(List<String> options, dynamic value) {
+    final v = value?.toString().trim() ?? '';
+    if (v.isEmpty) return null;
+    if (!options.contains(v)) options.add(v);
+    return v;
+  }
 
   void _loadExistingData(Map<String, dynamic> data) {
     final centre = data['centre'] as String?;
     _selectedCentre = (centre != null && centre.isNotEmpty) ? centre : null;
     _reportNoController.text = data['reportNo']?.toString() ?? '';
-    _pmNoController.text = data['pmNo']?.toString() ?? '';
+    _selectedPmNo = _pickOption(_pmNos, data['pmNo']);
     _prNoController.text = data['prNo']?.toString() ?? '';
     _lotNoController.text = data['lotNo']?.toString() ?? '';
     _sampleBaleNoController.text = data['sampleBaleNo']?.toString() ?? '';
-    _godownController.text = data['godown']?.toString() ?? '';
+    _selectedGodown = _pickOption(_godowns, data['godown']);
+    _selectedCropYear =
+        _pickOption(_cropYears, data['cropYear']) ?? _selectedCropYear;
+    _ubinNoController.text = data['ubinNo']?.toString() ?? '';
     _noOfBalesController.text =
         data['noOfBales']?.toString() ?? defaultBaleCount.toString();
     _moistureController.text = data['moisture']?.toString() ?? '';
     _pressingFactoryController.text =
         data['pressingFactory']?.toString() ?? '';
-    _pmarkNoController.text = data['pmarkNo']?.toString() ?? '';
+
+    // Prefer the free-text pressing date if the server stored one.
+    final storedPressingDate = data['pressingDate']?.toString();
+    if (storedPressingDate != null && storedPressingDate.isNotEmpty) {
+      _pressingDateController.text = storedPressingDate;
+    } else if (data['date'] != null) {
+      // Fall back to constructing "<n> BALES: d-m-yyyy" from the DateTime.
+      try {
+        final dt = DateTime.parse(data['date']);
+        final n = (data['noOfBales'] ?? defaultBaleCount).toString();
+        _pressingDateController.text =
+        '$n BALES: ${dt.day}-${dt.month}-${dt.year}';
+      } catch (_) {}
+    }
 
     final tare = (data['tareWeight'] as num?)?.toDouble() ?? 1.30;
     _setSynced(() => _tareWeightController.text = _fmt(tare));
 
-    if (data['variety'] != null && _varieties.contains(data['variety'])) {
-      _selectedVariety = data['variety'];
-    }
+    _selectedVariety = _pickOption(_varieties, data['variety']);
 
     if (data['baleEntries'] is List) {
       final entries = data['baleEntries'] as List;
-      _baleEntries = entries
+      final loaded = entries
           .map((e) =>
           WeightBaleEntry.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+          .toList()
+        ..sort((a, b) => a.baleNo.compareTo(b.baleNo));
+
       final targetCount =
           int.tryParse(_noOfBalesController.text) ?? defaultBaleCount;
-      if (_baleEntries.length < targetCount) {
-        for (int i = _baleEntries.length; i < targetCount; i++) {
-          _baleEntries.add(WeightBaleEntry(baleNo: i + 1, weight: 0));
-        }
-      }
+
+      _baleEntries = List.generate(targetCount, (i) {
+        if (i < loaded.length) return loaded[i];
+        return WeightBaleEntry(baleNo: i + 1, weight: 0);
+      });
     }
 
     if (data['date'] != null) {
@@ -420,44 +428,13 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     await prefs.setString(ReportConstants.prefKeyLastCentre, centre);
   }
 
-  Future<void> _autoGenerateReportNo() async {
-    if (widget.isModify) return;
-    if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
-
-    setState(() => _isLoadingReportNo = true);
-    final normalizedDate =
-    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-    final requestedCentre = _selectedCentre;
-
-    try {
-      final response = await ApiService.getNextWeightListReportNo(
-        centre: _selectedCentre!,
-        date: normalizedDate,
-      );
-
-      if (!mounted) return;
-      if (requestedCentre != _selectedCentre) return;
-
-      final nextReportNo = (response.success && response.data != null)
-          ? response.data!['nextReportNo'] as int?
-          : null;
-
-      if (nextReportNo != null) {
-        setState(() => _reportNoController.text = nextReportNo.toString());
-      }
-    } catch (e) {
-      debugPrint('❌ Error generating report number: $e');
-    } finally {
-      if (mounted) setState(() => _isLoadingReportNo = false);
-    }
-  }
-
+  /// Used by the Find Entry dialog (lookup by date).
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      lastDate: DateTime(2030),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -470,7 +447,6 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     );
     if (picked != null && picked != _selectedDate) {
       setState(() => _selectedDate = picked);
-      await _autoGenerateReportNo();
     }
   }
 
@@ -527,27 +503,36 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   // PREVIEW
   // ============================================================
 
-  void _showPreview() {
-    final previewData = {
+  Map<String, dynamic> _buildPayload() {
+    // If the user typed a date, use that for the stored `date` too,
+    // otherwise fall back to _selectedDate.
+    final typedDate = _parsePressingDate(_pressingDateController.text);
+    return {
       'reportType': 'WeightList',
-      'date': _selectedDate.toIso8601String(),
+      'date': (typedDate ?? _selectedDate).toIso8601String(),
+      'pressingDate': _pressingDateController.text.trim(),
       'centre': _selectedCentre ?? '',
       'reportNo': int.tryParse(_reportNoController.text) ?? 0,
       'variety': _selectedVariety ?? '',
-      'pmNo': _pmNoController.text.trim(),
-      'prNo': _prNoController.text.trim(),
       'lotNo': _lotNoController.text.trim(),
-      'sampleBaleNo': _sampleBaleNoController.text.trim(),
-      'godown': _godownController.text.trim(),
+      'prNo': _prNoController.text.trim(),
+      'pmNo': _selectedPmNo ?? '',
       'noOfBales': _currentBaleCount,
+      'cropYear': _selectedCropYear ?? '',
+      'sampleBaleNo': _sampleBaleNoController.text.trim(),
+      'ubinNo': _ubinNoController.text.trim(),
       'moisture': double.tryParse(_moistureController.text) ?? 0,
+      'godown': _selectedGodown ?? '',
       'pressingFactory': _pressingFactoryController.text.trim(),
-      'pmarkNo': _pmarkNoController.text.trim(),
       'tareWeight': _currentTare,
       'totalGrossWeight': _summaryGross,
       'totalNettWeight': _summaryNett,
       'baleEntries': _baleEntries.map((e) => e.toJson()).toList(),
     };
+  }
+
+  void _showPreview() {
+    final previewData = _buildPayload();
 
     showDialog(
       context: context,
@@ -567,8 +552,9 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     final reportNo = int.tryParse(_reportNoController.text) ?? 0;
     if (reportNo == 0) return false;
 
-    final normalizedDate =
-    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final typedDate = _parsePressingDate(_pressingDateController.text);
+    final normalizedDate = typedDate ??
+        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
 
     try {
       final response = await ApiService.checkWeightListEntryExists(
@@ -623,26 +609,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     _lastSubmitTime = now;
     setState(() => _isSubmitting = true);
 
-    final data = {
-      'reportType': 'WeightList',
-      'date': _selectedDate.toIso8601String(),
-      'centre': _selectedCentre ?? '',
-      'reportNo': int.tryParse(_reportNoController.text) ?? 0,
-      'variety': _selectedVariety ?? '',
-      'pmNo': _pmNoController.text.trim(),
-      'prNo': _prNoController.text.trim(),
-      'lotNo': _lotNoController.text.trim(),
-      'sampleBaleNo': _sampleBaleNoController.text.trim(),
-      'godown': _godownController.text.trim(),
-      'noOfBales': _currentBaleCount,
-      'moisture': double.tryParse(_moistureController.text) ?? 0,
-      'pressingFactory': _pressingFactoryController.text.trim(),
-      'pmarkNo': _pmarkNoController.text.trim(),
-      'tareWeight': _currentTare,
-      'totalGrossWeight': _summaryGross,
-      'totalNettWeight': _summaryNett,
-      'baleEntries': _baleEntries.map((e) => e.toJson()).toList(),
-    };
+    final data = _buildPayload();
 
     final ApiResponse response;
     if (widget.isModify && _docId != null) {
@@ -782,6 +749,8 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     required int rows,
     required int cols,
   }) {
+    const double cellHeight = 30;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
@@ -791,17 +760,20 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
         children: [
           Container(
             color: const Color(0xFFF1F5F9),
+            height: 28,
             child: Row(
               children: [
                 for (int c = 0; c < cols; c++) ...[
-                  _headerCell('NO'),
-                  _headerCell('Kgs.'),
+                  _headerCell('S.L.NO'),
+                  _headerCell('KGS'),
                 ],
               ],
             ),
           ),
+
           for (int r = 0; r < rows; r++)
             Container(
+              height: cellHeight,
               decoration: const BoxDecoration(
                 border: Border(
                   top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
@@ -811,15 +783,17 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                 children: [
                   for (int c = 0; c < cols; c++) ...[
                     _dataCell(() {
-                      final idx = startIndex + r + (c * rows);
+                      final idx = startIndex + (c * rows) + r;
                       return idx < _baleEntries.length ? '${idx + 1}' : '';
                     }()),
-                    _buildWeightCell(startIndex + r + (c * rows)),
+                    _buildWeightCell(startIndex + (c * rows) + r),
                   ],
                 ],
               ),
             ),
+
           Container(
+            height: 30,
             decoration: const BoxDecoration(
               color: Color(0xFFF8FAFC),
               border: Border(
@@ -830,9 +804,10 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
             child: Row(
               children: [
                 for (int c = 0; c < cols; c++) ...[
-                  _totalCell(c == 0 ? 'TOTAL' : ''),
+                  _totalCell(c == 0 ? 'TOTAL ::' : ''),
                   _totalCell(_fmt(
-                      _getColumnTotal(startIndex + (c * rows), rows))),
+                    _getColumnTotal(startIndex + (c * rows), rows),
+                  )),
                 ],
               ],
             ),
@@ -842,13 +817,12 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     );
   }
 
-  double _getColumnTotal(int startBaleNo, int count) {
+  double _getColumnTotal(int startBaleIndex, int rows) {
     double total = 0;
-    for (int i = 0; i < count; i++) {
-      final baleNo = startBaleNo + i + 1;
-      final index = baleNo - 1;
-      if (index >= 0 && index < _baleEntries.length) {
-        total += _baleEntries[index].weight;
+    for (int r = 0; r < rows; r++) {
+      final idx = startBaleIndex + r;
+      if (idx >= 0 && idx < _baleEntries.length) {
+        total += _baleEntries[idx].weight;
       }
     }
     return total;
@@ -892,7 +866,15 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
 
   Widget _buildWeightCell(int baleIndex) {
     if (baleIndex >= _baleEntries.length) {
-      return Expanded(child: Container());
+      return Expanded(
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(
+              left: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+            ),
+          ),
+        ),
+      );
     }
     final entry = _baleEntries[baleIndex];
     final isOutOfRange = !widget.isModify &&
@@ -902,9 +884,13 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
 
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        decoration: const BoxDecoration(
+          border: Border(
+            left: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
+          ),
+        ),
+        alignment: Alignment.center,
         child: TextFormField(
-          // Key only changes on generate/load, NOT while typing → keeps focus
           key: ValueKey('bale_${entry.baleNo}_$_gridVersion'),
           initialValue: entry.weight == 0 ? '' : _fmt(entry.weight),
           keyboardType: TextInputType.number,
@@ -913,13 +899,14 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w500,
-            color: isOutOfRange ? Colors.red : null,
+            color: isOutOfRange ? Colors.red : const Color(0xFF0F172A),
           ),
           decoration: const InputDecoration(
             isDense: true,
-            contentPadding:
-            EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            contentPadding: EdgeInsets.symmetric(vertical: 6, horizontal: 2),
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
           ),
           onChanged: (value) {
             final w = (int.tryParse(value) ?? 0).toDouble();
@@ -935,10 +922,15 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   }
 
   // ============================================================
-  // BUILD — HEADER (matches Excel)
+  // BUILD — HEADER
   // ============================================================
 
   Widget _buildHeaderSection() {
+    const titleStyle = TextStyle(
+        fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A));
+    const subStyle = TextStyle(
+        fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155));
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -948,30 +940,45 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       ),
       child: Column(
         children: [
-          const Text('THE COTTON CORPORATION OF INDIA LTD',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A))),
+          const Text('THE COTTON CORPORATION OF INDIA LTD.',
+              style: titleStyle),
           const SizedBox(height: 2),
-          const Text('BRANCH OFFICE :: MAHABUBNAGAR',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF334155))),
+          Text('CENTRE ::: ${(_selectedCentre ?? '').toUpperCase()}',
+              style: titleStyle),
           const SizedBox(height: 2),
-          Text('CENTRE :: ${(_selectedCentre ?? '').toUpperCase()}',
-              style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF334155))),
+          const Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
+              style: subStyle),
           const SizedBox(height: 10),
+
+          // VARIETY (DD)            |  LOT NO
+          Row(children: [
+            Expanded(
+              child: _dropdownField(
+                label: 'VARIETY (DD)',
+                value: _selectedVariety,
+                options: _varieties,
+                onChanged: (v) => setState(() => _selectedVariety = v),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _compactField(
+                controller: _lotNoController,
+                label: 'LOT NO',
+                hint: 'e.g., 1031',
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+
+          // DT.OF PRESSING (free text)  |  P.R.NO
           Row(children: [
             Expanded(
               child: _compactField(
-                controller: _pmarkNoController,
-                label: 'P.MARK NO',
-                hint: 'e.g., VI TMC',
+                controller: _pressingDateController,
+                label: 'DT.OF PRESSING',
+                hint: 'e.g., 100 BALES: 7-12-2025',
+                isUpperCase: true,
               ),
             ),
             const SizedBox(width: 8),
@@ -979,53 +986,23 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
               child: _compactField(
                 controller: _prNoController,
                 label: 'P.R.NO',
-                hint: 'e.g., 1001-1100',
+                hint: 'e.g., 12101-12200',
               ),
             ),
           ]),
           const SizedBox(height: 8),
+
+          // P.M.NO (DD)             |  NO OF BALES
           Row(children: [
             Expanded(
-              child: DropdownButtonFormField<String>(
-                value: _selectedVariety,
-                decoration: _compactInputDecoration('VARIETY', 'Select'),
-                items: _varieties
-                    .map((v) =>
-                    DropdownMenuItem(value: v, child: Text(v)))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedVariety = v),
-                validator: (v) => v == null ? 'Select variety' : null,
+              child: _dropdownField(
+                label: 'P.M.NO (DD)',
+                value: _selectedPmNo,
+                options: _pmNos,
+                onChanged: (v) => setState(() => _selectedPmNo = v),
               ),
             ),
             const SizedBox(width: 8),
-            Expanded(
-              child: _compactField(
-                controller: _sampleBaleNoController,
-                label: 'Sample Bale No',
-                hint: 'e.g., 38,75',
-              ),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-              child: _compactField(
-                controller: _lotNoController,
-                label: 'LOT NO',
-                hint: 'e.g., 1001',
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _compactField(
-                controller: _godownController,
-                label: 'GODOWN',
-                hint: 'e.g., Elements Godown, Medchal',
-              ),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
             Expanded(
               child: _compactField(
                 controller: _noOfBalesController,
@@ -1034,58 +1011,93 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                 keyboardType: TextInputType.number,
               ),
             ),
+          ]),
+          const SizedBox(height: 8),
+
+          // CROP YEAR (DD)          |  S.B.NO
+          Row(children: [
+            Expanded(
+              child: _dropdownField(
+                label: 'CROP YEAR (DD)',
+                value: _selectedCropYear,
+                options: _cropYears,
+                onChanged: (v) => setState(() => _selectedCropYear = v),
+              ),
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: _compactField(
-                controller: _moistureController,
-                label: 'MOISTURE',
-                hint: 'e.g., 8.1',
-                keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true),
+                controller: _sampleBaleNoController,
+                label: 'S.B.NO',
+                hint: 'e.g., 35/61',
               ),
             ),
           ]),
           const SizedBox(height: 8),
-          InkWell(
-            onTap: widget.isModify ? null : () => _selectDate(context),
-            child: Container(
-              padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                borderRadius: BorderRadius.circular(6),
-                color:
-                widget.isModify ? const Color(0xFFF1F5F9) : Colors.white,
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today,
-                      size: 14, color: Color(0xFF64748B)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'DATE OF PRESSING: ${CommonFormWidgets.formatDate(_selectedDate)}',
-                    style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF334155)),
-                  ),
-                  const Spacer(),
-                  if (!widget.isModify)
-                    const Icon(Icons.arrow_drop_down,
-                        color: Color(0xFF64748B)),
-                ],
+
+          // UBIN NO                 |  LOT AVG MOISTURE
+          Row(children: [
+            Expanded(
+              child: _compactField(
+                controller: _ubinNoController,
+                label: 'UBIN NO',
+                hint: 'e.g., 25096HUB00005101-00005200',
               ),
             ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _compactField(
+                controller: _moistureController,
+                label: 'LOT AVG MOISTURE',
+                hint: 'e.g., 8.6',
+                keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+
+          // NAME OF THE GODOWN (DD)
+          _dropdownField(
+            label: 'NAME OF THE GODOWN (DD)',
+            value: _selectedGodown,
+            options: _godowns,
+            onChanged: (v) => setState(() => _selectedGodown = v),
           ),
           const SizedBox(height: 8),
+
+          // FACTORY NAME :::
           _compactField(
             controller: _pressingFactoryController,
-            label: 'NAME OF THE PRESSING FACTORY',
-            hint: 'e.g., VIJAY INDUSTRIES',
-            isUpperCase: true,
+            label: 'FACTORY NAME',
+            hint: 'e.g., M/s. SANDEEP COTTON GINNING FACTORY',
           ),
         ],
       ),
+    );
+  }
+
+  /// Dropdown used for the "(DD)" fields of the sheet.
+  Widget _dropdownField({
+    required String label,
+    required String? value,
+    required List<String> options,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      value: value,
+      isExpanded: true,
+      decoration: _compactInputDecoration(label, 'Select'),
+      style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFF0F172A)),
+      items: options
+          .map((o) => DropdownMenuItem(
+          value: o, child: Text(o, overflow: TextOverflow.ellipsis)))
+          .toList(),
+      onChanged: onChanged,
+      validator: (v) => (v == null || v.isEmpty) ? 'Select $label' : null,
     );
   }
 
@@ -1166,22 +1178,22 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
       child: Column(
         children: [
           _editableSummaryRow(
-            label: 'Total Gross Weight :',
+            label: 'TOTAL GROSS WT ::',
             controller: _totalGrossController,
             hint: 'e.g. 175',
             onChanged: _onGrossChanged,
           ),
           const SizedBox(height: 6),
           _editableSummaryRow(
-            label: 'Tare Weight :',
+            label: 'TOTAL TARE WT ::',
             controller: _tareWeightController,
-            hint: '1.30',
+            hint: '1.2',
             width: 80,
             onChanged: _onTareChanged,
           ),
           const SizedBox(height: 6),
           _editableSummaryRow(
-            label: 'Total Nett Weight :',
+            label: 'TOTAL NET WT ::',
             controller: _totalNettController,
             hint: 'Gross - Tare',
             highlight: true,
@@ -1282,6 +1294,66 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   }
 
   // ============================================================
+  // BUILD — FOOTER (matches Excel bottom block)
+  //
+  //              For The Cotton Corporation of India Ltd.
+  //  Factory Owner / Rep              Centre Incharge
+  // ============================================================
+
+  Widget _buildFooterSection() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          const Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'For The Cotton Corporation of India Ltd.',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          const Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Factory Owner / Rep',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  'Centre Incharge',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
   // MAIN BUILD
   // ============================================================
 
@@ -1366,40 +1438,13 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                   const SizedBox(height: 12),
 
                   if (!widget.isModify)
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: CommonFormWidgets.centreDropdown(
-                            selectedCentre: _selectedCentre,
-                            readOnly: false,
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedCentre = value;
-                                _reportNoController.text = '';
-                              });
-                              if (value != null) {
-                                _rememberCentre(value);
-                                _autoGenerateReportNo();
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 1,
-                          child: CommonFormWidgets.textField(
-                            controller: _reportNoController,
-                            label: 'Report No.',
-                            hint: _isLoadingReportNo
-                                ? 'Loading...'
-                                : 'e.g., 1',
-                            icon: Icons.numbers,
-                            keyboardType: TextInputType.number,
-                            readOnly: true,
-                          ),
-                        ),
-                      ],
+                    CommonFormWidgets.centreDropdown(
+                      selectedCentre: _selectedCentre,
+                      readOnly: false,
+                      onChanged: (value) {
+                        setState(() => _selectedCentre = value);
+                        if (value != null) _rememberCentre(value);
+                      },
                     ),
                   const SizedBox(height: 12),
 
@@ -1415,24 +1460,30 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                           _buildHeaderSection(),
                           const SizedBox(height: 16),
 
-                          CommonFormWidgets.sectionHeader(
-                              'Weight Summary (per bale)'),
-                          const SizedBox(height: 8),
-                          _buildSummarySection(),
-                          const SizedBox(height: 16),
-
+                          // ---- BALE GRID (Excel: rows 13-37) ----
                           CommonFormWidgets.sectionHeader(
                               'Bale Weights (In Kgs.)'),
                           const SizedBox(height: 8),
-
-                          // Blocks of 50 bales (10 rows x 5 cols), like the sheet
-                          for (int b = 0; b < (totalBales / 50).ceil(); b++)
+                          for (int b = 0;
+                          b < (totalBales / 50).ceil();
+                          b++)
                             _buildBaleTableSection(
                               startIndex: b * 50,
                               rows: ((totalBales - b * 50).clamp(1, 50) / 5)
                                   .ceil(),
                               cols: 5,
                             ),
+                          const SizedBox(height: 16),
+
+                          // ---- SUMMARY (Excel: rows 39-41) ----
+                          CommonFormWidgets.sectionHeader(
+                              'Weight Summary (per bale)'),
+                          const SizedBox(height: 8),
+                          _buildSummarySection(),
+                          const SizedBox(height: 16),
+
+                          // ---- FOOTER / SIGNATURES (Excel bottom) ----
+                          _buildFooterSection(),
                           const SizedBox(height: 12),
                         ],
                       ),
@@ -1487,8 +1538,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
                             width: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                              AlwaysStoppedAnimation<Color>(
+                              valueColor: AlwaysStoppedAnimation<Color>(
                                   Colors.white),
                             ),
                           )
