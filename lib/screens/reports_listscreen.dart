@@ -42,8 +42,7 @@ class _PurchaseGroup {
     return list.join(', ');
   }
 
-  /// The entry used as the base for the preview. We prefer one with the most
-  /// populated factories list, falling back to the first entry.
+  /// The entry used as the base for the preview.
   Map<String, dynamic> get primaryEntry {
     if (entries.isEmpty) return {};
     Map<String, dynamic> best = entries.first;
@@ -64,11 +63,6 @@ class _PurchaseGroup {
     return 0;
   }
 
-  /// Merge this group's entries into one preview-ready map.
-  ///
-  /// Strategy: start from the primary entry, then for every other entry in
-  /// the group, inject its own-variety data into `otherVarietiesProgressive`
-  /// so the preview can render all varieties side-by-side.
   Map<String, dynamic> toPreviewData() {
     final base = Map<String, dynamic>.from(primaryEntry);
     final primaryVariety =
@@ -117,10 +111,6 @@ class _PurchaseGroup {
       if (vRaw.isEmpty) continue;
       if (vRaw.toLowerCase() == primaryVariety) continue;
 
-      // Use the raw variety (as stored) so the preview lookup `_v()` still
-      // finds it — but the preview's `_varieties` list is fixed to
-      // ['BB MOD', 'BB SPL MOD', 'MECH'], so case-insensitive matching
-      // only matters when the typed casing differs from those.
       final bucket = merged.putIfAbsent(vRaw, () => <String, dynamic>{});
       for (final f in copyFields) {
         if (e.containsKey(f)) bucket[f] = e[f];
@@ -132,14 +122,36 @@ class _PurchaseGroup {
   }
 }
 
+/// A group of weight list entries that share centre + variety + lotNo.
+class _WeightListGroup {
+  final String centre;
+  final String variety;
+  final String lotNo;
+  final List<Map<String, dynamic>> entries;
+
+  _WeightListGroup({
+    required this.centre,
+    required this.variety,
+    required this.lotNo,
+    required this.entries,
+  });
+
+  String get key =>
+      '${centre.trim().toLowerCase()}|${variety.trim().toLowerCase()}|${lotNo.trim().toLowerCase()}';
+
+  String get displayLotNo => lotNo.isEmpty ? '—' : lotNo;
+}
+
 class _ReportsListScreenState extends State<ReportsListScreen> {
   List<Map<String, dynamic>> _items = [];
   List<_PurchaseGroup> _purchaseGroups = [];
+  List<_WeightListGroup> _weightListGroups = [];
   bool _isLoading = true;
   String? _error;
   String? _deletingId;
 
   bool get _isPurchase => widget.reportType == 'purchase';
+  bool get _isWeightList => widget.reportType == 'weightList';
 
   String get _title {
     switch (widget.reportType) {
@@ -186,6 +198,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       _items = result.items;
       _error = result.error;
       _purchaseGroups = _isPurchase ? _groupPurchases(result.items) : [];
+      _weightListGroups =
+      _isWeightList ? _groupWeightLists(result.items) : [];
       _isLoading = false;
     });
   }
@@ -219,7 +233,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   }
 
   // ------------------------------------------------------------
-  // GROUPING (purchase only)
+  // GROUPING — Purchase
   // ------------------------------------------------------------
 
   List<_PurchaseGroup> _groupPurchases(List<Map<String, dynamic>> items) {
@@ -232,8 +246,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       final reportNo = (e['reportNo'] ?? '').toString();
       final variety = (e['variety'] ?? '').toString().trim();
 
-      // Case-insensitive key so varieties typed with different casing
-      // (e.g. "bb mod" vs "BB MOD") collapse into a single report group.
       final key =
           '${centre.trim().toLowerCase()}|$dateKey|$reportNo|${variety.toLowerCase()}';
 
@@ -251,7 +263,6 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
 
     final groups = map.values.toList();
 
-    // Newest first (by date, then report no).
     groups.sort((a, b) {
       final da = DateTime.tryParse(a.date);
       final db = DateTime.tryParse(b.date);
@@ -260,6 +271,72 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       final rb = int.tryParse(b.reportNo) ?? 0;
       return rb.compareTo(ra);
     });
+
+    return groups;
+  }
+
+  // ------------------------------------------------------------
+  // GROUPING — Weight List (centre + variety + lotNo)
+  // ------------------------------------------------------------
+
+  List<_WeightListGroup> _groupWeightLists(List<Map<String, dynamic>> items) {
+    final map = <String, _WeightListGroup>{};
+
+    for (final e in items) {
+      final centre = (e['centre'] ?? '').toString();
+      final variety = (e['variety'] ?? '').toString().trim();
+      final lotNo = (e['lotNo'] ?? '').toString().trim();
+
+      final key =
+          '${centre.trim().toLowerCase()}|${variety.toLowerCase()}|${lotNo.toLowerCase()}';
+
+      final g = map.putIfAbsent(
+        key,
+            () => _WeightListGroup(
+          centre: centre,
+          variety: variety,
+          lotNo: lotNo,
+          entries: [],
+        ),
+      );
+      g.entries.add(e);
+    }
+
+    final groups = map.values.toList();
+
+    // Sort groups by latest entry date (newest first).
+    groups.sort((a, b) {
+      DateTime? latest(_WeightListGroup g) {
+        DateTime? best;
+        for (final e in g.entries) {
+          final dt = DateTime.tryParse(e['date']?.toString() ?? '');
+          if (dt == null) continue;
+          if (best == null || dt.isAfter(best)) best = dt;
+        }
+        return best;
+      }
+
+      final da = latest(a);
+      final db = latest(b);
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return db.compareTo(da);
+    });
+
+    // Sort entries within each group by report number ascending, so the
+    // stacked preview shows Report 1, Report 2, ... in a stable order.
+    for (final g in groups) {
+      g.entries.sort((a, b) {
+        final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
+        final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
+        if (ra != rb) return ra.compareTo(rb);
+        final da = DateTime.tryParse(a['date']?.toString() ?? '');
+        final db = DateTime.tryParse(b['date']?.toString() ?? '');
+        if (da == null || db == null) return 0;
+        return da.compareTo(db);
+      });
+    }
 
     return groups;
   }
@@ -303,6 +380,20 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       builder: (_) => PreviewDialog(
         type: ReportType.dailyPurchase,
         data: g.toPreviewData(),
+      ),
+    );
+  }
+
+  /// Opens the stacked preview for a Weight List group.
+  void _openWeightListGroup(_WeightListGroup g) {
+    showDialog(
+      context: context,
+      builder: (_) => PreviewDialog(
+        type: ReportType.weightList,
+        // `data` is used by the single-report path / fallback; for the
+        // grouped path we hand the whole list via `groupData`.
+        data: g.entries.isNotEmpty ? g.entries.first : null,
+        groupData: g.entries,
       ),
     );
   }
@@ -368,7 +459,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     if (response.success) _load();
   }
 
-  /// Delete an entire purchase group — all entries sharing centre+date+reportNo.
+  /// Delete an entire purchase group.
   Future<void> _confirmAndDeleteGroup(_PurchaseGroup g) async {
     final ids = <String>[];
     for (final e in g.entries) {
@@ -496,8 +587,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
                 Expanded(
                   child: Text(
                     extraNote,
-                    style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade600),
+                    style:
+                    TextStyle(fontSize: 11, color: Colors.grey.shade600),
                   ),
                 ),
               ],
@@ -548,6 +639,8 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           ? _buildError(_error!)
           : _isPurchase
           ? _buildPurchaseList()
+          : _isWeightList
+          ? _buildWeightListGroupedList()
           : _buildSimpleList(),
     );
   }
@@ -657,7 +750,67 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
   }
 
   // ------------------------------------------------------------
-  // SEED + WEIGHT LIST — one card per entry
+  // WEIGHT LIST — grouped list (centre + variety + lotNo)
+  // ------------------------------------------------------------
+
+  Widget _buildWeightListGroupedList() {
+    if (_weightListGroups.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Text(
+            'No reports found.',
+            style: TextStyle(color: Color(0xFF64748B)),
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _weightListGroups.length,
+      itemBuilder: (context, index) {
+        final g = _weightListGroups[index];
+        final entryCount = g.entries.length;
+
+        final subtitleParts = <String>[
+          'Lot No: ${g.displayLotNo}',
+          if (entryCount > 1) 'Entries: $entryCount',
+        ];
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          shape:
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 2,
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: const CircleAvatar(
+              backgroundColor: Color(0xFFFEF3C7),
+              child: Icon(Icons.scale_rounded, color: Color(0xFF0F172A)),
+            ),
+            title: Text(
+              g.variety.isEmpty
+                  ? (g.centre.isEmpty ? '—' : g.centre)
+                  : '${g.centre} — ${g.variety}',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+            subtitle: Text(
+              subtitleParts.join('  •  '),
+              style: const TextStyle(
+                  color: Color(0xFF64748B), fontSize: 13),
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openWeightListGroup(g),
+          ),
+        );
+      },
+    );
+  }
+
+  // ------------------------------------------------------------
+  // SEED — one card per entry (unchanged)
   // ------------------------------------------------------------
 
   Widget _buildSimpleList() {
@@ -698,16 +851,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
           elevation: 2,
           child: ListTile(
             contentPadding: const EdgeInsets.all(16),
-            leading: CircleAvatar(
-              backgroundColor: widget.reportType == 'weightList'
-                  ? const Color(0xFFFEF3C7)
-                  : const Color(0xFFD1FAE5),
-              child: Icon(
-                widget.reportType == 'weightList'
-                    ? Icons.scale_rounded
-                    : Icons.eco_rounded,
-                color: const Color(0xFF0F172A),
-              ),
+            leading: const CircleAvatar(
+              backgroundColor: Color(0xFFD1FAE5),
+              child: Icon(Icons.eco_rounded, color: Color(0xFF0F172A)),
             ),
             title: Text(
               variety.isEmpty ? centre : '$centre — $variety',

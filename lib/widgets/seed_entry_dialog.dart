@@ -21,10 +21,6 @@ class SeedEntryDialog extends StatefulWidget {
   State<SeedEntryDialog> createState() => _SeedEntryDialogState();
 }
 
-// ============================================================
-// SEED FACTORY ROW MODEL — only inputs are stored; Kaps/Ready/Total
-// are always computed on the fly from the formulas.
-// ============================================================
 class SeedFactoryRow {
   String factoryName;
   String variety;
@@ -46,30 +42,20 @@ class SeedFactoryRow {
     required this.marketRateMax,
   });
 
-  // ---- Unsold (Group 1) ----
-  // Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
   double get ready1 {
     if (realised < soldQty) return 0;
     return realised - soldQty;
   }
 
-  // Kaps_1 = Realisable − Sold Qty − Ready_1
   double get kaps1 => realisable - soldQty - ready1;
-
-  // Total_1 = Kaps_1 + Ready_1
   double get total1 => kaps1 + ready1;
 
-  // ---- Sold but not lifted (Group 2) ----
-  // Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
   double get kaps2 {
     if (realised > soldQty) return 0;
     return soldQty - realised;
   }
 
-  // Ready_2 = Sold Qty − Prog Delivery − Kaps_2
   double get ready2 => soldQty - progDelivery - kaps2;
-
-  // Total_2 = Kaps_2 + Ready_2
   double get total2 => kaps2 + ready2;
 
   Map<String, dynamic> toJson() => {
@@ -118,6 +104,12 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
   final _reportNoController = TextEditingController();
 
   String? _lookupVariety;
+
+  // ⭐ NEW: Factory names for the dropdown
+  static const List<String> _factoryNames = [
+    'Vijay Industries',
+    'Balaji Industries',
+  ];
 
   List<SeedFactoryRow> _seedFactories = [];
 
@@ -419,25 +411,27 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
     }
   }
 
-  // -------------------- Factory popup --------------------
-
   void _openAddSeedFactoryDialog() => _showSeedFactoryFormDialog(null);
   void _openEditSeedFactoryDialog(int index) =>
       _showSeedFactoryFormDialog(_seedFactories[index]);
 
-  // ============================================================
-  // FACTORY FORM POPUP — all 16 fields, derived ones read-only
-  // ============================================================
+  // ⭐ CHANGED: Factory dropdown
   void _showSeedFactoryFormDialog(SeedFactoryRow? factoryData) {
-    final nameController =
-    TextEditingController(text: factoryData?.factoryName ?? '');
+    // Ensure any legacy factory name from old data is available in the list
+    final legacyName = factoryData?.factoryName.trim() ?? '';
+    final factoryOptions = List<String>.from(_factoryNames);
+    if (legacyName.isNotEmpty && !factoryOptions.contains(legacyName)) {
+      factoryOptions.add(legacyName);
+    }
+
+    String? selectedFactory =
+    legacyName.isEmpty ? null : legacyName;
 
     String selectedVariety = (factoryData?.variety != null &&
         ReportConstants.varieties.contains(factoryData!.variety))
         ? factoryData.variety
         : ReportConstants.varieties.first;
 
-    // Inputs (editable)
     final realisableController =
     TextEditingController(text: factoryData?.realisable.toString() ?? '');
     final realisedController =
@@ -451,7 +445,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
     final marketRateMaxController = TextEditingController(
         text: factoryData?.marketRateMax.toString() ?? '');
 
-    // Derived (read-only, displayed)
     final kaps1Controller = TextEditingController();
     final ready1Controller = TextEditingController();
     final total1Controller = TextEditingController();
@@ -473,25 +466,18 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
               ? v.toInt().toString()
               : v.toStringAsFixed(2);
 
-          // Recompute derived values from current inputs
           void recompute() {
             final realisable = d(realisableController);
             final realised = d(realisedController);
             final soldQty = d(soldQtyController);
             final progDelivery = d(progDeliveryController);
 
-            // 10. Ready_1 = if(Realised < Sold Qty, 0, Realised − Sold Qty)
             final ready1 = realised < soldQty ? 0.0 : realised - soldQty;
-            // 9. Kaps_1 = Realisable − Sold Qty − Ready_1
             final kaps1 = realisable - soldQty - ready1;
-            // 11. Total_1 = Kaps_1 + Ready_1
             final total1 = kaps1 + ready1;
 
-            // 12. Kaps_2 = if(Realised > Sold Qty, 0, Sold Qty − Realised)
             final kaps2 = realised > soldQty ? 0.0 : soldQty - realised;
-            // 13. Ready_2 = Sold Qty − Prog Delivery − Kaps_2
             final ready2 = soldQty - progDelivery - kaps2;
-            // 14. Total_2 = Kaps_2 + Ready_2
             final total2 = kaps2 + ready2;
 
             kaps1Controller.text = fmt(kaps1);
@@ -502,7 +488,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
             total2Controller.text = fmt(total2);
           }
 
-          // Compute initial values for edit mode
           if (kaps1Controller.text.isEmpty &&
               realisableController.text.isNotEmpty) {
             recompute();
@@ -521,7 +506,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Sno — read-only, only in edit mode
                       if (isEditing)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -537,16 +521,39 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                           ),
                         ),
 
-                      // 3. Name of the Factory
-                      CommonFormWidgets.textField(
-                        controller: nameController,
-                        label: 'Name of the Factory',
-                        hint: 'e.g., Vijay Industries',
-                        icon: Icons.factory,
+                      // ⭐ FACTORY DROPDOWN
+                      DropdownButtonFormField<String>(
+                        value: selectedFactory,
+                        decoration: InputDecoration(
+                          labelText: 'Name of the Factory',
+                          hintText: 'Select factory',
+                          prefixIcon: const Icon(Icons.factory,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                        items: factoryOptions
+                            .map((v) => DropdownMenuItem(
+                            value: v, child: Text(v)))
+                            .toList(),
+                        onChanged: (value) =>
+                            setDialogState(() => selectedFactory = value),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please select a factory';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 12),
 
-                      // 4. Variety
                       DropdownButtonFormField<String>(
                         value: selectedVariety,
                         decoration: InputDecoration(
@@ -579,7 +586,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ---- PROG. QTY. OF COTTON SEED (IN QTLS) ----
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -593,7 +599,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 6),
 
-                      // 5. Realisable
                       TextFormField(
                         controller: realisableController,
                         keyboardType:
@@ -618,7 +623,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 10),
 
-                      // 6. Realised
                       TextFormField(
                         controller: realisedController,
                         keyboardType:
@@ -643,7 +647,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 10),
 
-                      // 7. Sold Quantity
                       TextFormField(
                         controller: soldQtyController,
                         keyboardType:
@@ -668,7 +671,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ---- PROGRESSIVE DELIVERY (IN QTLS) ----
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -682,7 +684,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 6),
 
-                      // 8. Unsold Qty (input)
                       TextFormField(
                         controller: progDeliveryController,
                         keyboardType:
@@ -708,7 +709,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 10),
 
-                      // 9, 10, 11. Kaps / Ready / Total (derived, read-only)
                       Row(
                         children: [
                           Expanded(
@@ -744,7 +744,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ---- SOLD BUT NOT LIFTED QTY (IN QTLS) ----
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -758,7 +757,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 6),
 
-                      // 12, 13, 14. Kaps / Ready / Total (derived, read-only)
                       Row(
                         children: [
                           Expanded(
@@ -794,7 +792,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 14),
 
-                      // ---- COTTON SEED MARKET RATE ----
                       const Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
@@ -808,7 +805,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ),
                       const SizedBox(height: 6),
 
-                      // 15, 16. Market rate min / max
                       Row(
                         children: [
                           Expanded(
@@ -859,7 +855,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                 onPressed: () {
                   if (_factoryFormKey.currentState!.validate()) {
                     final row = SeedFactoryRow(
-                      factoryName: nameController.text.trim(),
+                      factoryName: selectedFactory ?? '',
                       variety: selectedVariety,
                       realisable:
                       double.tryParse(realisableController.text) ?? 0,
@@ -875,7 +871,7 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
 
                     setState(() {
                       if (isEditing) {
-                        final index = _seedFactories.indexOf(factoryData);
+                        final index = _seedFactories.indexOf(factoryData!);
                         _seedFactories[index] = row;
                       } else {
                         _seedFactories.add(row);
@@ -924,9 +920,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
     );
   }
 
-  // ============================================================
-  // FACTORY TABLE — matches Excel columns exactly
-  // ============================================================
   Widget _buildSeedFactoryTable() {
     if (_seedFactories.isEmpty) {
       return Container(
@@ -1011,12 +1004,10 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
               width: 1650,
               child: Column(
                 children: [
-                  // ---------- Group header row ----------
                   Container(
                     color: headerBg,
                     child: Row(
                       children: [
-                        // SR. NO.
                         Expanded(
                           flex: 1,
                           child: Container(
@@ -1030,7 +1021,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // CENTRE
                         Expanded(
                           flex: 2,
                           child: Container(
@@ -1044,7 +1034,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // Name of Factory
                         Expanded(
                           flex: 3,
                           child: Container(
@@ -1058,7 +1047,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // Variety
                         Expanded(
                           flex: 2,
                           child: Container(
@@ -1072,7 +1060,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // PROG QTY (3 cols)
                         Expanded(
                           flex: 3,
                           child: Container(
@@ -1088,7 +1075,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // PROGRESSIVE DELIVERY (4 cols: Unsold Qty + KAPAS + READY + TOTAL)
                         Expanded(
                           flex: 4,
                           child: Container(
@@ -1104,7 +1090,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // SOLD BUT NOT LIFTED (3 cols)
                         Expanded(
                           flex: 3,
                           child: Container(
@@ -1120,7 +1105,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // Market rate min
                         Expanded(
                           flex: 2,
                           child: Container(
@@ -1135,7 +1119,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // Market rate max
                         Expanded(
                           flex: 2,
                           child: Container(
@@ -1150,7 +1133,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                                     fontWeight: FontWeight.w700)),
                           ),
                         ),
-                        // Actions
                         const SizedBox(
                           width: 80,
                           child: Padding(
@@ -1165,8 +1147,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ],
                     ),
                   ),
-
-                  // ---------- Sub-header row ----------
                   Container(
                     decoration: BoxDecoration(
                       color: headerBg,
@@ -1196,8 +1176,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
                       ],
                     ),
                   ),
-
-                  // ---------- Data rows ----------
                   ..._seedFactories.asMap().entries.map((entry) {
                     final index = entry.key;
                     final f = entry.value;
@@ -1264,8 +1242,6 @@ class _SeedEntryDialogState extends State<SeedEntryDialog> {
       ),
     );
   }
-
-  // -------------------- Build --------------------
 
   @override
   Widget build(BuildContext context) {

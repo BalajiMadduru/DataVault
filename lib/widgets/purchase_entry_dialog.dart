@@ -52,6 +52,12 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   final List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
   String? _selectedVariety;
 
+  // ⭐ NEW: Factory names for the dropdown
+  static const List<String> _factoryNames = [
+    'Vijay Industries',
+    'Balaji Industries',
+  ];
+
   final _farmersDayController = TextEditingController();
   final _arrivalsBalesController = TextEditingController();
   final _cciPurchaseQtlsController = TextEditingController();
@@ -187,7 +193,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   // RECALCULATION METHODS
   // ============================================================
 
-  /// Budgeted Cotton Seed Percentage = 100 - Budgeted Lint % - Budgeted Shortage %
   void _recalculateBudgetedCottonSeedPct() {
     final lint = double.tryParse(_budgetedLintController.text) ?? 0;
     final shortage = double.tryParse(_budgetedShortageController.text) ?? 0;
@@ -488,6 +493,53 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         });
       }
     }
+  }
+
+  /// ⭐ NEW: Fetch the previous progressive values for a specific factory
+  /// from the latest purchase entry that contains it.
+  Future<Map<String, double>> _fetchPreviousFactoryProgressive(
+      String factoryName) async {
+    double bestQtls = 0;
+    double bestBales = 0;
+
+    try {
+      final response = await ApiService.getPurchaseEntries();
+      if (response.success && response.data != null) {
+        final entries = response.data!['entries'] as List? ?? [];
+        // Sort by reportNo descending to find the latest entry
+        final sorted = entries
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList()
+          ..sort((a, b) {
+            final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
+            final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
+            return rb.compareTo(ra);
+          });
+
+        for (final e in sorted) {
+          // Skip the current doc if editing
+          final id = (e['id'] ?? e['_id'])?.toString();
+          if (widget.isModify && _docId != null && id == _docId) continue;
+
+          final factories = e['factories'];
+          if (factories is! List) continue;
+          for (final f in factories) {
+            if (f is! Map) continue;
+            final fname = (f['factoryName'] ?? '').toString().trim();
+            if (fname.toLowerCase() == factoryName.toLowerCase()) {
+              bestQtls = (f['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+              bestBales = (f['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+              break;
+            }
+          }
+          if (bestQtls > 0 || bestBales > 0) break;
+        }
+      }
+    } catch (e) {
+      debugLog('Error fetching previous factory progressive: $e');
+    }
+
+    return {'qtls': bestQtls, 'bales': bestBales};
   }
 
   Future<void> _loadDefaultCentre() async {
@@ -945,14 +997,12 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       return;
     }
 
-    // Capture the saved doc id.
     if (response.data != null && response.data!['id'] != null) {
       _docId = response.data!['id'] as String?;
       _savedDocId = _docId;
       _isEntrySaved = true;
     }
 
-    // ⭐ Auto-generate/update the proforma document.
     if (_docId != null && _docId!.isNotEmpty) {
       final qty = double.tryParse(_cciPurchaseQtlsController.text) ?? 0;
       final rate = double.tryParse(_avgKapasRateController.text) ?? 0;
@@ -1022,9 +1072,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   void _openEditPurchaseFactoryDialog(int index) =>
       _showPurchaseFactoryFormDialog(_purchaseFactories[index]);
 
+  // ⭐ CHANGED: Factory dropdown + auto-fill previous progressive
   void _showPurchaseFactoryFormDialog(PurchaseFactoryProgData? factoryData) {
-    final nameController =
-    TextEditingController(text: factoryData?.factoryName ?? '');
+    String? selectedFactory = factoryData?.factoryName;
+    if (selectedFactory != null && !_factoryNames.contains(selectedFactory)) {
+      selectedFactory = null;
+    }
+
     final progQtlsController = TextEditingController(
         text: factoryData?.progPurchaseQtls.toString() ?? '');
     final progBalesController = TextEditingController(
@@ -1043,12 +1097,33 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     final isEditing = factoryData != null;
 
-    // Fills the read-only progressive fields from the purchase values.
+    // Track previous progressive values for the selected factory.
+    double previousProgQtls = 0;
+    double previousProgBales = 0;
+    bool isLoadingPrevious = false;
+
+    // Fills the read-only progressive fields: previous + today's purchase.
     void generateProgressive() {
-      progQtlsController.text = _formatNumber(
-          double.tryParse(purchaseQtlsController.text.trim()) ?? 0);
-      progBalesController.text = _formatNumber(
-          double.tryParse(purchaseBalesController.text.trim()) ?? 0);
+      final todayQtls =
+          double.tryParse(purchaseQtlsController.text.trim()) ?? 0;
+      final todayBales =
+          double.tryParse(purchaseBalesController.text.trim()) ?? 0;
+      progQtlsController.text =
+          _formatNumber(previousProgQtls + todayQtls);
+      progBalesController.text =
+          _formatNumber(previousProgBales + todayBales);
+    }
+
+    // In edit mode, derive the previous value from stored prog - today.
+    if (isEditing) {
+      final todayQtls =
+          double.tryParse(purchaseQtlsController.text.trim()) ?? 0;
+      final todayBales =
+          double.tryParse(purchaseBalesController.text.trim()) ?? 0;
+      previousProgQtls = (factoryData?.progPurchaseQtls ?? 0) - todayQtls;
+      previousProgBales = (factoryData?.progPurchaseBales ?? 0) - todayBales;
+      if (previousProgQtls < 0) previousProgQtls = 0;
+      if (previousProgBales < 0) previousProgBales = 0;
     }
 
     Widget readOnlyField(
@@ -1071,158 +1146,253 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
-        content: SizedBox(
-          width: 400,
-          child: Form(
-            key: _factoryFormKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CommonFormWidgets.textField(
-                    controller: nameController,
-                    label: 'Factory Name',
-                    hint: 'e.g., M/s.Vijay Industries',
-                    icon: Icons.factory,
-                  ),
-                  const SizedBox(height: 12),
-                  // Day purchase values (entered by user)
-                  Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> onFactorySelected(String? name) async {
+            if (name == null || name.isEmpty) return;
+
+            setDialogState(() {
+              selectedFactory = name;
+              isLoadingPrevious = true;
+              previousProgQtls = 0;
+              previousProgBales = 0;
+            });
+
+            // Fetch previous progressive values for this factory
+            final prev = await _fetchPreviousFactoryProgressive(name);
+
+            if (!context.mounted) return;
+
+            setDialogState(() {
+              isLoadingPrevious = false;
+              previousProgQtls = prev['qtls'] ?? 0;
+              previousProgBales = prev['bales'] ?? 0;
+            });
+
+            // Auto-fill progressive if purchase values are present
+            if (purchaseQtlsController.text.isNotEmpty ||
+                purchaseBalesController.text.isNotEmpty) {
+              generateProgressive();
+            }
+          }
+
+          return AlertDialog(
+            title: Text(isEditing ? 'Edit Factory' : 'Add Factory'),
+            content: SizedBox(
+              width: 420,
+              child: Form(
+                key: _factoryFormKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: purchaseQtlsController,
-                          label: 'Purchase (Qtls)',
-                          hint: 'e.g., 602.2',
-                          icon: Icons.scale,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
+                      // ── FACTORY DROPDOWN ──
+                      DropdownButtonFormField<String>(
+                        value: selectedFactory,
+                        decoration: InputDecoration(
+                          labelText: 'Factory Name',
+                          hintText: 'Select factory',
+                          prefixIcon: const Icon(Icons.factory,
+                              color: Color(0xFF64748B)),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                                color: Color(0xFF0F172A), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                        ),
+                        items: _factoryNames
+                            .map((v) => DropdownMenuItem(
+                            value: v, child: Text(v)))
+                            .toList(),
+                        onChanged: (v) {
+                          onFactorySelected(v);
+                        },
+                        validator: (v) => (v == null || v.isEmpty)
+                            ? 'Please select a factory'
+                            : null,
+                      ),
+
+                      // Show previous progressive hint / loader
+                      if (isLoadingPrevious)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                height: 14,
+                                width: 14,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              ),
+                              SizedBox(width: 8),
+                              Text('Loading previous progressive...',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF64748B))),
+                            ],
+                          ),
+                        )
+                      else if (selectedFactory != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Previous progressive: '
+                                  '${_formatNumber(previousProgQtls)} qtls, '
+                                  '${_formatNumber(previousProgBales)} bales',
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF059669),
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+
+                      const SizedBox(height: 12),
+
+                      // Day purchase values (entered by user)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: purchaseQtlsController,
+                              label: "Today's Purchase (Qtls)",
+                              hint: 'e.g., 602.2',
+                              icon: Icons.scale,
+                              keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: purchaseBalesController,
+                              label: "Today's Purchase (Bales)",
+                              hint: 'e.g., 112',
+                              icon: Icons.inventory,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: generateProgressive,
+                          icon: const Icon(Icons.auto_awesome, size: 18),
+                          label: const Text('Generate Progressive'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF059669),
+                            side: const BorderSide(color: Color(0xFF059669)),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: purchaseBalesController,
-                          label: 'Purchase (Bales)',
-                          hint: 'e.g., 112',
-                          icon: Icons.inventory,
-                          keyboardType: TextInputType.number,
-                        ),
+                      const SizedBox(height: 12),
+                      // Progressive values (read-only, filled by the button)
+                      Row(
+                        children: [
+                          Expanded(
+                              child: readOnlyField(progQtlsController,
+                                  'Prog. Purchase (Qtls)', Icons.scale)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                              child: readOnlyField(progBalesController,
+                                  'Prog. Purchase (Bales)', Icons.inventory)),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: farmersController,
+                              label: 'Farmers',
+                              hint: 'e.g., 26',
+                              icon: Icons.people,
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: CommonFormWidgets.textField(
+                              controller: moistureController,
+                              label: 'Moisture (%)',
+                              hint: 'e.g., 10',
+                              icon: Icons.water_drop,
+                              keyboardType:
+                              const TextInputType.numberWithOptions(
+                                  decimal: true),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      CommonFormWidgets.textField(
+                        controller: seedRateController,
+                        label: 'Seed Rate (Rs. per qtl)',
+                        hint: 'e.g., 3500',
+                        icon: Icons.attach_money,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: generateProgressive,
-                      icon: const Icon(Icons.auto_awesome, size: 18),
-                      label: const Text('Generate Progressive'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF059669),
-                        side: const BorderSide(color: Color(0xFF059669)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Progressive values (read-only, filled by the button)
-                  Row(
-                    children: [
-                      Expanded(
-                          child: readOnlyField(progQtlsController,
-                              'Prog. Purchase (Qtls)', Icons.scale)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: readOnlyField(progBalesController,
-                              'Prog. Purchase (Bales)', Icons.inventory)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: farmersController,
-                          label: 'Farmers',
-                          hint: 'e.g., 26',
-                          icon: Icons.people,
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CommonFormWidgets.textField(
-                          controller: moistureController,
-                          label: 'Moisture (%)',
-                          hint: 'e.g., 10',
-                          icon: Icons.water_drop,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  CommonFormWidgets.textField(
-                    controller: seedRateController,
-                    label: 'Seed Rate (Rs. per qtl)',
-                    hint: 'e.g., 3500',
-                    icon: Icons.attach_money,
-                    keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () {
-              if (_factoryFormKey.currentState!.validate()) {
-                // If purchase values were entered but progressive wasn't
-                // generated (or is stale), generate it now.
-                generateProgressive();
-                final factory = PurchaseFactoryProgData(
-                  factoryName: nameController.text,
-                  purchaseQtls:
-                  double.tryParse(purchaseQtlsController.text) ?? 0,
-                  purchaseBales:
-                  double.tryParse(purchaseBalesController.text) ?? 0,
-                  progPurchaseQtls:
-                  double.tryParse(progQtlsController.text) ?? 0,
-                  progPurchaseBales:
-                  double.tryParse(progBalesController.text) ?? 0,
-                  farmers: double.tryParse(farmersController.text) ?? 0,
-                  moisture: double.tryParse(moistureController.text) ?? 0,
-                  seedRate: double.tryParse(seedRateController.text) ?? 0,
-                );
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () {
+                  if (_factoryFormKey.currentState!.validate()) {
+                    generateProgressive();
+                    final factory = PurchaseFactoryProgData(
+                      factoryName: selectedFactory ?? '',
+                      purchaseQtls:
+                      double.tryParse(purchaseQtlsController.text) ?? 0,
+                      purchaseBales:
+                      double.tryParse(purchaseBalesController.text) ?? 0,
+                      progPurchaseQtls:
+                      double.tryParse(progQtlsController.text) ?? 0,
+                      progPurchaseBales:
+                      double.tryParse(progBalesController.text) ?? 0,
+                      farmers: double.tryParse(farmersController.text) ?? 0,
+                      moisture: double.tryParse(moistureController.text) ?? 0,
+                      seedRate: double.tryParse(seedRateController.text) ?? 0,
+                    );
 
-                setState(() {
-                  if (isEditing) {
-                    final index = _purchaseFactories.indexOf(factoryData);
-                    _purchaseFactories[index] = factory;
-                  } else {
-                    _purchaseFactories.add(factory);
+                    setState(() {
+                      if (isEditing) {
+                        final index = _purchaseFactories.indexOf(factoryData!);
+                        _purchaseFactories[index] = factory;
+                      } else {
+                        _purchaseFactories.add(factory);
+                      }
+                    });
+
+                    Navigator.of(context).pop();
                   }
-                });
-
-                Navigator.of(context).pop();
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-              isEditing ? const Color(0xFFF59E0B) : const Color(0xFF059669),
-            ),
-            child: Text(isEditing ? 'Update' : 'Save'),
-          ),
-        ],
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isEditing
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF059669),
+                ),
+                child: Text(isEditing ? 'Update' : 'Save'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1734,7 +1904,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                         ),
                         const SizedBox(height: 10),
 
-                        // Budgeted Cotton Seed Percentage (auto-calculated)
                         CommonFormWidgets.textField(
                           controller: _budgetedCottonSeedPctController,
                           label: 'Budgeted Cotton Seed Percentage (%)',
@@ -2041,17 +2210,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
 class PurchaseFactoryProgData {
   String factoryName;
-  // Progressive values (generated from the day purchase values below).
-  // These keys feed the View Purchase Reports factory-wise table.
   double progPurchaseQtls;
   double progPurchaseBales;
-
-  // Day purchase values entered by the user for this factory.
   double purchaseQtls;
   double purchaseBales;
-
-  // Factory-wise proforma inputs. Stored with the purchase entry, but NOT
-  // shown in the purchase report view / export.
   double farmers;
   double moisture;
   double seedRate;
