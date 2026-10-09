@@ -816,27 +816,64 @@ class PreviewDialog extends StatelessWidget {
     final centre = f('centre').toUpperCase();
     final bales = _weightBales(d);
 
-    final baleRows = <List<String>>[];
-    final blockCount = bales.isEmpty ? 1 : (bales.length / 50).ceil();
-    for (int b = 0; b < blockCount; b++) {
-      final start = b * 50;
-      final remaining = bales.length - start;
-      final count = remaining > 50 ? 50 : (remaining < 0 ? 0 : remaining);
-      final rows = (count / 5).ceil();
-      for (int rr = 0; rr < rows; rr++) {
-        final cells = <String>[];
-        for (int c = 0; c < 5; c++) {
-          final i = rr + (c * rows);
-          if (i < count) {
-            final e = bales[start + i];
-            cells.add((e['baleNo'] ?? (start + i + 1)).toString());
-            cells.add(_fq(e['weight']));
-          } else {
-            cells.add('');
-            cells.add('');
+    // One table per block of 50 bales (10 rows x 5 column pairs), each with
+    // its own S.L.NO / KGS header and a TOTAL row, as in the Excel format.
+    final blockTables = <pw.Widget>[];
+    if (bales.isNotEmpty) {
+      final blockCount = (bales.length / 50).ceil();
+      for (int b = 0; b < blockCount; b++) {
+        final start = b * 50;
+        final remaining = bales.length - start;
+        final count = remaining > 50 ? 50 : remaining;
+        final rows = (count / 5).ceil();
+
+        final tableRows = <pw.TableRow>[
+          pw.TableRow(
+            decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+            children: [
+              for (int c = 0; c < 5; c++) ...[
+                _pdfCell('S.L.NO', bold: true),
+                _pdfCell('KGS', bold: true),
+              ],
+            ],
+          ),
+        ];
+
+        for (int rr = 0; rr < rows; rr++) {
+          final cells = <pw.Widget>[];
+          for (int c = 0; c < 5; c++) {
+            final i = rr + (c * rows);
+            if (i < count) {
+              final e = bales[start + i];
+              cells.add(_pdfCell((e['baleNo'] ?? (start + i + 1)).toString(),
+                  size: 8));
+              cells.add(_pdfCell(_fq(e['weight']), size: 8));
+            } else {
+              cells.add(_pdfCell(''));
+              cells.add(_pdfCell(''));
+            }
           }
+          tableRows.add(pw.TableRow(children: cells));
         }
-        baleRows.add(cells);
+
+        // TOTAL of each KGS column for this block
+        tableRows.add(pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+          children: [
+            for (int c = 0; c < 5; c++) ...[
+              _pdfCell(c == 0 ? 'TOTAL ::' : '', bold: true, size: 8),
+              _pdfCell(_blockColumnSum(bales, start, count, c),
+                  bold: true, size: 8),
+            ],
+          ],
+        ));
+
+        blockTables.add(pw.Table(
+          border: pw.TableBorder.all(width: 0.4),
+          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+          children: tableRows,
+        ));
+        if (b < blockCount - 1) blockTables.add(pw.SizedBox(height: 10));
       }
     }
 
@@ -925,17 +962,7 @@ class PreviewDialog extends StatelessWidget {
 
         pw.SizedBox(height: 8),
 
-        if (baleRows.isNotEmpty)
-          pw.TableHelper.fromTextArray(
-            border: pw.TableBorder.all(width: 0.4),
-            headerDecoration:
-            const pw.BoxDecoration(color: PdfColors.grey200),
-            headerStyle: pw.TextStyle(
-                fontSize: 8, fontWeight: pw.FontWeight.bold),
-            cellStyle: const pw.TextStyle(fontSize: 7),
-            headers: List.generate(5, (i) => ['S.L.NO', 'KGS']).expand((e) => e).toList(),
-            data: baleRows,
-          ),
+        ...blockTables,
 
         pw.SizedBox(height: 10),
 
