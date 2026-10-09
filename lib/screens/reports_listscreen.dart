@@ -519,6 +519,68 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
     if (failure == null) _load();
   }
 
+  /// Delete an entire weight list group (all entries sharing
+  /// centre + variety + lotNo).
+  Future<void> _confirmAndDeleteWeightListGroup(_WeightListGroup g) async {
+    final ids = <String>[];
+    for (final e in g.entries) {
+      final id = (e['id'] ?? e['_id'])?.toString();
+      if (id != null && id.isNotEmpty) ids.add(id);
+    }
+    if (ids.isEmpty) return;
+
+    final entryCount = g.entries.length;
+
+    final label = [
+      if (g.centre.isNotEmpty) g.centre,
+      if (g.variety.isNotEmpty) g.variety,
+      'Lot No: ${g.displayLotNo}',
+    ].join('  •  ');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _buildDeleteDialog(
+        title: 'Delete Weight List',
+        message: entryCount > 1
+            ? 'This will permanently delete this lot and all $entryCount '
+            'report entries in it. This action cannot be undone.'
+            : 'This will permanently delete the weight list below. '
+            'This action cannot be undone.',
+        label: label,
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingId = g.key);
+    String? failure;
+
+    for (final id in ids) {
+      final res = await ApiService.deleteWeightListEntry(id);
+      if (!res.success) {
+        failure = res.message;
+        break;
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() => _deletingId = null);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(failure != null
+            ? 'Delete failed: $failure'
+            : 'Weight list deleted'),
+        backgroundColor: failure == null ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    // Reload even on partial failure so the list reflects what was removed.
+    _load();
+  }
+
   Widget _buildDeleteDialog({
     required String title,
     required String message,
@@ -772,6 +834,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       itemBuilder: (context, index) {
         final g = _weightListGroups[index];
         final entryCount = g.entries.length;
+        final isDeleting = _deletingId == g.key;
 
         final subtitleParts = <String>[
           'Lot No: ${g.displayLotNo}',
@@ -801,8 +864,29 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
               style: const TextStyle(
                   color: Color(0xFF64748B), fontSize: 13),
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openWeightListGroup(g),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isDeleting)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline,
+                        color: Colors.red),
+                    tooltip: 'Delete',
+                    onPressed: () => _confirmAndDeleteWeightListGroup(g),
+                  ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: isDeleting ? null : () => _openWeightListGroup(g),
           ),
         );
       },

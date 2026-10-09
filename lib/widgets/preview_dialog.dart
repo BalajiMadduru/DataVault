@@ -240,162 +240,89 @@ class PreviewDialog extends StatelessWidget {
   // PURCHASE
   // ============================================================
 
+  // (label, field) pairs for the main block. Numbering starts at 4
+  // (1 = date, 2 = centre, 3 = variety) and the factory section follows.
+  static const List<List<String>> _purchaseRowDefs = [
+    ["Day's Kapas Purchased from No. of Farmers / No. of Takpatties", 'farmersDay'],
+    ['Arrivals (In Bales)', 'arrivalsBales'],
+    ['CCI Purchases (In Qtls)', 'cciPurchaseQtls'],
+    ['CCI Purchases (In Bales)', 'cciPurchaseBales'],
+    ['Avarage Kapas rate (In Rs. per qtl)', 'avgKapasRate'],
+    ['Budgeted Lint Percetage (%)', 'budgetedLint'],
+    ['Budgeted Shortage Percetage (%)', 'budgetedShortage'],
+    ['Cotton seed Percetage (%)', 'budgetedCottonSeedPct'],
+    ['Cotton seed rate  (In Rs. per qtl)', 'cottonSeedRate'],
+    ["Processing cycle (In day's)", 'processingCycle'],
+    ['Proforma Expenses (In Rs. per Candy)', 'proformaExpenses'],
+    ['Budgeted Padtha (In Rs. per candy)', 'budgetedPadtha'],
+    ["Day's pressed bales (In Bales)", 'dayPressedBales'],
+    ['Market Highest Rate (In Rs. per qtl)', 'marketHighestRate'],
+    ['Market Lowest Rate (In Rs. per qtl)', 'marketLowestRate'],
+    ['CCI Highest Rate (In Rs. per qtl)', 'cciHighestRate'],
+    ['CCI Lowest Rate (In Rs. per qtl)', 'cciLowestRate'],
+    ['Prog. Pressed Bales', 'progPressedBales'],
+    ['Prog. Purchase in qtls', 'progPurchaseQtls'],
+    ['Prog. Purchase Bales', 'progPurchaseBales'],
+    ['Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties', 'progFarmers'],
+  ];
+
+  static const List<String> _factoryKeys = [
+    'todayQtls',
+    'todayBales',
+    'qtls',
+    'bales',
+  ];
+
+  static const List<String> _factorySubHeaders = [
+    'Today Pur.\nin qtls',
+    'Today Pur.\nin Bales',
+    'Prog. Pur.\nin qtls',
+    'Prog. Pur.\nin Bales',
+  ];
+
+  /// Serial number of the "Factory wise day purchase details" row.
+  int get _factoryRowNo => 4 + _purchaseRowDefs.length;
+
+  /// [sno, label, BB MOD, BB SPL MOD, MECH]
   List<List<String>> _purchaseRows(Map<String, dynamic>? data) {
-    return <List<String>>[
-      [
-        '4',
-        "Day's Kapas Purchased from No. of Farmers / No. of Takpatties",
-        _v(data, 'BB MOD', 'farmersDay'),
-        _v(data, 'BB SPL MOD', 'farmersDay'),
-        _v(data, 'MECH', 'farmersDay')
-      ],
-      [
-        '5',
-        'Arrivals (In Bales)',
-        _v(data, 'BB MOD', 'arrivalsBales'),
-        _v(data, 'BB SPL MOD', 'arrivalsBales'),
-        _v(data, 'MECH', 'arrivalsBales')
-      ],
-      [
-        '6',
-        'CCI Purchases (In Qtls)',
-        _v(data, 'BB MOD', 'cciPurchaseQtls'),
-        _v(data, 'BB SPL MOD', 'cciPurchaseQtls'),
-        _v(data, 'MECH', 'cciPurchaseQtls')
-      ],
-      [
-        '7',
-        'CCI Purchases (In Bales)',
-        _v(data, 'BB MOD', 'cciPurchaseBales'),
-        _v(data, 'BB SPL MOD', 'cciPurchaseBales'),
-        _v(data, 'MECH', 'cciPurchaseBales')
-      ],
-      [
-        '8',
-        'Avarage Kapas rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'avgKapasRate'),
-        _v(data, 'BB SPL MOD', 'avgKapasRate'),
-        _v(data, 'MECH', 'avgKapasRate')
-      ],
-      [
-        '9',
-        'Moisture (%)',
-        _v(data, 'BB MOD', 'moisture'),
-        _v(data, 'BB SPL MOD', 'moisture'),
-        _v(data, 'MECH', 'moisture')
-      ],
-      [
-        '10',
-        'Budgeted Lint Percetage (%)',
-        _v(data, 'BB MOD', 'budgetedLint'),
-        _v(data, 'BB SPL MOD', 'budgetedLint'),
-        _v(data, 'MECH', 'budgetedLint')
-      ],
-      [
-        '11',
-        'Budgeted Shortage Percetage (%)',
-        _v(data, 'BB MOD', 'budgetedShortage'),
-        _v(data, 'BB SPL MOD', 'budgetedShortage'),
-        _v(data, 'MECH', 'budgetedShortage')
-      ],
-      [
-        '12',
-        'Budgeted Cotton Seed Percetage (%)',
-        _v(data, 'BB MOD', 'budgetedCottonSeedPct'),
-        _v(data, 'BB SPL MOD', 'budgetedCottonSeedPct'),
-        _v(data, 'MECH', 'budgetedCottonSeedPct')
-      ],
-      [
-        '13',
-        'Cotton seed rate  (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'cottonSeedRate'),
-        _v(data, 'BB SPL MOD', 'cottonSeedRate'),
-        _v(data, 'MECH', 'cottonSeedRate')
-      ],
-      [
-        '14',
-        "Processing cycle (In day's)",
-        _v(data, 'BB MOD', 'processingCycle'),
-        _v(data, 'BB SPL MOD', 'processingCycle'),
-        _v(data, 'MECH', 'processingCycle')
-      ],
-      [
-        '15',
-        'Proforma Expenses (In Rs. per Candy)',
-        _v(data, 'BB MOD', 'proformaExpenses'),
-        _v(data, 'BB SPL MOD', 'proformaExpenses'),
-        _v(data, 'MECH', 'proformaExpenses')
-      ],
-      [
-        '16',
-        'Budgeted Padtha (In Rs. per candy)',
-        _v(data, 'BB MOD', 'budgetedPadtha'),
-        _v(data, 'BB SPL MOD', 'budgetedPadtha'),
-        _v(data, 'MECH', 'budgetedPadtha')
-      ],
-      [
-        '17',
-        "Day's pressed bales (In Bales)",
-        _v(data, 'BB MOD', 'dayPressedBales'),
-        _v(data, 'BB SPL MOD', 'dayPressedBales'),
-        _v(data, 'MECH', 'dayPressedBales')
-      ],
-      [
-        '18',
-        'Market Highest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'marketHighestRate'),
-        _v(data, 'BB SPL MOD', 'marketHighestRate'),
-        _v(data, 'MECH', 'marketHighestRate')
-      ],
-      [
-        '19',
-        'Market Lowest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'marketLowestRate'),
-        _v(data, 'BB SPL MOD', 'marketLowestRate'),
-        _v(data, 'MECH', 'marketLowestRate')
-      ],
-      [
-        '20',
-        'CCI Highest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'cciHighestRate'),
-        _v(data, 'BB SPL MOD', 'cciHighestRate'),
-        _v(data, 'MECH', 'cciHighestRate')
-      ],
-      [
-        '21',
-        'CCI Lowest Rate (In Rs. per qtl)',
-        _v(data, 'BB MOD', 'cciLowestRate'),
-        _v(data, 'BB SPL MOD', 'cciLowestRate'),
-        _v(data, 'MECH', 'cciLowestRate')
-      ],
-      [
-        '22',
-        'Prog. Pressed Bales',
-        _v(data, 'BB MOD', 'progPressedBales'),
-        _v(data, 'BB SPL MOD', 'progPressedBales'),
-        _v(data, 'MECH', 'progPressedBales')
-      ],
-      [
-        '23',
-        'Prog. Purchase in qtls',
-        _v(data, 'BB MOD', 'progPurchaseQtls'),
-        _v(data, 'BB SPL MOD', 'progPurchaseQtls'),
-        _v(data, 'MECH', 'progPurchaseQtls')
-      ],
-      [
-        '24',
-        'Prog. Purchase Bales',
-        _v(data, 'BB MOD', 'progPurchaseBales'),
-        _v(data, 'BB SPL MOD', 'progPurchaseBales'),
-        _v(data, 'MECH', 'progPurchaseBales')
-      ],
-      [
-        '25',
-        'Prog. Kapas Purchased from No. of Farmers  / Prog. No. of Takpatties',
-        _v(data, 'BB MOD', 'progFarmers'),
-        _v(data, 'BB SPL MOD', 'progFarmers'),
-        _v(data, 'MECH', 'progFarmers')
-      ],
+    return [
+      for (int i = 0; i < _purchaseRowDefs.length; i++)
+        [
+          '${i + 4}',
+          _purchaseRowDefs[i][0],
+          _v(data, 'BB MOD', _purchaseRowDefs[i][1]),
+          _v(data, 'BB SPL MOD', _purchaseRowDefs[i][1]),
+          _v(data, 'MECH', _purchaseRowDefs[i][1]),
+        ],
+    ];
+  }
+
+  /// Factory table rows: [sno, name, then 12 values (3 varieties x 4)].
+  /// Always at least 3 rows (blank-padded), like the Excel template.
+  List<List<String>> _factoryTableRows(Map<String, dynamic>? data) {
+    final matrix = _buildFactoryMatrix(data);
+    final names = matrix.keys.toList()..sort();
+    final rows = <List<String>>[];
+    for (int i = 0; i < names.length; i++) {
+      rows.add([
+        '${i + 1}',
+        names[i],
+        for (final v in _varieties)
+          for (final k in _factoryKeys) matrix[names[i]]![v]?[k] ?? '0',
+      ]);
+    }
+    while (rows.length < 3) {
+      rows.add(['${rows.length + 1}', '', for (int i = 0; i < 12; i++) '']);
+    }
+    return rows;
+  }
+
+  /// Column-wise SUM of the factory rows (12 values).
+  List<String> _factoryTotals(List<List<String>> rows) {
+    return [
+      for (int c = 0; c < 12; c++)
+        _fq(rows.fold<double>(
+            0, (sum, r) => sum + (double.tryParse(r[2 + c]) ?? 0))),
     ];
   }
 
@@ -408,8 +335,10 @@ class PreviewDialog extends StatelessWidget {
     (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
 
     final rows = _purchaseRows(data);
+    final factoryRows = _factoryTableRows(data);
+    final totals = _factoryTotals(factoryRows);
 
-    return Container(
+    final table = Container(
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF94A3B8)),
       ),
@@ -425,14 +354,26 @@ class PreviewDialog extends StatelessWidget {
           _numRow('2', 'Centre', centre, centre, centre),
           _numRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH', bold: true),
           ...rows.map((r) => _numRow(r[0], r[1], r[2], r[3], r[4])),
-          _numRow('26', 'Factory wise day purchase details', 'BB MOD',
-              'BB SPL MOD', 'MECH',
+          _numRow('$_factoryRowNo', 'Factory wise day purchase details',
+              'BB MOD', 'BB SPL MOD', 'MECH',
               bold: true),
           _factorySubHeader(),
-          ..._buildFactoryRows(data),
-          _totalRow(data),
+          ...factoryRows.map(_factoryRowWidget),
+          _totalRow(totals),
         ],
       ),
+    );
+
+    // 12 value columns need room: scroll sideways on narrow screens.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const minWidth = 900.0;
+        if (constraints.maxWidth >= minWidth) return table;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(width: minWidth, child: table),
+        );
+      },
     );
   }
 
@@ -479,19 +420,27 @@ class PreviewDialog extends StatelessWidget {
 
         final newQtls = _fq(f['progPurchaseQtls']);
         final newBales = _fq(f['progPurchaseBales']);
+        final newTodayQtls = _fq(f['purchaseQtls']);
+        final newTodayBales = _fq(f['purchaseBales']);
 
         final existing = matrix[name]![v];
         if (existing == null) {
-          matrix[name]![v] = {'qtls': newQtls, 'bales': newBales};
+          matrix[name]![v] = {
+            'todayQtls': newTodayQtls,
+            'todayBales': newTodayBales,
+            'qtls': newQtls,
+            'bales': newBales,
+          };
         } else {
           // Sum duplicates rather than overwrite
-          final prevQtls = double.tryParse(existing['qtls'] ?? '0') ?? 0;
-          final prevBales = double.tryParse(existing['bales'] ?? '0') ?? 0;
-          final addQtls = double.tryParse(newQtls) ?? 0;
-          final addBales = double.tryParse(newBales) ?? 0;
+          double n(String? x) => double.tryParse(x ?? '0') ?? 0;
           matrix[name]![v] = {
-            'qtls': _fq(prevQtls + addQtls),
-            'bales': _fq(prevBales + addBales),
+            'todayQtls':
+            _fq(n(existing['todayQtls']) + n(newTodayQtls)),
+            'todayBales':
+            _fq(n(existing['todayBales']) + n(newTodayBales)),
+            'qtls': _fq(n(existing['qtls']) + n(newQtls)),
+            'bales': _fq(n(existing['bales']) + n(newBales)),
           };
         }
       }
@@ -505,84 +454,66 @@ class PreviewDialog extends StatelessWidget {
         color: Color(0xFFF1F5F9),
         border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
       ),
-      child: Row(
-        children: [
-          const SizedBox(width: 32),
-          const Expanded(
-            flex: 4,
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text('Factory Name',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(width: _snoW),
+            const Expanded(
+              flex: 4,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text('Factory Name',
+                    style:
+                    TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+              ),
             ),
-          ),
-          for (int i = 0; i < _varieties.length; i++) ...[
-            _subCell('Prog. Pur.\nin qtls'),
-            _subCell('Prog. Pur.\nin Bales'),
+            const SizedBox(width: _colonW),
+            for (int i = 0; i < _varieties.length * 4; i++)
+              _gridCell(_factorySubHeaders[i % 4],
+                  bold: true, small: true, darkLeft: i % 4 == 0),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  List<Widget> _buildFactoryRows(Map<String, dynamic>? data) {
-    final matrix = _buildFactoryMatrix(data);
-
-    if (matrix.isEmpty) {
-      return [
-        const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('No factory data available',
-              style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-        ),
-      ];
-    }
-
-    final names = matrix.keys.toList()..sort();
-
-    return names.asMap().entries.map((e) {
-      final i = e.key;
-      final name = e.value;
-      final row = matrix[name]!;
-      return _factoryRow3Variety('${i + 1}', name, row);
-    }).toList();
-  }
-
-  Widget _factoryRow3Variety(
-      String sno,
-      String name,
-      Map<String, Map<String, String>> row,
-      ) {
+  Widget _factoryRowWidget(List<String> r) {
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
       ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 32,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(sno,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700)),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: _snoW,
+              child: Padding(
+                padding:
+                const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text(r[0],
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
             ),
-          ),
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(name,
-                  style: const TextStyle(fontSize: 11),
-                  overflow: TextOverflow.ellipsis),
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding:
+                const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text(r[1], style: const TextStyle(fontSize: 11)),
+              ),
             ),
-          ),
-          for (final v in _varieties) ...[
-            _cell(row[v]?['qtls'] ?? '0'),
-            _cell(row[v]?['bales'] ?? '0'),
+            const SizedBox(
+              width: _colonW,
+              child: Center(child: Text(':', style: TextStyle(fontSize: 11))),
+            ),
+            for (int i = 0; i < 12; i++)
+              _gridCell(r[2 + i], darkLeft: i % 4 == 0),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -660,6 +591,22 @@ class PreviewDialog extends StatelessWidget {
 
 // ---------- PURCHASE PDF ----------
 
+  pw.Widget _pdfCell(String text,
+      {bool bold = false, bool left = false, double size = 8}) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+      alignment: left ? pw.Alignment.centerLeft : pw.Alignment.center,
+      child: pw.Text(
+        text,
+        textAlign: left ? pw.TextAlign.left : pw.TextAlign.center,
+        style: pw.TextStyle(
+          fontSize: size,
+          fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+      ),
+    );
+  }
+
   pw.Page _buildPurchasePdfPage(Map<String, dynamic>? data) {
     final dateStr = _formatDate(data?['date']);
     final centre =
@@ -669,8 +616,37 @@ class PreviewDialog extends StatelessWidget {
     (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
 
     final rows = _purchaseRows(data);
-    final matrix = _buildFactoryMatrix(data);
-    final names = matrix.keys.toList()..sort();
+    final factoryRows = _factoryTableRows(data);
+    final totals = _factoryTotals(factoryRows);
+
+    // Both tables share the same fixed widths so the variety blocks line up.
+    const snoW = 28.0, nameW = 190.0, colonW = 10.0, cellW = 47.0;
+    final mainWidths = <int, pw.TableColumnWidth>{
+      0: const pw.FixedColumnWidth(snoW),
+      1: const pw.FixedColumnWidth(nameW),
+      2: const pw.FixedColumnWidth(colonW),
+      3: const pw.FixedColumnWidth(cellW * 4),
+      4: const pw.FixedColumnWidth(cellW * 4),
+      5: const pw.FixedColumnWidth(cellW * 4),
+    };
+    final factoryWidths = <int, pw.TableColumnWidth>{
+      0: const pw.FixedColumnWidth(snoW),
+      1: const pw.FixedColumnWidth(nameW),
+      2: const pw.FixedColumnWidth(colonW),
+      for (int i = 0; i < 12; i++) 3 + i: const pw.FixedColumnWidth(cellW),
+    };
+
+    pw.TableRow mainRow(String n, String label, String v1, String v2, String v3,
+        {bool bold = false}) {
+      return pw.TableRow(children: [
+        _pdfCell(n, bold: bold),
+        _pdfCell(label, bold: bold, left: true),
+        _pdfCell(':'),
+        _pdfCell(v1, bold: bold),
+        _pdfCell(v2, bold: bold),
+        _pdfCell(v3, bold: bold),
+      ]);
+    }
 
     return pw.MultiPage(
       pageFormat: PdfPageFormat.a4.landscape,
@@ -698,65 +674,52 @@ class PreviewDialog extends StatelessWidget {
         ),
         pw.SizedBox(height: 8),
 
-        pw.TableHelper.fromTextArray(
+        pw.Table(
           border: pw.TableBorder.all(width: 0.5),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-          headerStyle: pw.TextStyle(
-              fontSize: 9, fontWeight: pw.FontWeight.bold),
-          cellStyle: const pw.TextStyle(fontSize: 8),
-          cellAlignments: {
-            0: pw.Alignment.center,
-            1: pw.Alignment.centerLeft,
-            2: pw.Alignment.center,
-            3: pw.Alignment.center,
-            4: pw.Alignment.center,
-          },
-          headers: ['S.No.', 'Particulars', 'BB MOD', 'BB SPL MOD', 'MECH'],
-          data: [
-            ['1', 'Purchase Date', dateStr, dateStr, dateStr],
-            ['2', 'Centre', centre, centre, centre],
-            ['3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH'],
-            ...rows.map((r) => [r[0], r[1], r[2], r[3], r[4]]),
+          columnWidths: mainWidths,
+          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+          children: [
+            mainRow('1', 'Purchase Date', dateStr, dateStr, dateStr),
+            mainRow('2', 'Centre', centre, centre, centre),
+            mainRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH',
+                bold: true),
+            ...rows.map((r) => mainRow(r[0], r[1], r[2], r[3], r[4])),
+            mainRow('$_factoryRowNo', 'Factory wise day purchase details',
+                'BB MOD', 'BB SPL MOD', 'MECH',
+                bold: true),
           ],
         ),
-
-        pw.SizedBox(height: 10),
-
-        pw.Text('26. Factory wise day purchase details',
-            style: pw.TextStyle(
-                fontSize: 10, fontWeight: pw.FontWeight.bold)),
-        pw.SizedBox(height: 4),
-        pw.TableHelper.fromTextArray(
+        pw.Table(
           border: pw.TableBorder.all(width: 0.5),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-          headerStyle: pw.TextStyle(
-              fontSize: 9, fontWeight: pw.FontWeight.bold),
-          cellStyle: const pw.TextStyle(fontSize: 8),
-          headers: [
-            'S.No.',
-            'Factory Name',
-            'BB MOD\nqtls',
-            'BB MOD\nbales',
-            'BB SPL MOD\nqtls',
-            'BB SPL MOD\nbales',
-            'MECH\nqtls',
-            'MECH\nbales',
+          columnWidths: factoryWidths,
+          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+          children: [
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                _pdfCell(''),
+                _pdfCell('Factory Name', bold: true, left: true),
+                _pdfCell(''),
+                for (int i = 0; i < 12; i++)
+                  _pdfCell(_factorySubHeaders[i % 4], bold: true, size: 6.5),
+              ],
+            ),
+            ...factoryRows.map((r) => pw.TableRow(children: [
+              _pdfCell(r[0]),
+              _pdfCell(r[1], left: true),
+              _pdfCell(':'),
+              for (int i = 0; i < 12; i++) _pdfCell(r[2 + i]),
+            ])),
+            pw.TableRow(
+              decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+              children: [
+                _pdfCell(''),
+                _pdfCell('TOTAL', bold: true, left: true),
+                _pdfCell(''),
+                for (int i = 0; i < 12; i++) _pdfCell(totals[i], bold: true),
+              ],
+            ),
           ],
-          data: names.asMap().entries.map((e) {
-            final i = e.key;
-            final name = e.value;
-            final row = matrix[name]!;
-            return [
-              '${i + 1}',
-              name,
-              row['BB MOD']?['qtls'] ?? '0',
-              row['BB MOD']?['bales'] ?? '0',
-              row['BB SPL MOD']?['qtls'] ?? '0',
-              row['BB SPL MOD']?['bales'] ?? '0',
-              row['MECH']?['qtls'] ?? '0',
-              row['MECH']?['bales'] ?? '0',
-            ];
-          }).toList(),
         ),
       ],
     );
@@ -1066,61 +1029,77 @@ class PreviewDialog extends StatelessWidget {
     final branchOffice =
     (data?['branchOffice'] ?? 'MAHABUBNAGAR').toString().toUpperCase();
 
-    sheet.appendRow(['THE COTTON CORPORATION OF INDIA LTD']);
-    sheet.appendRow(['BRANCH OFFICE :: $branchOffice.']);
-    sheet.appendRow(['DAILY PURCHASE REPORT']);
-    sheet.appendRow(['CROP SEASON $cropSeason', '', '', '', 'MSP']);
-    sheet.appendRow([]);
+    // Columns: 0 S.No | 1 label | 2 ':' | 3..14 values (3 varieties x 4)
+    const lastCol = 14;
 
-    sheet.appendRow(['S.No.', 'Particulars', 'BB MOD', 'BB SPL MOD', 'MECH']);
-    sheet.appendRow(['1', 'Purchase Date', dateStr, dateStr, dateStr]);
-    sheet.appendRow(['2', 'Centre', centre, centre, centre]);
-    sheet.appendRow(['3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH']);
-    for (final r in _purchaseRows(data)) {
-      sheet.appendRow(r);
+    void merge(int row, int c1, int c2) {
+      sheet.merge(
+        excel_lib.CellIndex.indexByColumnRow(columnIndex: c1, rowIndex: row),
+        excel_lib.CellIndex.indexByColumnRow(columnIndex: c2, rowIndex: row),
+      );
     }
 
-    sheet.appendRow([]);
-    sheet.appendRow([
-      '26',
-      'Factory wise day purchase details',
-      'BB MOD',
-      '',
-      'BB SPL MOD',
-      '',
-      'MECH',
-      '',
-    ]);
-    sheet.appendRow([
+    int add(List<dynamic> cells) {
+      sheet.appendRow(cells);
+      return sheet.maxRows - 1;
+    }
+
+    void title(String text, {String trailing = ''}) {
+      final r = add([
+        text,
+        for (int i = 1; i < lastCol; i++) '',
+        trailing,
+      ]);
+      merge(r, 0, trailing.isEmpty ? lastCol : lastCol - 1);
+    }
+
+    // Main row: each variety value spans 4 columns (D:G, H:K, L:O)
+    void spanRow(String n, String label, String v1, String v2, String v3) {
+      final r = add([
+        n, label, ':',
+        v1, '', '', '',
+        v2, '', '', '',
+        v3, '', '', '',
+      ]);
+      merge(r, 3, 6);
+      merge(r, 7, 10);
+      merge(r, 11, 14);
+    }
+
+    title('THE COTTON CORPORATION OF INDIA LTD');
+    title('BRANCH OFFICE :: $branchOffice.');
+    title('DAILY PURCHASE REPORT');
+    title('CROP SEASON $cropSeason', trailing: 'MSP');
+
+    spanRow('1', 'Purchase Date', dateStr, dateStr, dateStr);
+    spanRow('2', 'Centre', centre, centre, centre);
+    spanRow('3', 'Variety', 'BB MOD', 'BB SPL MOD', 'MECH');
+    for (final r in _purchaseRows(data)) {
+      spanRow(r[0], r[1], r[2], r[3], r[4]);
+    }
+    spanRow('$_factoryRowNo', 'Factory wise day purchase details',
+        'BB MOD', 'BB SPL MOD', 'MECH');
+
+    add([
       '',
       'Factory Name',
-      for (int i = 0; i < _varieties.length; i++) ...[
-        'Prog. Pur. in qtls',
-        'Prog. Pur. in Bales',
-      ],
+      '',
+      for (int i = 0; i < 12; i++)
+        _factorySubHeaders[i % 4].replaceAll('\n', ' '),
     ]);
 
-    final matrix = _buildFactoryMatrix(data);
-    final names = matrix.keys.toList()..sort();
-    for (int i = 0; i < names.length; i++) {
-      final row = matrix[names[i]]!;
-      sheet.appendRow([
-        '${i + 1}',
-        names[i],
-        for (final v in _varieties) ...[
-          row[v]?['qtls'] ?? '0',
-          row[v]?['bales'] ?? '0',
-        ],
-      ]);
+    final factoryRows = _factoryTableRows(data);
+    for (final r in factoryRows) {
+      add([r[0], r[1], ':', ...r.sublist(2)]);
     }
-    sheet.appendRow([
-      '',
-      'TOTAL',
-      for (final v in _varieties) ...[
-        _v(data, v, 'progPurchaseQtls'),
-        _v(data, v, 'progPurchaseBales'),
-      ],
-    ]);
+    add(['', 'TOTAL', '', ..._factoryTotals(factoryRows)]);
+
+    sheet.setColWidth(0, 6);
+    sheet.setColWidth(1, 48);
+    sheet.setColWidth(2, 3);
+    for (int c = 3; c <= lastCol; c++) {
+      sheet.setColWidth(c, 14);
+    }
 
     return 'PurchaseReport_${ExportHelper.safe(centre)}_${_fileDate(dateStr)}.xlsx';
   }
@@ -1451,103 +1430,119 @@ class PreviewDialog extends StatelessWidget {
     );
   }
 
+  static const double _snoW = 32;
+  static const double _colonW = 12;
+
+  /// One cell of the 12-column value grid. flex 2 = one column,
+  /// flex 8 = one variety block spanning four columns.
+  Widget _gridCell(String value,
+      {bool bold = false,
+        bool small = false,
+        int flex = 2,
+        bool darkLeft = false}) {
+    return Expanded(
+      flex: flex,
+      child: Container(
+        alignment: Alignment.center,
+        padding: EdgeInsets.symmetric(vertical: 4, horizontal: small ? 2 : 6),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(
+              color: darkLeft
+                  ? const Color(0xFF94A3B8)
+                  : const Color(0xFFE2E8F0),
+              width: darkLeft ? 1 : 0.5,
+            ),
+          ),
+        ),
+        child: Text(
+          value,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: small ? 9 : 11,
+            fontWeight: (bold || small) ? FontWeight.w700 : FontWeight.w500,
+            color: const Color(0xFF0F172A),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _numRow(String n, String label, String v1, String v2, String v3,
       {bool bold = false}) {
     return Container(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5)),
       ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 32,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(n,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF64748B),
-                  )),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: _snoW,
+              child: Padding(
+                padding:
+                const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text(n,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF64748B),
+                    )),
+              ),
             ),
-          ),
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text(label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-                    color: const Color(0xFF334155),
-                  )),
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding:
+                const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text(label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                      color: const Color(0xFF334155),
+                    )),
+              ),
             ),
-          ),
-          _cell(v1, bold: bold),
-          _cell(v2, bold: bold),
-          _cell(v3, bold: bold),
-        ],
+            const SizedBox(
+              width: _colonW,
+              child: Center(child: Text(':', style: TextStyle(fontSize: 11))),
+            ),
+            _gridCell(v1, bold: bold, flex: 8, darkLeft: true),
+            _gridCell(v2, bold: bold, flex: 8, darkLeft: true),
+            _gridCell(v3, bold: bold, flex: 8, darkLeft: true),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _cell(String value, {bool bold = false}) {
-    return Expanded(
-      flex: 2,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-        child: Text(value,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-              color: const Color(0xFF0F172A),
-            )),
-      ),
-    );
-  }
-
-  Widget _subCell(String text) {
-    return Expanded(
-      flex: 2,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        child: Text(text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0F172A),
-            )),
-      ),
-    );
-  }
-
-  Widget _totalRow(Map<String, dynamic>? data) {
+  Widget _totalRow(List<String> totals) {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFFF1F5F9),
         border: Border(top: BorderSide(color: Color(0xFF94A3B8), width: 1)),
       ),
-      child: Row(
-        children: [
-          const SizedBox(width: 32),
-          const Expanded(
-            flex: 4,
-            child: Padding(
-              padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
-              child: Text('TOTAL',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(width: _snoW),
+            const Expanded(
+              flex: 4,
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text('TOTAL',
+                    style:
+                    TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              ),
             ),
-          ),
-          _cell(_v(data, 'BB MOD', 'progPurchaseQtls'), bold: true),
-          _cell(_v(data, 'BB MOD', 'progPurchaseBales'), bold: true),
-          _cell(_v(data, 'BB SPL MOD', 'progPurchaseQtls'), bold: true),
-          _cell(_v(data, 'BB SPL MOD', 'progPurchaseBales'), bold: true),
-          _cell(_v(data, 'MECH', 'progPurchaseQtls'), bold: true),
-          _cell(_v(data, 'MECH', 'progPurchaseBales'), bold: true),
-        ],
+            const SizedBox(width: _colonW),
+            for (int i = 0; i < 12; i++)
+              _gridCell(totals[i], bold: true, darkLeft: i % 4 == 0),
+          ],
+        ),
       ),
     );
   }
