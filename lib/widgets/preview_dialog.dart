@@ -979,6 +979,8 @@ class PreviewDialog extends StatelessWidget {
               pw.Text('TOTAL NET WT :: ${_num(d['totalNettWeight'])}',
                   style: pw.TextStyle(
                       fontSize: 10, fontWeight: pw.FontWeight.bold)),
+              pw.Text('SUM OF BALES :: ${_sumOfBalesText(d)}',
+                  style: const pw.TextStyle(fontSize: 10)),
             ],
           ),
         ),
@@ -1353,6 +1355,8 @@ class PreviewDialog extends StatelessWidget {
     row++;
     sheet.appendRow(['', '', '', '', '', 'TOTAL NET WT     ::', _num(d['totalNettWeight'])]);
     row++;
+    sheet.appendRow(['', '', '', '', '', 'SUM OF BALES     ::', _sumOfBalesText(d)]);
+    row++;
 
     sheet.appendRow([]);
     row++;
@@ -1411,6 +1415,15 @@ class PreviewDialog extends StatelessWidget {
     if (v is String) dt = DateTime.tryParse(v);
     if (dt == null) return '$n BALES:';
     return '$n BALES: ${dt.day}-${dt.month}-${dt.year}';
+  }
+
+  /// Sum of all bale weights actually entered in `baleEntries`.
+  String _sumOfBalesText(Map<String, dynamic> d) {
+    double sum = 0;
+    for (final b in _weightBales(d)) {
+      sum += _num(b['weight']).toDouble();
+    }
+    return _fq(sum);
   }
 
   String _blockColumnSum(
@@ -1884,6 +1897,31 @@ class PreviewDialog extends StatelessWidget {
               _summaryRow('TOTAL TARE WT ::', s('tareWeight'), false),
               const SizedBox(height: 4),
               _summaryRow('TOTAL NET WT ::', s('totalNettWeight'), true),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  const Text('SUM OF BALES ::',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155))),
+                  const SizedBox(width: 16),
+                  Container(
+                    constraints: const BoxConstraints(minWidth: 100),
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 6, horizontal: 10),
+                    child: Text(
+                      _sumOfBalesText(data),
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF334155)),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
