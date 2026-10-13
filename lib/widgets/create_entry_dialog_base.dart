@@ -1,11 +1,12 @@
 import 'package:datavault/widgets/weight_list_entry_dialog.dart';
+import 'package:datavault/widgets/heap_entry_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../enums/report_type.dart';
 import '../services/apiservice.dart';
-import '../models/report_modals.dart';  // ADD THIS - use FactoryData from here
+import '../models/report_modals.dart'; // ADD THIS - use FactoryData from here
 
 // Import the actual implementations
 import 'purchase_entry_dialog.dart';
@@ -43,7 +44,7 @@ class FactoryData {
 
   Map<String, dynamic> toJson() => {
     'factoryName': factoryName,
-    'variety': variety ?? '-',  // 👈 MUST have this fallback here too!
+    'variety': variety ?? '-', // 👈 MUST have this fallback here too!
     'progressiveRealisable': progressiveRealisable,
     'progressiveSold': progressiveSold,
     'dayUnsold': dayUnsold,
@@ -56,7 +57,8 @@ class FactoryData {
   factory FactoryData.fromJson(Map<String, dynamic> json) => FactoryData(
     factoryName: json['factoryName'] as String? ?? '',
     variety: json['variety'] as String? ?? '',
-    progressiveRealisable: (json['progressiveRealisable'] as num?)?.toInt() ?? 0,
+    progressiveRealisable:
+    (json['progressiveRealisable'] as num?)?.toInt() ?? 0,
     progressiveSold: (json['progressiveSold'] as num?)?.toInt() ?? 0,
     dayUnsold: (json['dayUnsold'] as num?)?.toInt() ?? 0,
     kapasForm: (json['kapasForm'] as num?)?.toInt() ?? 0,
@@ -99,20 +101,22 @@ class PurchaseFactoryData {
     'baseRate': baseRate,
   };
 
-  factory PurchaseFactoryData.fromJson(Map<String, dynamic> json) => PurchaseFactoryData(
-    factoryName: json['factoryName'] as String? ?? '',
-    heapNo: (json['heapNo'] as num?)?.toInt() ?? 0,
-    heapQty: (json['heapQty'] as num?)?.toDouble() ?? 0.0,
-    seedFarmers: (json['seedFarmers'] as num?)?.toInt() ?? 0,
-    seedRealisable: (json['seed_realisable'] as num?)?.toInt() ?? 0,
-    readySeedSold: (json['readySeedSold'] as num?)?.toInt() ?? 0,
-    readySeedUnsold: (json['readySeedUnsold'] as num?)?.toInt() ?? 0,
-    baseRate: (json['baseRate'] as num?)?.toInt() ?? 0,
-  );
+  factory PurchaseFactoryData.fromJson(Map<String, dynamic> json) =>
+      PurchaseFactoryData(
+        factoryName: json['factoryName'] as String? ?? '',
+        heapNo: (json['heapNo'] as num?)?.toInt() ?? 0,
+        heapQty: (json['heapQty'] as num?)?.toDouble() ?? 0.0,
+        seedFarmers: (json['seedFarmers'] as num?)?.toInt() ?? 0,
+        seedRealisable: (json['seed_realisable'] as num?)?.toInt() ?? 0,
+        readySeedSold: (json['readySeedSold'] as num?)?.toInt() ?? 0,
+        readySeedUnsold: (json['readySeedUnsold'] as num?)?.toInt() ?? 0,
+        baseRate: (json['baseRate'] as num?)?.toInt() ?? 0,
+      );
 }
 
 // Base State class for shared functionality
-abstract class CreateEntryDialogState<T extends StatefulWidget> extends State<T> {
+abstract class CreateEntryDialogState<T extends StatefulWidget>
+    extends State<T> {
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   final GlobalKey<FormState> lookupFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> factoryFormKey = GlobalKey<FormState>();
@@ -410,7 +414,8 @@ abstract class CreateEntryDialogState<T extends StatefulWidget> extends State<T>
             icon: const Icon(Icons.add, size: 16),
             label: Text(
               actionLabel,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style:
+              const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -448,7 +453,8 @@ abstract class CreateEntryDialogState<T extends StatefulWidget> extends State<T>
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFF0F172A), width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }
@@ -524,6 +530,11 @@ class CreateEntryDialog extends StatelessWidget {
       );
     } else if (type == ReportType.weightList) {
       return WeightListEntryDialog(
+        isModify: isModify,
+        existingData: existingData,
+      );
+    } else if (type == ReportType.heap) {
+      return HeapEntryDialog(
         isModify: isModify,
         existingData: existingData,
       );

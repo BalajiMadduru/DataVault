@@ -87,7 +87,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   double _previousProgPurchaseBales = 0;
   double _previousProgFarmers = 0;
 
-  Map<String, Map<String, double>> _otherVarietiesProgressive = {};
+  // Per other-variety snapshot: 4 progressive fields + that variety's factories.
+  // (Preview reads otherVarietiesProgressive[variety]['factories'].)
+  Map<String, Map<String, dynamic>> _otherVarietiesProgressive = {};
+  int _otherFetchSeq = 0;
+  int _factoryRecalcSeq = 0;
 
   double _originalPressedBales = 0;
   double _originalPurchaseQtls = 0;
@@ -250,30 +254,80 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _formatNumber(_previousProgFarmers + dayValue);
   }
 
+  bool _sameDay(dynamic raw, DateTime d) {
+    final p = DateTime.tryParse(raw?.toString() ?? '');
+    return p != null && p.year == d.year && p.month == d.month && p.day == d.day;
+  }
+
+  /// Snapshot of the latest entry of every OTHER variety for this centre:
+  /// progressive totals AND factory rows (so the preview can fill the
+  /// factory table for all three variety column groups).
   Future<void> _fetchOtherVarietiesProgressive() async {
     if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
 
-    try {
-      final all = await ApiService.getProgressiveForAllVarieties(
-        type: 'purchase',
-        centre: _selectedCentre!,
-      );
+    final seq = ++_otherFetchSeq; // ignore out-of-order responses
+    final centre = _selectedCentre!.trim().toLowerCase();
+    final own = _selectedVariety;
 
-      final others = <String, Map<String, double>>{};
-      for (final entry in all.entries) {
-        if (entry.key == _selectedVariety) continue;
-        others[entry.key] = {
-          'progPressedBales': entry.value['progPressedBales'] ?? 0,
-          'progPurchaseQtls': entry.value['progPurchaseQtls'] ?? 0,
-          'progPurchaseBales': entry.value['progPurchaseBales'] ?? 0,
-          'progFarmers': entry.value['progFarmers'] ?? 0,
+    try {
+      final response = await ApiService.getPurchaseEntries();
+      if (!mounted || seq != _otherFetchSeq) return;
+      if (!response.success || response.data == null) return;
+
+      final entries = (response.data!['entries'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      final others = <String, Map<String, dynamic>>{};
+      for (final v in ApiService.allVarieties) {
+        if (v == own) continue;
+
+        Map<String, dynamic>? latest;
+        var best = -1;
+        for (final e in entries) {
+          final id = (e['id'] ?? e['_id'])?.toString();
+          if (_docId != null && id == _docId) continue;
+          if ((e['centre'] ?? '').toString().trim().toLowerCase() != centre) {
+            continue;
+          }
+          if ((e['variety'] ?? '').toString().trim().toLowerCase() !=
+              v.toLowerCase()) {
+            continue;
+          }
+          final no = int.tryParse(e['reportNo']?.toString() ?? '') ?? 0;
+          if (no > best) {
+            best = no;
+            latest = e;
+          }
+        }
+
+        double n(dynamic x) => (x as num?)?.toDouble() ?? 0;
+        final sameDay = latest != null && _sameDay(latest['date'], _selectedDate);
+
+        final factories = <Map<String, dynamic>>[];
+        if (latest != null && latest['factories'] is List) {
+          for (final f in (latest['factories'] as List).whereType<Map>()) {
+            factories.add({
+              'factoryName': (f['factoryName'] ?? '').toString(),
+              // "today" only counts if that entry is for the same date
+              'purchaseQtls': sameDay ? n(f['purchaseQtls']) : 0,
+              'purchaseBales': sameDay ? n(f['purchaseBales']) : 0,
+              'progPurchaseQtls': n(f['progPurchaseQtls']),
+              'progPurchaseBales': n(f['progPurchaseBales']),
+            });
+          }
+        }
+
+        others[v] = {
+          'progPressedBales': n(latest?['progPressedBales']),
+          'progPurchaseQtls': n(latest?['progPurchaseQtls']),
+          'progPurchaseBales': n(latest?['progPurchaseBales']),
+          'progFarmers': n(latest?['progFarmers']),
+          'factories': factories,
         };
       }
 
-      if (!mounted) return;
-      setState(() {
-        _otherVarietiesProgressive = others;
-      });
+      setState(() => _otherVarietiesProgressive = others);
     } catch (_) {}
   }
 
@@ -350,6 +404,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             'progPurchaseBales':
             (value['progPurchaseBales'] as num?)?.toDouble() ?? 0,
             'progFarmers': (value['progFarmers'] as num?)?.toDouble() ?? 0,
+            'factories': value['factories'] is List
+                ? List<dynamic>.from(value['factories'] as List)
+                : <dynamic>[],
           };
         }
       });
@@ -495,51 +552,82 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  /// ⭐ NEW: Fetch the previous progressive values for a specific factory
-  /// from the latest purchase entry that contains it.
-  Future<Map<String, double>> _fetchPreviousFactoryProgressive(
-      String factoryName) async {
-    double bestQtls = 0;
-    double bestBales = 0;
+  /// Previous progressive per factory (key = lower-cased name) for the
+  /// CURRENT centre + variety, taken from the latest entry containing it.
+  Future<Map<String, Map<String, double>>>
+  _fetchPreviousFactoryProgressiveMap() async {
+    final centre = (_selectedCentre ?? '').trim().toLowerCase();
+    final variety = (_selectedVariety ?? '').trim().toLowerCase();
+    final result = <String, Map<String, double>>{};
+    if (centre.isEmpty || variety.isEmpty) return result;
 
     try {
       final response = await ApiService.getPurchaseEntries();
       if (response.success && response.data != null) {
-        final entries = response.data!['entries'] as List? ?? [];
-        // Sort by reportNo descending to find the latest entry
-        final sorted = entries
+        final entries = (response.data!['entries'] as List? ?? [])
             .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList()
+            .where((e) {
+          final id = (e['id'] ?? e['_id'])?.toString();
+          if (_docId != null && id == _docId) return false;
+          return (e['centre'] ?? '').toString().trim().toLowerCase() ==
+              centre &&
+              (e['variety'] ?? '').toString().trim().toLowerCase() == variety;
+        }).toList()
           ..sort((a, b) {
             final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
             final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
             return rb.compareTo(ra);
           });
 
-        for (final e in sorted) {
-          // Skip the current doc if editing
-          final id = (e['id'] ?? e['_id'])?.toString();
-          if (widget.isModify && _docId != null && id == _docId) continue;
-
+        for (final e in entries) {
           final factories = e['factories'];
           if (factories is! List) continue;
           for (final f in factories) {
             if (f is! Map) continue;
-            final fname = (f['factoryName'] ?? '').toString().trim();
-            if (fname.toLowerCase() == factoryName.toLowerCase()) {
-              bestQtls = (f['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
-              bestBales = (f['progPurchaseBales'] as num?)?.toDouble() ?? 0;
-              break;
-            }
+            final key = (f['factoryName'] ?? '').toString().trim().toLowerCase();
+            if (key.isEmpty || result.containsKey(key)) continue;
+            result[key] = {
+              'qtls': (f['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
+              'bales': (f['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+            };
           }
-          if (bestQtls > 0 || bestBales > 0) break;
         }
       }
     } catch (e) {
       debugLog('Error fetching previous factory progressive: $e');
     }
+    return result;
+  }
 
-    return {'qtls': bestQtls, 'bales': bestBales};
+  Future<Map<String, double>> _fetchPreviousFactoryProgressive(
+      String factoryName) async {
+    final map = await _fetchPreviousFactoryProgressiveMap();
+    return map[factoryName.trim().toLowerCase()] ??
+        {'qtls': 0, 'bales': 0};
+  }
+
+  /// Re-bases every factory row on the previous progressive of the
+  /// currently selected centre + variety:  prog = previous + today.
+  /// Call after centre/variety change (and before saving) so factory
+  /// progressives can never belong to a different variety.
+  Future<void> _recomputeFactoryProgressives() async {
+    if (_purchaseFactories.isEmpty) return;
+    final seq = ++_factoryRecalcSeq;
+    final requestedCentre = _selectedCentre;
+    final requestedVariety = _selectedVariety;
+
+    final prev = await _fetchPreviousFactoryProgressiveMap();
+    if (!mounted || seq != _factoryRecalcSeq) return;
+    if (requestedCentre != _selectedCentre ||
+        requestedVariety != _selectedVariety) return;
+
+    setState(() {
+      for (final f in _purchaseFactories) {
+        final p = prev[f.factoryName.trim().toLowerCase()];
+        f.progPurchaseQtls = (p?['qtls'] ?? 0) + f.purchaseQtls;
+        f.progPurchaseBales = (p?['bales'] ?? 0) + f.purchaseBales;
+      }
+    });
   }
 
   Future<void> _loadDefaultCentre() async {
@@ -960,11 +1048,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     setState(() => _isSubmitting = true);
 
-    if (_otherVarietiesProgressive.isEmpty &&
-        _selectedCentre != null &&
-        _selectedCentre!.isNotEmpty) {
-      await _fetchOtherVarietiesProgressive();
-    }
+    // Always refresh right before saving so the snapshot is never stale
+    // (variety/centre may have been switched while requests were in flight).
+    await _recomputeFactoryProgressives();
+    await _fetchOtherVarietiesProgressive();
 
     final data = _buildPurchaseData();
 
@@ -1670,6 +1757,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               _progFarmersController.text = '';
                               _resetReportNoToDefault();
                               _isEntrySaved = false;
+                              _otherVarietiesProgressive = {};
                             });
                             if (value != null) {
                               _rememberCentre(value);
@@ -1681,6 +1769,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                   _fetchPreviousProgressive();
                                 }
                                 _fetchOtherVarietiesProgressive();
+                                _recomputeFactoryProgressives();
                               }
                             }
                           },
@@ -1764,6 +1853,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                               _progPurchaseBalesController.text = '';
                               _progFarmersController.text = '';
                               _isEntrySaved = false;
+                              _otherVarietiesProgressive = {};
                             });
                             if (value != null &&
                                 _selectedCentre != null &&
@@ -1774,6 +1864,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                                 _fetchPreviousProgressive();
                               }
                               _fetchOtherVarietiesProgressive();
+                              _recomputeFactoryProgressives();
                             }
                           },
                           validator: (value) =>

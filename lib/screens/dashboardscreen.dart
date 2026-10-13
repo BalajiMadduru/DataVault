@@ -3,10 +3,12 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
 import '../services/apiservice.dart';
+import 'heap_list_screen.dart';
 import 'loginscreen.dart';
 import '../enums/report_type.dart';
 import '../widgets/drawer_widget.dart';
 import '../widgets/create_entry_dialog_base.dart';
+import '../widgets/heap_entry_dialog.dart';
 import 'proforma_list_screen.dart';
 import 'proformafactoryscreen.dart';
 import 'reports_listscreen.dart';
@@ -33,7 +35,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // DIALOG / NAVIGATION HELPERS
   // ============================================================
 
-  /// Generic entry opener — works for purchase, seed, and weight list.
   Future<void> _openEntryDialog({
     required bool isModify,
     required ReportType type,
@@ -49,13 +50,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
 
-    // Optional: refresh dashboard after the dialog closes.
     if (mounted) {
       _loadData();
     }
   }
 
-  /// Opens the reports viewer for the given report type.
   Future<void> _openViewReports(ReportType type) async {
     String reportTypeKey;
     switch (type) {
@@ -67,6 +66,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case ReportType.weightList:
         reportTypeKey = 'weightList';
+        break;
+      case ReportType.heap:
+        reportTypeKey = 'heap';
         break;
     }
 
@@ -293,6 +295,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _openEntryDialog(isModify: true, type: ReportType.weightList);
   }
 
+  // Heap handlers
+  void _handleCreateHeap() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const HeapEntryDialog(isModify: false),
+    ).then((_) {
+      if (mounted) _loadData();
+    });
+  }
+
+  void _handleModifyHeap() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const HeapEntryDialog(isModify: true),
+    ).then((_) {
+      if (mounted) _loadData();
+    });
+  }
+
+  void _handleViewHeapReports() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const HeapReportsListScreen(),
+      ),
+    );
+  }
+
   void _handleViewPurchaseReports() {
     _openViewReports(ReportType.dailyPurchase);
   }
@@ -400,9 +432,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onCreateSeed: _handleCreateSeed,
         onModifySeed: _handleModifySeed,
 
-        // Weight List (NEW)
+        // Weight List
         onCreateWeightList: _handleCreateWeightList,
         onModifyWeightList: _handleModifyWeightList,
+
+        // Heap (NEW)
+        onCreateHeap: _handleCreateHeap,
+        onModifyHeap: _handleModifyHeap,
+        onViewHeapReports: _handleViewHeapReports,
 
         // View Reports
         onViewPurchaseReports: _handleViewPurchaseReports,
@@ -556,8 +593,18 @@ class _SelectedTypeView extends StatelessWidget {
               _PurchaseChartSection(entries: purchaseEntries),
             ] else if (type == ReportType.dailySeed) ...[
               _SeedChartSection(entries: seedEntries),
+            ] else if (type == ReportType.heap) ...[
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    'Heap — use the drawer to create, modify, or view heap reports.',
+                    style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
             ] else ...[
-              // Weight List has no chart data yet
               const Center(
                 child: Padding(
                   padding: EdgeInsets.all(32),

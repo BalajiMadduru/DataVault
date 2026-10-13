@@ -83,6 +83,8 @@ class PreviewDialog extends StatelessWidget {
         return 'Seed Report Preview';
       case ReportType.weightList:
         return 'Weight List Preview';
+      case ReportType.heap:
+        return '`Heap Report Preview';
     }
   }
 
@@ -94,6 +96,9 @@ class PreviewDialog extends StatelessWidget {
         return Icons.eco_rounded;
       case ReportType.weightList:
         return Icons.scale_rounded;
+      case ReportType.heap:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 
@@ -105,6 +110,9 @@ class PreviewDialog extends StatelessWidget {
         return const Color(0xFFD1FAE5);
       case ReportType.weightList:
         return const Color(0xFFFEF3C7);
+      case ReportType.heap:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 
@@ -233,6 +241,9 @@ class PreviewDialog extends StatelessWidget {
         return _buildSeedPreview(data);
       case ReportType.weightList:
         return _buildWeightListPreview(data);
+      case ReportType.heap:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 
@@ -530,11 +541,7 @@ class PreviewDialog extends StatelessWidget {
       if (_isGroupedWeightList) {
         final list = groupData ?? const <Map<String, dynamic>>[];
         for (int i = 0; i < list.length; i++) {
-          doc.addPage(_buildWeightListPdfPage(
-            list[i],
-            reportIndex: i + 1,
-            reportTotal: list.length,
-          ));
+          doc.addPage(_buildWeightListPdfPage(list[i]));
         }
       } else if (type == ReportType.dailyPurchase) {
         doc.addPage(_buildPurchasePdfPage(data));
@@ -584,6 +591,9 @@ class PreviewDialog extends StatelessWidget {
         final centre = (data?['centre'] ?? '').toString().toUpperCase();
         final lot = (data?['lotNo'] ?? '').toString();
         return 'WeightList_${centre.isEmpty ? '' : '${centre}_'}${lot.isEmpty ? '' : 'Lot${lot}_'}${ExportHelper.today()}.pdf';
+      case ReportType.heap:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 
@@ -592,9 +602,12 @@ class PreviewDialog extends StatelessWidget {
 // ---------- PURCHASE PDF ----------
 
   pw.Widget _pdfCell(String text,
-      {bool bold = false, bool left = false, double size = 8}) {
+      {bool bold = false,
+        bool left = false,
+        double size = 8,
+        double vPad = 2}) {
     return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+      padding: pw.EdgeInsets.symmetric(horizontal: 3, vertical: vPad),
       alignment: left ? pw.Alignment.centerLeft : pw.Alignment.center,
       child: pw.Text(
         text,
@@ -807,164 +820,164 @@ class PreviewDialog extends StatelessWidget {
 
   // ---------- WEIGHT LIST PDF ----------
 
-  pw.Page _buildWeightListPdfPage(
-      Map<String, dynamic> d, {
-        int? reportIndex,
-        int? reportTotal,
-      }) {
+  pw.Page _buildWeightListPdfPage(Map<String, dynamic> d) {
     String f(String k) => (d[k] ?? '').toString();
     final centre = f('centre').toUpperCase();
     final bales = _weightBales(d);
 
+    // ---- Page-fill sizing -------------------------------------------------
+    // A4 portrait, 24pt margins -> ~794pt usable height. We aim to use ~94% of
+    // it, so the printout fills the sheet. Everything except the bale tables is
+    // roughly fixed in height; the remaining space is shared between the table
+    // rows (as vertical cell padding), so more bales => tighter rows.
+    const double pageUsable = 794;
+    const double targetFill = 0.94;
+    const double tableFont = 10;
+    const double blockGap = 12;
+
+    final blockCount = bales.isEmpty ? 0 : (bales.length / 50).ceil();
+    int totalTableRows = 0;
+    for (int b = 0; b < blockCount; b++) {
+      final remaining = bales.length - b * 50;
+      final count = remaining > 50 ? 50 : remaining;
+      totalTableRows += (count / 5).ceil() + 2; // header + data + total
+    }
+    const double fixedHeight = 340; // titles + details + totals + signatures
+    final tableBudget = pageUsable * targetFill -
+        fixedHeight -
+        (blockCount > 1 ? (blockCount - 1) * blockGap : 0);
+    double vPad = 2;
+    if (totalTableRows > 0) {
+      final rowH = tableBudget / totalTableRows;
+      vPad = ((rowH - tableFont * 1.2) / 2).clamp(2.0, 9.0);
+    }
+
     // One table per block of 50 bales (10 rows x 5 column pairs), each with
     // its own S.L.NO / KGS header and a TOTAL row, as in the Excel format.
     final blockTables = <pw.Widget>[];
-    if (bales.isNotEmpty) {
-      final blockCount = (bales.length / 50).ceil();
-      for (int b = 0; b < blockCount; b++) {
-        final start = b * 50;
-        final remaining = bales.length - start;
-        final count = remaining > 50 ? 50 : remaining;
-        final rows = (count / 5).ceil();
+    for (int b = 0; b < blockCount; b++) {
+      final start = b * 50;
+      final remaining = bales.length - start;
+      final count = remaining > 50 ? 50 : remaining;
+      final rows = (count / 5).ceil();
 
-        final tableRows = <pw.TableRow>[
-          pw.TableRow(
-            decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-            children: [
-              for (int c = 0; c < 5; c++) ...[
-                _pdfCell('S.L.NO', bold: true),
-                _pdfCell('KGS', bold: true),
-              ],
-            ],
-          ),
-        ];
-
-        for (int rr = 0; rr < rows; rr++) {
-          final cells = <pw.Widget>[];
-          for (int c = 0; c < 5; c++) {
-            final i = rr + (c * rows);
-            if (i < count) {
-              final e = bales[start + i];
-              cells.add(_pdfCell((e['baleNo'] ?? (start + i + 1)).toString(),
-                  size: 8));
-              cells.add(_pdfCell(_fq(e['weight']), size: 8));
-            } else {
-              cells.add(_pdfCell(''));
-              cells.add(_pdfCell(''));
-            }
-          }
-          tableRows.add(pw.TableRow(children: cells));
-        }
-
-        // TOTAL of each KGS column for this block
-        tableRows.add(pw.TableRow(
+      final tableRows = <pw.TableRow>[
+        pw.TableRow(
           decoration: const pw.BoxDecoration(color: PdfColors.grey200),
           children: [
             for (int c = 0; c < 5; c++) ...[
-              _pdfCell(c == 0 ? 'TOTAL ::' : '', bold: true, size: 8),
-              _pdfCell(_blockColumnSum(bales, start, count, c),
-                  bold: true, size: 8),
+              _pdfCell('S.L.NO', bold: true, size: tableFont, vPad: vPad),
+              _pdfCell('KGS', bold: true, size: tableFont, vPad: vPad),
             ],
           ],
-        ));
+        ),
+      ];
 
-        blockTables.add(pw.Table(
-          border: pw.TableBorder.all(width: 0.4),
-          defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
-          children: tableRows,
-        ));
-        if (b < blockCount - 1) blockTables.add(pw.SizedBox(height: 10));
+      for (int rr = 0; rr < rows; rr++) {
+        final cells = <pw.Widget>[];
+        for (int c = 0; c < 5; c++) {
+          final i = rr + (c * rows);
+          if (i < count) {
+            final e = bales[start + i];
+            cells.add(_pdfCell((e['baleNo'] ?? (start + i + 1)).toString(),
+                size: tableFont, vPad: vPad));
+            cells.add(
+                _pdfCell(_fq(e['weight']), size: tableFont, vPad: vPad));
+          } else {
+            cells.add(_pdfCell('', size: tableFont, vPad: vPad));
+            cells.add(_pdfCell('', size: tableFont, vPad: vPad));
+          }
+        }
+        tableRows.add(pw.TableRow(children: cells));
       }
+
+      // TOTAL of each KGS column for this block
+      tableRows.add(pw.TableRow(
+        decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+        children: [
+          for (int c = 0; c < 5; c++) ...[
+            _pdfCell(c == 0 ? 'TOTAL ::' : '',
+                bold: true, size: tableFont, vPad: vPad),
+            _pdfCell(_blockColumnSum(bales, start, count, c),
+                bold: true, size: tableFont, vPad: vPad),
+          ],
+        ],
+      ));
+
+      blockTables.add(pw.Table(
+        border: pw.TableBorder.all(width: 0.5),
+        defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+        children: tableRows,
+      ));
+      if (b < blockCount - 1) blockTables.add(pw.SizedBox(height: blockGap));
+    }
+
+    const metaSize = 10.5;
+    pw.Widget metaHalf(String l, String v, double labelW) => pw.Expanded(
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: labelW,
+            child: pw.Text(l, style: const pw.TextStyle(fontSize: metaSize)),
+          ),
+          pw.Text(':  ', style: const pw.TextStyle(fontSize: metaSize)),
+          pw.Expanded(
+            child: pw.Text(v, style: const pw.TextStyle(fontSize: metaSize)),
+          ),
+        ],
+      ),
+    );
+
+    pw.Widget metaRow(String l1, String v1, String l2, String v2) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 2),
+        child: pw.Row(
+          children: [
+            metaHalf(l1, v1, 112),
+            if (l2.isNotEmpty) metaHalf(l2, v2, 100) else pw.Spacer(),
+          ],
+        ),
+      );
     }
 
     return pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(24),
       build: (context) => [
-        if (reportIndex != null && reportTotal != null)
-          pw.Center(
-            child: pw.Container(
-              padding: const pw.EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 4),
-              decoration: pw.BoxDecoration(
-                color: PdfColors.blueGrey900,
-                borderRadius: pw.BorderRadius.circular(12),
-              ),
-              child: pw.Text(
-                'REPORT $reportIndex OF $reportTotal',
-                style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontSize: 10,
-                    fontWeight: pw.FontWeight.bold),
-              ),
-            ),
-          ),
         pw.SizedBox(height: 8),
         pw.Center(
           child: pw.Text('THE COTTON CORPORATION OF INDIA LTD.',
               style: pw.TextStyle(
-                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                  fontSize: 14, fontWeight: pw.FontWeight.bold)),
         ),
         pw.Center(
           child: pw.Text('CENTRE ::: $centre',
               style: pw.TextStyle(
-                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
+                  fontSize: 14, fontWeight: pw.FontWeight.bold)),
         ),
         pw.Center(
           child: pw.Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
               style: pw.TextStyle(
-                  fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  fontSize: 11, fontWeight: pw.FontWeight.bold)),
         ),
-        pw.SizedBox(height: 8),
+        pw.SizedBox(height: 10),
 
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text('VARIETY: ${f('variety')}', style: const pw.TextStyle(fontSize: 9)),
-            pw.Text('LOT NO: ${f('lotNo')}', style: const pw.TextStyle(fontSize: 9)),
-          ],
-        ),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text('DT.OF PRESSING: ${_pressingDateText(d, bales.length)}',
-                style: const pw.TextStyle(fontSize: 9)),
-            pw.Text('P.R.NO: ${f('prNo')}', style: const pw.TextStyle(fontSize: 9)),
-          ],
-        ),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text('P.M.NO: ${f('pmNo')}', style: const pw.TextStyle(fontSize: 9)),
-            pw.Text('NO OF BALES: ${f('noOfBales').isEmpty ? bales.length.toString() : f('noOfBales')}',
-                style: const pw.TextStyle(fontSize: 9)),
-          ],
-        ),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text('CROP YEAR: ${f('cropYear')}', style: const pw.TextStyle(fontSize: 9)),
-            pw.Text('S.B.NO: ${f('sampleBaleNo')}', style: const pw.TextStyle(fontSize: 9)),
-          ],
-        ),
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text('UBIN NO: ${f('ubinNo')}', style: const pw.TextStyle(fontSize: 9)),
-            pw.Text('LOT AVG MOISTURE: ${f('moisture')}',
-                style: const pw.TextStyle(fontSize: 9)),
-          ],
-        ),
-        pw.Text('NAME OF THE GODOWN: ${f('godown')}',
-            style: const pw.TextStyle(fontSize: 9)),
-        pw.Text('FACTORY NAME ::: ${f('pressingFactory')}',
-            style: const pw.TextStyle(fontSize: 9)),
+        metaRow('VARIETY', f('variety'), 'LOT NO', f('lotNo')),
+        metaRow('DT.OF PRESSING', _pressingDateText(d, bales.length),
+            'P.R.NO', f('prNo')),
+        metaRow('P.M.NO', f('pmNo'), 'NO OF BALES',
+            f('noOfBales').isEmpty ? bales.length.toString() : f('noOfBales')),
+        metaRow('CROP YEAR', f('cropYear'), 'S.B.NO', f('sampleBaleNo')),
+        metaRow('UBIN NO', f('ubinNo'), 'LOT AVG MOISTURE', f('moisture')),
+        metaRow('NAME OF THE GODOWN', f('godown'), '', ''),
+        metaRow('FACTORY NAME', f('pressingFactory'), '', ''),
 
-        pw.SizedBox(height: 8),
+        pw.SizedBox(height: 12),
 
         ...blockTables,
 
-        pw.SizedBox(height: 10),
+        pw.SizedBox(height: 12),
 
         pw.Align(
           alignment: pw.Alignment.centerRight,
@@ -973,33 +986,34 @@ class PreviewDialog extends StatelessWidget {
             children: [
               pw.Text('TOTAL GROSS WT :: ${_num(d['totalGrossWeight'])}',
                   style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 3),
               pw.Text('TOTAL TARE WT :: ${_num(d['tareWeight'])}',
-                  style: const pw.TextStyle(fontSize: 10)),
+                  style: const pw.TextStyle(fontSize: 11)),
+              pw.SizedBox(height: 3),
               pw.Text('TOTAL NET WT :: ${_num(d['totalNettWeight'])}',
                   style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
-              pw.Text('SUM OF BALES :: ${_sumOfBalesText(d)}',
-                  style: const pw.TextStyle(fontSize: 10)),
+                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
             ],
           ),
         ),
 
-        pw.SizedBox(height: 24),
+        pw.SizedBox(height: 28),
         pw.Align(
           alignment: pw.Alignment.centerRight,
           child: pw.Text('For The Cotton Corporation of India Ltd.',
               style: pw.TextStyle(
-                  fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                  fontSize: 11, fontWeight: pw.FontWeight.bold)),
         ),
-        pw.SizedBox(height: 32),
+        pw.SizedBox(height: 44),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Factory Owner / Rep', style: const pw.TextStyle(fontSize: 10)),
+            pw.Text('Factory Owner / Rep',
+                style: const pw.TextStyle(fontSize: 11)),
             pw.Text('Centre Incharge',
                 style: pw.TextStyle(
-                    fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
           ],
         ),
       ],
@@ -1029,6 +1043,9 @@ class PreviewDialog extends StatelessWidget {
               ? _fillWeightListGroupSheet(excel)
               : _fillWeightListSheet(excel);
           break;
+        case ReportType.heap:
+          // TODO: Handle this case.
+          throw UnimplementedError();
       }
 
       final path = await ExportHelper.saveExcel(excel, fileName);
@@ -1355,8 +1372,6 @@ class PreviewDialog extends StatelessWidget {
     row++;
     sheet.appendRow(['', '', '', '', '', 'TOTAL NET WT     ::', _num(d['totalNettWeight'])]);
     row++;
-    sheet.appendRow(['', '', '', '', '', 'SUM OF BALES     ::', _sumOfBalesText(d)]);
-    row++;
 
     sheet.appendRow([]);
     row++;
@@ -1415,15 +1430,6 @@ class PreviewDialog extends StatelessWidget {
     if (v is String) dt = DateTime.tryParse(v);
     if (dt == null) return '$n BALES:';
     return '$n BALES: ${dt.day}-${dt.month}-${dt.year}';
-  }
-
-  /// Sum of all bale weights actually entered in `baleEntries`.
-  String _sumOfBalesText(Map<String, dynamic> d) {
-    double sum = 0;
-    for (final b in _weightBales(d)) {
-      sum += _num(b['weight']).toDouble();
-    }
-    return _fq(sum);
   }
 
   String _blockColumnSum(
@@ -1787,34 +1793,10 @@ class PreviewDialog extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (int i = 0; i < list.length; i++) ...[
-          _reportPill(i + 1, list.length),
-          const SizedBox(height: 8),
           _buildSingleWeightListBlock(list[i]),
-          if (i < list.length - 1) const SizedBox(height: 24),
+          if (i < list.length - 1) const SizedBox(height: 56),
         ],
       ],
-    );
-  }
-
-  Widget _reportPill(int index, int total) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          'REPORT $index OF $total',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
     );
   }
 
@@ -1853,20 +1835,15 @@ class PreviewDialog extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF334155))),
               const SizedBox(height: 8),
-              _wMetaRow('VARIETY', s('variety'), 'LOT NO:', s('lotNo')),
-              _wMetaRow(
-                  'DT.OF PRESSING',
-                  _pressingDateText(data, bales.length),
-                  'P.R.NO:',
-                  s('prNo')),
-              _wMetaRow('P.M.NO', s('pmNo'), 'NO OF BALES :',
-                  s('noOfBales')),
-              _wMetaRow('CROP YEAR', s('cropYear'), 'S.B.NO :',
-                  s('sampleBaleNo')),
+              _wMetaRow('VARIETY', s('variety'), 'LOT NO', s('lotNo')),
+              _wMetaRow('DT.OF PRESSING', _pressingDateText(data, bales.length),
+                  'P.R.NO', s('prNo')),
+              _wMetaRow('P.M.NO', s('pmNo'), 'NO OF BALES', s('noOfBales')),
+              _wMetaRow('CROP YEAR', s('cropYear'), 'S.B.NO', s('sampleBaleNo')),
               _wMetaRow('UBIN NO', s('ubinNo'), 'LOT AVG MOISTURE',
                   s('moisture')),
-              _wMetaRow('NAME OF THE GODOWN:', s('godown'), '', ''),
-              _wMetaRow('FACTORY NAME :::', s('pressingFactory'), '', ''),
+              _wMetaRow('NAME OF THE GODOWN', s('godown'), '', ''),
+              _wMetaRow('FACTORY NAME', s('pressingFactory'), '', ''),
             ],
           ),
         ),
@@ -1897,31 +1874,6 @@ class PreviewDialog extends StatelessWidget {
               _summaryRow('TOTAL TARE WT ::', s('tareWeight'), false),
               const SizedBox(height: 4),
               _summaryRow('TOTAL NET WT ::', s('totalNettWeight'), true),
-              const SizedBox(height: 4),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const Text('SUM OF BALES ::',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF334155))),
-                  const SizedBox(width: 16),
-                  Container(
-                    constraints: const BoxConstraints(minWidth: 100),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 6, horizontal: 10),
-                    child: Text(
-                      _sumOfBalesText(data),
-                      textAlign: TextAlign.end,
-                      style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF334155)),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -2045,12 +1997,22 @@ class PreviewDialog extends StatelessWidget {
   }
 
   Widget _wMetaRow(String l1, String v1, String l2, String v2) {
-    Widget half(String l, String v) => Expanded(
+    // Fixed-width label column + colon so every value starts at the same x.
+    Widget half(String l, String v, double labelW) => Expanded(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$l ',
-              style: const TextStyle(
-                  fontSize: 10,
+          SizedBox(
+            width: labelW,
+            child: Text(l,
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF64748B))),
+          ),
+          const Text(':  ',
+              style: TextStyle(
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF64748B))),
           Expanded(
@@ -2068,8 +2030,8 @@ class PreviewDialog extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
-          half(l1, v1),
-          if (l2.isNotEmpty) half(l2, v2) else const Spacer(),
+          half(l1, v1, 130),
+          if (l2.isNotEmpty) half(l2, v2, 110) else const Spacer(),
         ],
       ),
     );

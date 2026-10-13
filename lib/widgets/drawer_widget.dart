@@ -15,6 +15,10 @@ class CustomDrawer extends StatefulWidget {
   final VoidCallback? onCreateWeightList;
   final VoidCallback? onModifyWeightList;
   final VoidCallback? onViewWeightListReports;
+  // Heap
+  final VoidCallback? onCreateHeap;
+  final VoidCallback? onModifyHeap;
+  final VoidCallback? onViewHeapReports;
 
   const CustomDrawer({
     super.key,
@@ -31,6 +35,9 @@ class CustomDrawer extends StatefulWidget {
     this.onCreateWeightList,
     this.onModifyWeightList,
     this.onViewWeightListReports,
+    this.onCreateHeap,
+    this.onModifyHeap,
+    this.onViewHeapReports,
   });
 
   @override
@@ -41,6 +48,7 @@ class _CustomDrawerState extends State<CustomDrawer> {
   bool _isPurchaseExpanded = true;
   bool _isSeedExpanded = false;
   bool _isWeightListExpanded = false;
+  bool _isHeapExpanded = false;
   bool _isReportsExpanded = false;
 
   @override
@@ -64,7 +72,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.assignment_rounded, color: Colors.white, size: 32),
+                        Icon(Icons.assignment_rounded,
+                            color: Colors.white, size: 32),
                         SizedBox(width: 12),
                         Text(
                           'Reports',
@@ -93,7 +102,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       title: 'Daily Purchase',
                       icon: Icons.shopping_basket_rounded,
                       isExpanded: _isPurchaseExpanded,
-                      onTap: () => setState(() => _isPurchaseExpanded = !_isPurchaseExpanded),
+                      onTap: () => setState(
+                              () => _isPurchaseExpanded = !_isPurchaseExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -119,7 +129,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       title: 'Daily Seed',
                       icon: Icons.eco_rounded,
                       isExpanded: _isSeedExpanded,
-                      onTap: () => setState(() => _isSeedExpanded = !_isSeedExpanded),
+                      onTap: () => setState(
+                              () => _isSeedExpanded = !_isSeedExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -145,7 +156,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       title: 'Weight List',
                       icon: Icons.scale_rounded,
                       isExpanded: _isWeightListExpanded,
-                      onTap: () => setState(() => _isWeightListExpanded = !_isWeightListExpanded),
+                      onTap: () => setState(
+                              () => _isWeightListExpanded = !_isWeightListExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -168,10 +180,38 @@ class _CustomDrawerState extends State<CustomDrawer> {
                       ],
                     ),
                     _buildExpandableSection(
+                      title: 'Heap',
+                      icon: Icons.inventory_2_rounded,
+                      isExpanded: _isHeapExpanded,
+                      onTap: () => setState(
+                              () => _isHeapExpanded = !_isHeapExpanded),
+                      children: [
+                        _buildSubItem(
+                          context: context,
+                          title: 'Create Heap',
+                          icon: Icons.add_circle_outline,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onCreateHeap?.call();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'Modify Heap',
+                          icon: Icons.edit_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onModifyHeap?.call();
+                          },
+                        ),
+                      ],
+                    ),
+                    _buildExpandableSection(
                       title: 'Reports',
                       icon: Icons.list_alt,
                       isExpanded: _isReportsExpanded,
-                      onTap: () => setState(() => _isReportsExpanded = !_isReportsExpanded),
+                      onTap: () => setState(
+                              () => _isReportsExpanded = !_isReportsExpanded),
                       children: [
                         _buildSubItem(
                           context: context,
@@ -200,6 +240,16 @@ class _CustomDrawerState extends State<CustomDrawer> {
                             widget.onViewWeightListReports?.call();
                           },
                         ),
+                        if (widget.onViewHeapReports != null)
+                          _buildSubItem(
+                            context: context,
+                            title: 'View Heap Reports',
+                            icon: Icons.visibility_outlined,
+                            onTap: () {
+                              Navigator.pop(context);
+                              widget.onViewHeapReports!();
+                            },
+                          ),
                         if (widget.onViewProforma != null)
                           _buildSubItem(
                             context: context,
@@ -305,7 +355,8 @@ class _CustomDrawerState extends State<CustomDrawer> {
         splashColor: accentColor != null
             ? accentColor.withOpacity(0.2)
             : Colors.grey[800]?.withOpacity(0.3),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        contentPadding:
+        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         dense: true,
       ),
     );

@@ -29,7 +29,8 @@ class ApiService {
         password: password,
       );
       print('✅ Login successful for: ${credential.user?.uid}');
-      return await _saveDailyRecordAndRespond(credential, email, mobile, username);
+      return await _saveDailyRecordAndRespond(
+          credential, email, mobile, username);
     } on FirebaseAuthException catch (e) {
       return ApiResponse(
         success: false,
@@ -62,14 +63,18 @@ class ApiService {
         password: password,
       );
       return await _saveDailyRecordAndRespond(
-        credential, email, mobile, username,
+        credential,
+        email,
+        mobile,
+        username,
         isNewAccount: true,
       );
     } on FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
         return ApiResponse(
           success: false,
-          message: 'An account already exists for that email. Try signing in instead.',
+          message:
+          'An account already exists for that email. Try signing in instead.',
           data: {'code': e.code},
         );
       }
@@ -108,7 +113,8 @@ class ApiService {
       );
       return ApiResponse(
         success: true,
-        message: isNewAccount ? 'Account created — welcome!' : 'Login successful',
+        message:
+        isNewAccount ? 'Account created — welcome!' : 'Login successful',
         data: {'uid': uid},
       );
     } catch (e) {
@@ -364,7 +370,8 @@ class ApiService {
       bool foundDuplicate = false;
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
         final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (storedReportNo != reportNo) continue;
@@ -375,7 +382,8 @@ class ApiService {
               parsed.year == date.year &&
               parsed.month == date.month &&
               parsed.day == date.day) {
-            final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+            final storedVariety =
+            (data['variety'] as String? ?? '').trim().toLowerCase();
             if (storedVariety == normalizedVariety) {
               foundDuplicate = true;
               break;
@@ -385,7 +393,8 @@ class ApiService {
       }
       return ApiResponse(
         success: true,
-        message: foundDuplicate ? 'Duplicate entry found' : 'No duplicate found',
+        message:
+        foundDuplicate ? 'Duplicate entry found' : 'No duplicate found',
         data: {'exists': foundDuplicate},
       );
     } catch (e) {
@@ -398,7 +407,8 @@ class ApiService {
 
   // ============ SAVE METHODS ============
 
-  static Future<ApiResponse> savePurchaseEntry(Map<String, dynamic> data) async {
+  static Future<ApiResponse> savePurchaseEntry(
+      Map<String, dynamic> data) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -446,7 +456,8 @@ class ApiService {
     }
   }
 
-  static Future<ApiResponse> saveWeightListEntry(Map<String, dynamic> data) async {
+  static Future<ApiResponse> saveWeightListEntry(
+      Map<String, dynamic> data) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -497,16 +508,20 @@ class ApiService {
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
         if (normalizedVariety != null && normalizedVariety.isNotEmpty) {
           bool varietyMatches;
           if (data['variety'] != null) {
-            varietyMatches = (data['variety'] as String? ?? '').trim().toLowerCase() == normalizedVariety;
+            varietyMatches =
+                (data['variety'] as String? ?? '').trim().toLowerCase() ==
+                    normalizedVariety;
           } else if (data['seedFactories'] is List) {
             varietyMatches = (data['seedFactories'] as List).any((f) {
-              final factoryVariety = (f is Map) ? (f['variety'] as String? ?? '') : '';
+              final factoryVariety =
+              (f is Map) ? (f['variety'] as String? ?? '') : '';
               return factoryVariety.trim().toLowerCase() == normalizedVariety;
             });
           } else {
@@ -530,12 +545,14 @@ class ApiService {
       }
 
       if (match == null) {
-        final varietyPart = (normalizedVariety != null && normalizedVariety.isNotEmpty)
+        final varietyPart =
+        (normalizedVariety != null && normalizedVariety.isNotEmpty)
             ? ', variety'
             : '';
         return ApiResponse(
           success: false,
-          message: 'No entry found for that centre$varietyPart, report number & date',
+          message:
+          'No entry found for that centre$varietyPart, report number & date',
         );
       }
       match['id'] = matchId;
@@ -575,7 +592,8 @@ class ApiService {
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
         final rawDate = data['date'];
@@ -641,9 +659,11 @@ class ApiService {
       for (final doc in querySnapshot.docs) {
         if (excludeDocId != null && doc.id == excludeDocId) continue;
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
-        final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+        final storedVariety =
+        (data['variety'] as String? ?? '').trim().toLowerCase();
         if (storedVariety != normalizedVariety) continue;
         final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (reportNo > highestReportNo) {
@@ -674,8 +694,10 @@ class ApiService {
           latestEntry['balesPressedProg'] as num?)
           ?.toDouble() ??
           0;
-      final progPurchaseQtls = (latestEntry['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
-      final progPurchaseBales = (latestEntry['progPurchaseBales'] as num?)?.toDouble() ?? 0;
+      final progPurchaseQtls =
+          (latestEntry['progPurchaseQtls'] as num?)?.toDouble() ?? 0;
+      final progPurchaseBales =
+          (latestEntry['progPurchaseBales'] as num?)?.toDouble() ?? 0;
       final progFarmers = (latestEntry['progFarmers'] ??
           latestEntry['farmersProgressive'] as num?)
           ?.toDouble() ??
@@ -691,9 +713,12 @@ class ApiService {
           'progFarmers': progFarmers,
           'balesPressedProg': progPressedBales,
           'farmersProgressive': progFarmers,
-          'progArrivalsApmc': (latestEntry['progArrivalsApmc'] as num?)?.toDouble() ?? 0,
-          'progArrivalsOutside': (latestEntry['progArrivalsOutside'] as num?)?.toDouble() ?? 0,
-          'mspValueProg': (latestEntry['mspValueProg'] as num?)?.toDouble() ?? 0,
+          'progArrivalsApmc':
+          (latestEntry['progArrivalsApmc'] as num?)?.toDouble() ?? 0,
+          'progArrivalsOutside':
+          (latestEntry['progArrivalsOutside'] as num?)?.toDouble() ?? 0,
+          'mspValueProg':
+          (latestEntry['mspValueProg'] as num?)?.toDouble() ?? 0,
         },
       );
     } catch (e) {
@@ -826,7 +851,8 @@ class ApiService {
           .where('userId', isEqualTo: user.uid)
           .get();
 
-      debugPrint('[WeightList] docs matching uid: ${querySnapshot.docs.length}');
+      debugPrint(
+          '[WeightList] docs matching uid: ${querySnapshot.docs.length}');
 
       final entries = querySnapshot.docs.map((doc) {
         final data = doc.data();
@@ -854,9 +880,11 @@ class ApiService {
       if (entries.isEmpty) {
         try {
           final all = await _db.collection('weightLists').get();
-          debugPrint('[WeightList] total docs in collection: ${all.docs.length}');
+          debugPrint(
+              '[WeightList] total docs in collection: ${all.docs.length}');
           for (final d in all.docs) {
-            debugPrint('[WeightList]   ${d.id} userId=${d.data()['userId']}');
+            debugPrint(
+                '[WeightList]   ${d.id} userId=${d.data()['userId']}');
           }
         } catch (e) {
           debugPrint('[WeightList] could not list collection: $e');
@@ -877,7 +905,8 @@ class ApiService {
     }
   }
 
-  static Future<ApiResponse> updateEntry(String docId, Map<String, dynamic> data) async {
+  static Future<ApiResponse> updateEntry(
+      String docId, Map<String, dynamic> data) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -897,7 +926,8 @@ class ApiService {
     }
   }
 
-  static Future<ApiResponse> updateWeightListEntry(String docId, Map<String, dynamic> data) async {
+  static Future<ApiResponse> updateWeightListEntry(
+      String docId, Map<String, dynamic> data) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
@@ -933,7 +963,8 @@ class ApiService {
         final data = proformaDoc.data();
         final entries = data['entries'];
         if (entries is Map && entries.containsKey(docId)) {
-          final updatedEntries = Map<String, dynamic>.from(entries)..remove(docId);
+          final updatedEntries = Map<String, dynamic>.from(entries)
+            ..remove(docId);
           if (updatedEntries.isEmpty) {
             await proformaDoc.reference.delete();
           } else {
@@ -1002,7 +1033,8 @@ class ApiService {
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
         final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (storedReportNo != reportNo) continue;
@@ -1013,7 +1045,8 @@ class ApiService {
               parsed.year == date.year &&
               parsed.month == date.month &&
               parsed.day == date.day) {
-            final storedVariety = (data['variety'] as String? ?? '').trim().toLowerCase();
+            final storedVariety =
+            (data['variety'] as String? ?? '').trim().toLowerCase();
             if (storedVariety == normalizedVariety) {
               return ApiResponse(
                 success: true,
@@ -1056,7 +1089,8 @@ class ApiService {
 
       for (final doc in querySnapshot.docs) {
         final data = doc.data();
-        final storedCentre = (data['centre'] as String? ?? '').trim().toLowerCase();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
         final storedReportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
         if (storedReportNo != reportNo) continue;
@@ -1091,12 +1125,25 @@ class ApiService {
   // ============ PROFORMA METHODS ============
 
   static const List<String> _proformaSumFields = [
-    'quantity', 'amount', 'farmers', 'moistureValue', 'shortageValue',
-    'padthaValue', 'outTurnValue', 'seedValue', 'bales', 'heap',
+    'quantity',
+    'amount',
+    'farmers',
+    'moistureValue',
+    'shortageValue',
+    'padthaValue',
+    'outTurnValue',
+    'seedValue',
+    'bales',
+    'heap',
   ];
 
   static const List<String> _proformaAvgFields = [
-    'rate', 'moisture', 'shortage', 'padtha', 'outTurn', 'seed',
+    'rate',
+    'moisture',
+    'shortage',
+    'padtha',
+    'outTurn',
+    'seed',
   ];
 
   static Map<String, dynamic> recomputeProformaTotals(
@@ -1115,7 +1162,8 @@ class ApiService {
       final entry = Map<String, dynamic>.from(value);
       final entryDate = DateTime.tryParse(entry['entryDate']?.toString() ?? '');
       if (entryDate == null) return;
-      final normalized = DateTime(entryDate.year, entryDate.month, entryDate.day);
+      final normalized =
+      DateTime(entryDate.year, entryDate.month, entryDate.day);
       if (start != null) {
         final s = DateTime(start.year, start.month, start.day);
         if (normalized.isBefore(s)) return;
@@ -1129,7 +1177,8 @@ class ApiService {
     return filtered;
   }
 
-  static Map<String, dynamic> _recomputeProformaTotals(Map<String, dynamic> entries) {
+  static Map<String, dynamic> _recomputeProformaTotals(
+      Map<String, dynamic> entries) {
     final sumFields = <String, num>{};
     final avgFields = <String, List<num>>{};
     int entryCount = 0;
@@ -1211,13 +1260,19 @@ class ApiService {
         required String currentCentre,
         required String currentVariety,
       }) async {
-    final query = await _db.collection('proformas').where('userId', isEqualTo: userId).get();
+    final query = await _db
+        .collection('proformas')
+        .where('userId', isEqualTo: userId)
+        .get();
     for (final doc in query.docs) {
       final data = doc.data();
       final entries = data['entries'];
       if (entries is! Map || !entries.containsKey(purchaseEntryId)) continue;
-      if (data['centre'] == currentCentre && data['variety'] == currentVariety) continue;
-      final updatedEntries = Map<String, dynamic>.from(entries)..remove(purchaseEntryId);
+      if (data['centre'] == currentCentre && data['variety'] == currentVariety) {
+        continue;
+      }
+      final updatedEntries = Map<String, dynamic>.from(entries)
+        ..remove(purchaseEntryId);
       if (updatedEntries.isEmpty) {
         await doc.reference.delete();
       } else {
@@ -1254,9 +1309,11 @@ class ApiService {
         );
       }
 
-      final parsedDate = rawDate is String ? DateTime.parse(rawDate) : rawDate as DateTime;
+      final parsedDate =
+      rawDate is String ? DateTime.parse(rawDate) : rawDate as DateTime;
       final normalizedDateStr =
-      DateTime(parsedDate.year, parsedDate.month, parsedDate.day).toIso8601String();
+      DateTime(parsedDate.year, parsedDate.month, parsedDate.day)
+          .toIso8601String();
 
       final entry = Map<String, dynamic>.from(data)
         ..remove('centre')
@@ -1266,8 +1323,10 @@ class ApiService {
       entry['entryDate'] = normalizedDateStr;
 
       await _removeStaleProformaContribution(
-        user.uid, purchaseEntryId,
-        currentCentre: centre, currentVariety: variety,
+        user.uid,
+        purchaseEntryId,
+        currentCentre: centre,
+        currentVariety: variety,
       );
 
       final existing = await _db
@@ -1369,13 +1428,17 @@ class ApiService {
     }
   }
 
-  static Future<ApiResponse> getProformaByPurchaseEntry(String purchaseEntryId) async {
+  static Future<ApiResponse> getProformaByPurchaseEntry(
+      String purchaseEntryId) async {
     try {
       final user = _auth.currentUser;
       if (user == null) {
         return ApiResponse(success: false, message: 'User not logged in');
       }
-      final query = await _db.collection('proformas').where('userId', isEqualTo: user.uid).get();
+      final query = await _db
+          .collection('proformas')
+          .where('userId', isEqualTo: user.uid)
+          .get();
       for (final doc in query.docs) {
         final data = doc.data();
         final entries = data['entries'];
@@ -1451,6 +1514,343 @@ class ApiService {
       return ApiResponse(
         success: false,
         message: 'Error deleting proforma: $e',
+      );
+    }
+  }
+
+  // ============ HEAP METHODS ============
+
+  static Future<ApiResponse> getNextHeapReportNo({
+    required String centre,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      final normalizedCentre = centre.trim().toLowerCase();
+      final querySnapshot = await _db
+          .collection('heaps')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      int maxReportNo = 0;
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+        final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
+        if (reportNo > maxReportNo) maxReportNo = reportNo;
+      }
+
+      return ApiResponse(
+        success: true,
+        message: 'Next heap report number generated',
+        data: {'nextReportNo': maxReportNo + 1},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Failed to generate report number: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> saveHeapEntry(Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      data['userId'] = user.uid;
+      data['createdAt'] = FieldValue.serverTimestamp();
+      data['type'] = 'heap';
+
+      final docRef = await _db.collection('heaps').add(data);
+      return ApiResponse(
+        success: true,
+        message: 'Heap entry saved successfully',
+        data: {'id': docRef.id},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error saving heap: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> updateHeapEntry(
+      String docId, Map<String, dynamic> data) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      data['updatedAt'] = FieldValue.serverTimestamp();
+      await _db.collection('heaps').doc(docId).update(data);
+      return ApiResponse(
+        success: true,
+        message: 'Heap entry updated successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error updating heap: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> findHeapEntry({
+    required String centre,
+    required int reportNo,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      final normalizedCentre = centre.trim().toLowerCase();
+
+      final querySnapshot = await _db
+          .collection('heaps')
+          .where('userId', isEqualTo: user.uid)
+          .where('reportNo', isEqualTo: reportNo)
+          .get();
+
+      Map<String, dynamic>? match;
+      String? matchId;
+
+      for (final doc in querySnapshot.docs) {
+        final data = doc.data();
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+        match = data;
+        matchId = doc.id;
+        break;
+      }
+
+      if (match == null) {
+        return ApiResponse(
+          success: false,
+          message: 'No heap found for that centre & report number',
+        );
+      }
+      match['id'] = matchId;
+      return ApiResponse(
+        success: true,
+        message: 'Heap found',
+        data: {'entry': match},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error finding heap: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> getHeapEntries() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      final querySnapshot = await _db
+          .collection('heaps')
+          .where('userId', isEqualTo: user.uid)
+          .get();
+
+      final entries = querySnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+
+      entries.sort((a, b) {
+        final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
+        final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
+        return rb.compareTo(ra);
+      });
+
+      return ApiResponse(
+        success: true,
+        message: 'Heap entries fetched successfully',
+        data: {'entries': entries},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching heap entries: $e',
+      );
+    }
+  }
+
+  // ============ HEAP: FETCH ROWS FROM FACTORY PURCHASE REPORTS ============
+
+  /// Fetches purchase entries for the given centre + factory + variety
+  /// in the given date range, and returns rows shaped for the heap report.
+  ///
+  /// Each returned row is:
+  ///   entryId, date, centre, factoryName, variety,
+  ///   quantityQtls, avgRate, lintPct, seedPct, miscPct,
+  ///   shortagePct, seedRate, profExp, padtha, procCycle, ceiling
+  ///
+  /// Data source: `purchases` collection entries with `type = 'purchase'`
+  /// that carry a `factories` list containing an entry with matching
+  /// `factoryName`. Per-factory quantity = that factory's `purchaseQtls`.
+  /// Purchase-level fields (avgKapasRate, budgetedLint, budgetedShortage,
+  /// cottonSeedRate, proformaExpenses, budgetedPadtha) are reused as the
+  /// per-factory values, falling back to entry-level values when the
+  /// factory row doesn't carry its own.
+  static Future<ApiResponse> getPurchaseEntriesForHeap({
+    required String centre,
+    required String factoryName,
+    required String variety,
+    required DateTime fromDate,
+    required DateTime toDate,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+
+      final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedFactory = factoryName.trim().toLowerCase();
+      final normalizedVariety = variety.trim().toLowerCase();
+
+      final fromN = DateTime(fromDate.year, fromDate.month, fromDate.day);
+      final toN = DateTime(toDate.year, toDate.month, toDate.day);
+
+      final snapshot = await _db
+          .collection('purchases')
+          .where('userId', isEqualTo: user.uid)
+          .where('type', isEqualTo: 'purchase')
+          .get();
+
+      final rows = <Map<String, dynamic>>[];
+
+      double n(dynamic v) {
+        if (v is num) return v.toDouble();
+        if (v is String) return double.tryParse(v) ?? 0;
+        return 0;
+      }
+
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+
+        // Match centre + variety (case-insensitive)
+        final storedCentre =
+        (data['centre'] as String? ?? '').trim().toLowerCase();
+        if (storedCentre != normalizedCentre) continue;
+
+        final storedVariety =
+        (data['variety'] as String? ?? '').trim().toLowerCase();
+        if (storedVariety != normalizedVariety) continue;
+
+        // Match date range
+        final rawDate = data['date'];
+        DateTime? entryDate;
+        if (rawDate is String) entryDate = DateTime.tryParse(rawDate);
+        if (entryDate == null) continue;
+        final entryN =
+        DateTime(entryDate.year, entryDate.month, entryDate.day);
+        if (entryN.isBefore(fromN) || entryN.isAfter(toN)) continue;
+
+        // Find the matching factory inside this entry
+        final factories = data['factories'];
+        if (factories is! List) continue;
+
+        Map<String, dynamic>? factoryRow;
+        for (final f in factories) {
+          if (f is! Map) continue;
+          final fname =
+          (f['factoryName'] ?? '').toString().trim().toLowerCase();
+          if (fname == normalizedFactory) {
+            factoryRow = Map<String, dynamic>.from(f);
+            break;
+          }
+        }
+        if (factoryRow == null) continue;
+
+        // Per-factory quantity (day's purchase for that factory)
+        final quantityQtls = n(factoryRow['purchaseQtls']);
+
+        // Fall back to entry-level values when the factory row doesn't
+        // carry its own moisture / seed rate.
+        final avgRate = n(data['avgKapasRate']);
+        final lintPct = n(data['budgetedLint']);
+        final seedPct = n(data['budgetedCottonSeedPct']) != 0
+            ? n(data['budgetedCottonSeedPct'])
+            : (100 - lintPct - n(data['budgetedShortage']));
+        final shortagePct = n(data['budgetedShortage']);
+
+        final fSeedRate = n(factoryRow['seedRate']);
+        final seedRate =
+        fSeedRate > 0 ? fSeedRate : n(data['cottonSeedRate']);
+
+        final profExp = n(data['proformaExpenses']);
+        final padtha = n(data['budgetedPadtha']);
+
+        rows.add({
+          'entryId': doc.id,
+          'date': entryDate.toIso8601String(),
+          'centre': (data['centre'] ?? '').toString(),
+          'factoryName': (factoryRow['factoryName'] ?? '').toString(),
+          'variety': (data['variety'] ?? '').toString(),
+          'quantityQtls': quantityQtls,
+          'avgRate': avgRate,
+          'lintPct': lintPct,
+          'seedPct': seedPct,
+          'miscPct': 0,
+          'shortagePct': shortagePct,
+          'seedRate': seedRate,
+          'profExp': profExp,
+          'padtha': padtha,
+          'procCycle': 7,
+          'ceiling': 'MSP',
+        });
+      }
+
+      // Sort by date ascending
+      rows.sort((a, b) {
+        final da = DateTime.tryParse(a['date']?.toString() ?? '');
+        final db = DateTime.tryParse(b['date']?.toString() ?? '');
+        if (da == null || db == null) return 0;
+        return da.compareTo(db);
+      });
+
+      return ApiResponse(
+        success: true,
+        message: 'Fetched ${rows.length} row(s)',
+        data: {'rows': rows},
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error fetching heap rows: $e',
+      );
+    }
+  }
+
+  static Future<ApiResponse> deleteHeapEntry(String docId) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        return ApiResponse(success: false, message: 'User not logged in');
+      }
+      await _db.collection('heaps').doc(docId).delete();
+      return ApiResponse(
+        success: true,
+        message: 'Heap deleted successfully',
+      );
+    } catch (e) {
+      return ApiResponse(
+        success: false,
+        message: 'Error deleting heap: $e',
       );
     }
   }
