@@ -7,6 +7,11 @@ import 'package:excel/excel.dart' as excel_lib;
 import '../services/ExportHelper.java';
 import '../services/apiservice.dart';
 
+// Legal paper — 8.5" × 14" = 612 × 1008 pt
+// (PdfPageFormat has no const constructor, so these must be top-level final.)
+final PdfPageFormat kLegalPortrait = PdfPageFormat(612, 1008);
+final PdfPageFormat kLegalLandscape = PdfPageFormat(1008, 612);
+
 class HeapViewScreen extends StatefulWidget {
   final Map<String, dynamic> heapData;
 
@@ -143,16 +148,12 @@ class _HeapViewScreenState extends State<HeapViewScreen> {
           IconButton(
             icon: const Icon(Icons.picture_as_pdf),
             tooltip: 'Export PDF',
-            onPressed: _rows.isEmpty
-                ? null
-                : () => _exportPdf(context),
+            onPressed: _rows.isEmpty ? null : () => _exportPdf(context),
           ),
           IconButton(
             icon: const Icon(Icons.download),
             tooltip: 'Export Excel',
-            onPressed: _rows.isEmpty
-                ? null
-                : () => _exportExcel(context),
+            onPressed: _rows.isEmpty ? null : () => _exportExcel(context),
           ),
         ],
       ),
@@ -373,18 +374,18 @@ class _HeapViewScreenState extends State<HeapViewScreen> {
     final totalQty = q('quantityQtls');
 
     return pw.MultiPage(
-      pageFormat: PdfPageFormat.a4.landscape,
+      pageFormat: kLegalLandscape, // Legal landscape (14 × 8.5 in)
       margin: const pw.EdgeInsets.all(14),
       build: (context) => [
         pw.Center(
           child: pw.Text('THE COTTON CORPORATION OF INDIA LTD',
-              style:
-              pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+              style: pw.TextStyle(
+                  fontSize: 12, fontWeight: pw.FontWeight.bold)),
         ),
         pw.Center(
           child: pw.Text('HEAP REGISTER',
-              style:
-              pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold)),
+              style: pw.TextStyle(
+                  fontSize: 11, fontWeight: pw.FontWeight.bold)),
         ),
         pw.SizedBox(height: 6),
 
@@ -794,12 +795,10 @@ class _HeapReportCard extends StatelessWidget {
       child: Column(
         children: const [
           Text('THE COTTON CORPORATION OF INDIA LTD',
-              style:
-              TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
           SizedBox(height: 2),
           Text('HEAP REGISTER',
-              style:
-              TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -832,8 +831,7 @@ class _HeapReportCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                  child:
-                  _metaCell('Purchase Details', '$fromDate to $toDate')),
+                  child: _metaCell('Purchase Details', '$fromDate to $toDate')),
               Expanded(child: _metaCell('Heap No.', heapNo)),
               Expanded(child: _metaCell('Variety', variety)),
             ],
@@ -1025,8 +1023,7 @@ class _HeapReportCard extends StatelessWidget {
               Container(
                 decoration: const BoxDecoration(
                   border: Border(
-                    top: BorderSide(
-                        color: Color(0xFFE2E8F0), width: 0.5),
+                    top: BorderSide(color: Color(0xFFE2E8F0), width: 0.5),
                   ),
                 ),
                 child: Row(
@@ -1115,8 +1112,7 @@ class _HeapReportCard extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8),
             child: Text('SUMMARY',
-                style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700)),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 4),
           line('1) Total Quantity of Kapas in the Heap:',
