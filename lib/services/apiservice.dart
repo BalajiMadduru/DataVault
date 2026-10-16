@@ -631,12 +631,16 @@ class ApiService {
   }
 
   // ============ GET LATEST PROGRESSIVE ARRIVALS ============
-
+  //
+  // Picks the entry with the MOST RECENT DATE (tie-broken by reportNo)
+  // for the given centre + variety. Report numbers can reset between
+  // crop years, so date is the true "latest" indicator.
   static Future<ApiResponse> getLatestProgressiveArrivals({
     required String type,
     required String centre,
     required String variety,
     DateTime? beforeDate,
+    int? beforeReportNo,
     String? excludeDocId,
   }) async {
     try {
@@ -646,6 +650,9 @@ class ApiService {
       }
       final normalizedCentre = centre.trim().toLowerCase();
       final normalizedVariety = variety.trim().toLowerCase();
+      final cutoff = beforeDate == null
+          ? null
+          : DateTime(beforeDate.year, beforeDate.month, beforeDate.day);
 
       final querySnapshot = await _db
           .collection('purchases')
@@ -654,6 +661,7 @@ class ApiService {
           .get();
 
       Map<String, dynamic>? latestEntry;
+      DateTime? latestDate;
       int highestReportNo = -1;
 
       for (final doc in querySnapshot.docs) {
@@ -665,10 +673,55 @@ class ApiService {
         final storedVariety =
         (data['variety'] as String? ?? '').trim().toLowerCase();
         if (storedVariety != normalizedVariety) continue;
+
+        // Parse the entry date (supports String or DateTime).
+        final rawDate = data['date'];
+        DateTime? entryDate;
+        if (rawDate is String) {
+          entryDate = DateTime.tryParse(rawDate);
+        } else if (rawDate is DateTime) {
+          entryDate = rawDate;
+        }
+
         final reportNo = (data['reportNo'] as num?)?.toInt() ?? 0;
-        if (reportNo > highestReportNo) {
-          highestReportNo = reportNo;
+
+        // Only entries that come BEFORE the report being created/modified
+        // may feed its progressive (later entries must never leak in).
+        if (cutoff != null && entryDate != null) {
+          final entryDay =
+          DateTime(entryDate.year, entryDate.month, entryDate.day);
+          if (entryDay.isAfter(cutoff)) continue;
+          if (entryDay == cutoff &&
+              beforeReportNo != null &&
+              reportNo >= beforeReportNo) {
+            continue;
+          }
+        }
+
+        bool shouldReplace;
+        if (latestEntry == null) {
+          shouldReplace = true;
+        } else if (entryDate != null && latestDate != null) {
+          final cmp = entryDate.compareTo(latestDate);
+          if (cmp > 0) {
+            shouldReplace = true;
+          } else if (cmp == 0) {
+            shouldReplace = reportNo > highestReportNo;
+          } else {
+            shouldReplace = false;
+          }
+        } else if (entryDate != null && latestDate == null) {
+          shouldReplace = true;
+        } else if (entryDate == null && latestDate != null) {
+          shouldReplace = false;
+        } else {
+          shouldReplace = reportNo > highestReportNo;
+        }
+
+        if (shouldReplace) {
           latestEntry = data;
+          latestDate = entryDate;
+          highestReportNo = reportNo;
         }
       }
 

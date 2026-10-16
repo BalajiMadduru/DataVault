@@ -52,7 +52,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   final List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
   String? _selectedVariety;
 
-  // ⭐ NEW: Factory names for the dropdown
+  // ⭐ Factory names for the dropdown
   static const List<String> _factoryNames = [
     'Vijay Industries',
     'Balaji Industries',
@@ -262,6 +262,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   /// Snapshot of the latest entry of every OTHER variety for this centre:
   /// progressive totals AND factory rows (so the preview can fill the
   /// factory table for all three variety column groups).
+  ///
+  /// "Latest" is determined by the entry's DATE (tie-broken by reportNo),
+  /// since report numbers can reset between crop years.
   Future<void> _fetchOtherVarietiesProgressive() async {
     if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
 
@@ -283,7 +286,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         if (v == own) continue;
 
         Map<String, dynamic>? latest;
-        var best = -1;
+        DateTime? latestDate;
+        var bestReportNo = -1;
+
         for (final e in entries) {
           final id = (e['id'] ?? e['_id'])?.toString();
           if (_docId != null && id == _docId) continue;
@@ -294,10 +299,34 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
               v.toLowerCase()) {
             continue;
           }
+
+          final entryDate = DateTime.tryParse(e['date']?.toString() ?? '');
           final no = int.tryParse(e['reportNo']?.toString() ?? '') ?? 0;
-          if (no > best) {
-            best = no;
+
+          bool shouldReplace;
+          if (latest == null) {
+            shouldReplace = true;
+          } else if (entryDate != null && latestDate != null) {
+            final cmp = entryDate.compareTo(latestDate);
+            if (cmp > 0) {
+              shouldReplace = true;
+            } else if (cmp == 0) {
+              shouldReplace = no > bestReportNo;
+            } else {
+              shouldReplace = false;
+            }
+          } else if (entryDate != null && latestDate == null) {
+            shouldReplace = true;
+          } else if (entryDate == null && latestDate != null) {
+            shouldReplace = false;
+          } else {
+            shouldReplace = no > bestReportNo;
+          }
+
+          if (shouldReplace) {
             latest = e;
+            latestDate = entryDate;
+            bestReportNo = no;
           }
         }
 
@@ -417,9 +446,20 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
+  /// Fetches the latest progressive values for the CURRENT centre + variety
+  /// (excluding the doc being modified) so that Modify mode recomputes the
+  /// progressive fields the same way Add mode does.
+  ///
+  /// Includes a race guard: if the user switches centre/variety while this
+  /// request is in flight, the stale response is discarded.
   Future<void> _fetchLatestProgressiveForModify() async {
     if (_selectedCentre == null || _selectedCentre!.isEmpty) return;
     if (_selectedVariety == null || _selectedVariety!.isEmpty) return;
+
+    // Capture the requested centre + variety so a late response can't
+    // overwrite values after the user has switched either field.
+    final requestedCentre = _selectedCentre;
+    final requestedVariety = _selectedVariety;
 
     setState(() {
       _isLoadingPreviousProgressive = true;
@@ -435,6 +475,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       );
 
       if (!mounted) return;
+      // Ignore stale responses (centre/variety changed while in flight).
+      if (requestedCentre != _selectedCentre ||
+          requestedVariety != _selectedVariety) {
+        return;
+      }
 
       setState(() {
         _isLoadingPreviousProgressive = false;
@@ -459,13 +504,20 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
       });
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (requestedCentre != _selectedCentre ||
+            requestedVariety != _selectedVariety) {
+          return;
+        }
         _recalculateProgPressedBalesModify();
         _recalculateProgPurchaseQtlsModify();
         _recalculateProgPurchaseBalesModify();
         _recalculateProgFarmersModify();
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted &&
+          requestedCentre == _selectedCentre &&
+          requestedVariety == _selectedVariety) {
         setState(() {
           _isLoadingPreviousProgressive = false;
           _debugMessage = '❌ Error: $e';
@@ -552,8 +604,6 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  /// Previous progressive per factory (key = lower-cased name) for the
-  /// CURRENT centre + variety, taken from the latest entry containing it.
   Future<Map<String, Map<String, double>>>
   _fetchPreviousFactoryProgressiveMap() async {
     final centre = (_selectedCentre ?? '').trim().toLowerCase();
@@ -564,20 +614,35 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     try {
       final response = await ApiService.getPurchaseEntries();
       if (response.success && response.data != null) {
-        final entries = (response.data!['entries'] as List? ?? [])
+        final allEntries = (response.data!['entries'] as List? ?? [])
             .map((e) => Map<String, dynamic>.from(e as Map))
-            .where((e) {
+            .toList();
+
+        print('🔍 [FACTORY PREV] Total entries: ${allEntries.length}');
+        print('🔍 [FACTORY PREV] Looking for centre="$centre" variety="$variety" excludeDocId=$_docId');
+
+        for (final e in allEntries) {
+          print('🔍 [FACTORY PREV] Entry id=${e['id']} centre=${e['centre']} variety=${e['variety']} reportNo=${e['reportNo']} date=${e['date']}');
+        }
+
+        final entries = allEntries.where((e) {
           final id = (e['id'] ?? e['_id'])?.toString();
           if (_docId != null && id == _docId) return false;
-          return (e['centre'] ?? '').toString().trim().toLowerCase() ==
-              centre &&
+          return (e['centre'] ?? '').toString().trim().toLowerCase() == centre &&
               (e['variety'] ?? '').toString().trim().toLowerCase() == variety;
         }).toList()
           ..sort((a, b) {
+            final da = DateTime.tryParse(a['date']?.toString() ?? '');
+            final db = DateTime.tryParse(b['date']?.toString() ?? '');
+            if (da != null && db != null && da != db) {
+              return db.compareTo(da);
+            }
             final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
             final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
             return rb.compareTo(ra);
           });
+
+        print('🔍 [FACTORY PREV] Matching entries: ${entries.length}');
 
         for (final e in entries) {
           final factories = e['factories'];
@@ -590,12 +655,14 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
               'qtls': (f['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
               'bales': (f['progPurchaseBales'] as num?)?.toDouble() ?? 0,
             };
+            print('🔍 [FACTORY PREV] Found factory "$key" → ${result[key]}');
           }
         }
       }
     } catch (e) {
       debugLog('Error fetching previous factory progressive: $e');
     }
+    print('🔍 [FACTORY PREV] Final result: $result');
     return result;
   }
 
@@ -1159,7 +1226,13 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
   void _openEditPurchaseFactoryDialog(int index) =>
       _showPurchaseFactoryFormDialog(_purchaseFactories[index]);
 
-  // ⭐ CHANGED: Factory dropdown + auto-fill previous progressive
+  // ⭐ Factory dropdown + auto-fill previous progressive
+  // (Filters by centre + factory + variety — see _fetchPreviousFactoryProgressive)
+  //
+  // ⭐ In Modify mode, we ALSO fetch the previous progressive from the DB
+  // when the dialog opens for an existing factory, so the displayed value
+  // reflects the latest entry for this centre + variety + factory, not just
+  // what was stored when the report was originally saved.
   void _showPurchaseFactoryFormDialog(PurchaseFactoryProgData? factoryData) {
     String? selectedFactory = factoryData?.factoryName;
     if (selectedFactory != null && !_factoryNames.contains(selectedFactory)) {
@@ -1188,6 +1261,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     double previousProgQtls = 0;
     double previousProgBales = 0;
     bool isLoadingPrevious = false;
+    bool hasLoadedPrevious = false;
 
     // Fills the read-only progressive fields: previous + today's purchase.
     void generateProgressive() {
@@ -1201,7 +1275,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
           _formatNumber(previousProgBales + todayBales);
     }
 
-    // In edit mode, derive the previous value from stored prog - today.
+    // In edit mode, derive the previous value from stored prog - today
+    // AS A FALLBACK. It will be overwritten by the DB fetch below.
     if (isEditing) {
       final todayQtls =
           double.tryParse(purchaseQtlsController.text.trim()) ?? 0;
@@ -1241,11 +1316,10 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
             setDialogState(() {
               selectedFactory = name;
               isLoadingPrevious = true;
-              previousProgQtls = 0;
-              previousProgBales = 0;
             });
 
-            // Fetch previous progressive values for this factory
+            // Fetch previous progressive values from the DB for this
+            // centre + variety + factory.
             final prev = await _fetchPreviousFactoryProgressive(name);
 
             if (!context.mounted) return;
@@ -1256,11 +1330,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
               previousProgBales = prev['bales'] ?? 0;
             });
 
-            // Auto-fill progressive if purchase values are present
+            // Auto-fill progressive if purchase values are present.
             if (purchaseQtlsController.text.isNotEmpty ||
                 purchaseBalesController.text.isNotEmpty) {
               generateProgressive();
             }
+          }
+
+          // ⭐ In Modify mode, when the dialog opens with an existing
+          // factory, auto-fetch the previous progressive from the DB
+          // (filtered by centre + variety + factory). This guarantees the
+          // displayed value reflects the latest stored entry, not just
+          // the fallback derived from the current report's stored values.
+          if (!hasLoadedPrevious && selectedFactory != null) {
+            hasLoadedPrevious = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!context.mounted) return;
+              onFactorySelected(selectedFactory);
+            });
           }
 
           return AlertDialog(

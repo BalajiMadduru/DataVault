@@ -74,6 +74,13 @@ class PreviewDialog extends StatelessWidget {
     return d.toStringAsFixed(2);
   }
 
+  /// Always 2 decimals (125 -> 125.00). Empty/null stays empty.
+  String _w2(dynamic v) {
+    if (v == null || v.toString().trim().isEmpty) return '';
+    final d = v is num ? v.toDouble() : double.tryParse(v.toString());
+    return d == null ? v.toString() : d.toStringAsFixed(2);
+  }
+
   String get _title {
     if (_isGroupedWeightList) return 'Weight List Preview';
     switch (type) {
@@ -97,7 +104,7 @@ class PreviewDialog extends StatelessWidget {
       case ReportType.weightList:
         return Icons.scale_rounded;
       case ReportType.heap:
-        // TODO: Handle this case.
+      // TODO: Handle this case.
         throw UnimplementedError();
     }
   }
@@ -111,7 +118,7 @@ class PreviewDialog extends StatelessWidget {
       case ReportType.weightList:
         return const Color(0xFFFEF3C7);
       case ReportType.heap:
-        // TODO: Handle this case.
+      // TODO: Handle this case.
         throw UnimplementedError();
     }
   }
@@ -242,7 +249,7 @@ class PreviewDialog extends StatelessWidget {
       case ReportType.weightList:
         return _buildWeightListPreview(data);
       case ReportType.heap:
-        // TODO: Handle this case.
+      // TODO: Handle this case.
         throw UnimplementedError();
     }
   }
@@ -592,7 +599,7 @@ class PreviewDialog extends StatelessWidget {
         final lot = (data?['lotNo'] ?? '').toString();
         return 'WeightList_${centre.isEmpty ? '' : '${centre}_'}${lot.isEmpty ? '' : 'Lot${lot}_'}${ExportHelper.today()}.pdf';
       case ReportType.heap:
-        // TODO: Handle this case.
+      // TODO: Handle this case.
         throw UnimplementedError();
     }
   }
@@ -919,11 +926,25 @@ class PreviewDialog extends StatelessWidget {
         children: [
           pw.SizedBox(
             width: labelW,
-            child: pw.Text(l, style: const pw.TextStyle(fontSize: metaSize)),
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.centerLeft,
+              child: pw.Text(l,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: const pw.TextStyle(fontSize: metaSize)),
+            ),
           ),
           pw.Text(':  ', style: const pw.TextStyle(fontSize: metaSize)),
           pw.Expanded(
-            child: pw.Text(v, style: const pw.TextStyle(fontSize: metaSize)),
+            child: pw.FittedBox(
+              fit: pw.BoxFit.scaleDown,
+              alignment: pw.Alignment.centerLeft,
+              child: pw.Text(v,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: const pw.TextStyle(fontSize: metaSize)),
+            ),
           ),
         ],
       ),
@@ -932,15 +953,18 @@ class PreviewDialog extends StatelessWidget {
     pw.Widget metaRow(String l1, String v1, String l2, String v2) {
       return pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 2),
-        child: pw.Row(
-          children: [
-            metaHalf(l1, v1, 112),
-            if (l2.isNotEmpty) metaHalf(l2, v2, 100) else pw.Spacer(),
-          ],
+        child: pw.SizedBox(
+          height: metaSize * 1.4,
+          child: pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              metaHalf(l1, v1, 112),
+              if (l2.isNotEmpty) metaHalf(l2, v2, 100),
+            ],
+          ),
         ),
       );
     }
-
     return pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(24),
@@ -984,14 +1008,17 @@ class PreviewDialog extends StatelessWidget {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text('TOTAL GROSS WT :: ${_num(d['totalGrossWeight'])}',
+              pw.Text('TOTAL GROSS WT :: ${_w2(d['totalGrossWeight'])}',
+                  softWrap: false,
                   style: pw.TextStyle(
                       fontSize: 11, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 3),
               pw.Text('TOTAL TARE WT :: ${_num(d['tareWeight'])}',
+                  softWrap: false,
                   style: const pw.TextStyle(fontSize: 11)),
               pw.SizedBox(height: 3),
-              pw.Text('TOTAL NET WT :: ${_num(d['totalNettWeight'])}',
+              pw.Text('TOTAL NET WT :: ${_w2(d['totalNettWeight'])}',
+                  softWrap: false,
                   style: pw.TextStyle(
                       fontSize: 11, fontWeight: pw.FontWeight.bold)),
             ],
@@ -1044,7 +1071,7 @@ class PreviewDialog extends StatelessWidget {
               : _fillWeightListSheet(excel);
           break;
         case ReportType.heap:
-          // TODO: Handle this case.
+        // TODO: Handle this case.
           throw UnimplementedError();
       }
 
@@ -1366,11 +1393,11 @@ class PreviewDialog extends StatelessWidget {
 
     sheet.appendRow([]);
     row++;
-    sheet.appendRow(['', '', '', '', '', 'TOTAL GROSS WT ::', _num(d['totalGrossWeight'])]);
+    sheet.appendRow(['', '', '', '', '', 'TOTAL GROSS WT ::', _w2(d['totalGrossWeight'])]);
     row++;
     sheet.appendRow(['', '', '', '', '', 'TOTAL TARE WT    ::', _num(d['tareWeight'])]);
     row++;
-    sheet.appendRow(['', '', '', '', '', 'TOTAL NET WT     ::', _num(d['totalNettWeight'])]);
+    sheet.appendRow(['', '', '', '', '', 'TOTAL NET WT     ::', _w2(d['totalNettWeight'])]);
     row++;
 
     sheet.appendRow([]);
@@ -1869,11 +1896,11 @@ class PreviewDialog extends StatelessWidget {
           ),
           child: Column(
             children: [
-              _summaryRow('TOTAL GROSS WT ::', s('totalGrossWeight'), false),
+              _summaryRow('TOTAL GROSS WT ::', _w2(data['totalGrossWeight']), false),
               const SizedBox(height: 4),
               _summaryRow('TOTAL TARE WT ::', s('tareWeight'), false),
               const SizedBox(height: 4),
-              _summaryRow('TOTAL NET WT ::', s('totalNettWeight'), true),
+              _summaryRow('TOTAL NET WT ::', _w2(data['totalNettWeight']), true),
             ],
           ),
         ),
@@ -2004,11 +2031,17 @@ class PreviewDialog extends StatelessWidget {
         children: [
           SizedBox(
             width: labelW,
-            child: Text(l,
-                style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF64748B))),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(l,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF64748B))),
+            ),
           ),
           const Text(':  ',
               style: TextStyle(
@@ -2016,11 +2049,17 @@ class PreviewDialog extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF64748B))),
           Expanded(
-            child: Text(v,
-                style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A))),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(v,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A))),
+            ),
           ),
         ],
       ),
@@ -2042,6 +2081,8 @@ class PreviewDialog extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Text(label,
+            maxLines: 1,
+            softWrap: false,
             style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
@@ -2057,6 +2098,8 @@ class PreviewDialog extends StatelessWidget {
           ),
           child: Text(
             value.isEmpty ? '—' : value,
+            maxLines: 1,
+            softWrap: false,
             textAlign: TextAlign.end,
             style: TextStyle(
               fontSize: 12,
@@ -2093,6 +2136,9 @@ class _PreviewDataCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(text,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.visible,
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 10,
