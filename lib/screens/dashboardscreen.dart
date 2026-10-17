@@ -55,7 +55,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Future<void> _openViewReports(ReportType type) async {
+  Future<void> _openViewReports(ReportType type, {bool isFinal = false}) async {
     String reportTypeKey;
     switch (type) {
       case ReportType.dailyPurchase:
@@ -77,6 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       MaterialPageRoute(
         builder: (context) => ReportsListScreen(
           reportType: reportTypeKey,
+          isFinal: isFinal, // only used for weightList
         ),
       ),
     );
@@ -333,8 +334,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _openViewReports(ReportType.dailySeed);
   }
 
+  // Weight List Report - Office (original layout)
   void _handleViewWeightListReports() {
-    _openViewReports(ReportType.weightList);
+    _openViewReports(ReportType.weightList, isFinal: false);
+  }
+
+  // Weight List Report - Final (no centre headings, signatures swapped)
+  void _handleViewWeightListFinalReports() {
+    _openViewReports(ReportType.weightList, isFinal: true);
   }
 
   Future<void> _handleLogout() async {
@@ -444,7 +451,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // View Reports
         onViewPurchaseReports: _handleViewPurchaseReports,
         onViewSeedReports: _handleViewSeedReports,
-        onViewWeightListReports: _handleViewWeightListReports,
+        onViewWeightListReports: _handleViewWeightListReports, // "Weight List Report - Office"
+        onViewWeightListFinalReports: _handleViewWeightListFinalReports, // "Weight List Report - Final"
 
         // Proforma
         onViewProforma: _handleViewProforma,

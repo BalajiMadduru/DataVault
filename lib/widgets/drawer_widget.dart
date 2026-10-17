@@ -14,7 +14,8 @@ class CustomDrawer extends StatefulWidget {
   final VoidCallback? onViewProformaFactory; // Proforma - Factory wise
   final VoidCallback? onCreateWeightList;
   final VoidCallback? onModifyWeightList;
-  final VoidCallback? onViewWeightListReports;
+  final VoidCallback? onViewWeightListReports; // Weight List Report - Office
+  final VoidCallback? onViewWeightListFinalReports; // Weight List Report - Final
   // Heap
   final VoidCallback? onCreateHeap;
   final VoidCallback? onModifyHeap;
@@ -35,6 +36,7 @@ class CustomDrawer extends StatefulWidget {
     this.onCreateWeightList,
     this.onModifyWeightList,
     this.onViewWeightListReports,
+    this.onViewWeightListFinalReports,
     this.onCreateHeap,
     this.onModifyHeap,
     this.onViewHeapReports,
@@ -233,11 +235,20 @@ class _CustomDrawerState extends State<CustomDrawer> {
                         ),
                         _buildSubItem(
                           context: context,
-                          title: 'View Weight List Reports',
+                          title: 'Weight List Report - Office',
                           icon: Icons.visibility_outlined,
                           onTap: () {
                             Navigator.pop(context);
                             widget.onViewWeightListReports?.call();
+                          },
+                        ),
+                        _buildSubItem(
+                          context: context,
+                          title: 'Weight List Report - Final',
+                          icon: Icons.visibility_outlined,
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onViewWeightListFinalReports?.call();
                           },
                         ),
                         if (widget.onViewHeapReports != null)

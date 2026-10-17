@@ -1326,7 +1326,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
             children: [
               Expanded(
                 child: Text(
-                  'Factory Owner / Rep',
+                  'Factory Owner / Representative',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,

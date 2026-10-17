@@ -15,12 +15,20 @@ class PreviewDialog extends StatelessWidget {
   /// another (stacked). Used by the grouped weight-list cards.
   final List<Map<String, dynamic>>? groupData;
 
+  /// true  -> "Weight List - Final" (no centre/company headings, signatures swapped)
+  /// false -> "Weight List - Office" (original layout)
+  final bool isFinal;
+
   const PreviewDialog({
     super.key,
     required this.type,
     this.data,
     this.groupData,
+    this.isFinal = false,
   });
+
+  String get _weightListName =>
+      isFinal ? 'Weight List - Final' : 'Weight List - Office';
 
   static const List<String> _varieties = ['BB MOD', 'BB SPL MOD', 'MECH'];
 
@@ -82,14 +90,14 @@ class PreviewDialog extends StatelessWidget {
   }
 
   String get _title {
-    if (_isGroupedWeightList) return 'Weight List Preview';
+    if (_isGroupedWeightList) return '$_weightListName Preview';
     switch (type) {
       case ReportType.dailyPurchase:
         return 'Purchase Report Preview';
       case ReportType.dailySeed:
         return 'Seed Report Preview';
       case ReportType.weightList:
-        return 'Weight List Preview';
+        return '$_weightListName Preview';
       case ReportType.heap:
         return '`Heap Report Preview';
     }
@@ -593,11 +601,11 @@ class PreviewDialog extends StatelessWidget {
           final f = groupData!.first;
           final centre = (f['centre'] ?? '').toString().toUpperCase();
           final lot = (f['lotNo'] ?? '').toString();
-          return 'WeightList_${centre.isEmpty ? '' : '${centre}_'}${lot.isEmpty ? '' : 'Lot${lot}_'}${ExportHelper.today()}.pdf';
+          return 'WeightList${isFinal ? '_Final' : '_Office'}_${centre.isEmpty ? '' : '${centre}_'}${lot.isEmpty ? '' : 'Lot${lot}_'}${ExportHelper.today()}.pdf';
         }
         final centre = (data?['centre'] ?? '').toString().toUpperCase();
         final lot = (data?['lotNo'] ?? '').toString();
-        return 'WeightList_${centre.isEmpty ? '' : '${centre}_'}${lot.isEmpty ? '' : 'Lot${lot}_'}${ExportHelper.today()}.pdf';
+        return 'WeightList${isFinal ? '_Final' : '_Office'}_${centre.isEmpty ? '' : '${centre}_'}${lot.isEmpty ? '' : 'Lot${lot}_'}${ExportHelper.today()}.pdf';
       case ReportType.heap:
       // TODO: Handle this case.
         throw UnimplementedError();
@@ -639,6 +647,26 @@ class PreviewDialog extends StatelessWidget {
     final factoryRows = _factoryTableRows(data);
     final totals = _factoryTotals(factoryRows);
 
+    // ---- Fit-to-one-page sizing ------------------------------------------
+    // A4 landscape, 20pt margins -> ~555pt usable height. Row padding is
+    // computed from the number of rows so the report fills the page without
+    // spilling the signatures onto a second page (more factories => tighter).
+    const double pageUsable = 555;
+    const double targetFill = 0.98;
+    const double baseFont = 8;
+    const double fixedHeight = 66 + 41; // titles + signature block
+    int wrapped = rows.where((r) => r[1].length > 46).length;
+    if ('Factory wise day purchase details'.length > 46) wrapped++;
+    final int tableRowCount = 3 + rows.length + 1 + 1 + factoryRows.length + 1;
+    final double extras = wrapped * baseFont * 1.2 + 10; // wrapped lines + tall header
+    final double rowBudget =
+        (pageUsable * targetFill - fixedHeight - extras) / tableRowCount;
+    final double vPad = ((rowBudget - baseFont * 1.2) / 2).clamp(0.5, 6.0);
+
+    pw.Widget cell(String text,
+        {bool bold = false, bool left = false, double size = baseFont}) =>
+        _pdfCell(text, bold: bold, left: left, size: size, vPad: vPad);
+
     // Both tables share the same fixed widths so the variety blocks line up.
     const snoW = 28.0, nameW = 190.0, colonW = 10.0, cellW = 47.0;
     final mainWidths = <int, pw.TableColumnWidth>{
@@ -659,12 +687,12 @@ class PreviewDialog extends StatelessWidget {
     pw.TableRow mainRow(String n, String label, String v1, String v2, String v3,
         {bool bold = false}) {
       return pw.TableRow(children: [
-        _pdfCell(n, bold: bold),
-        _pdfCell(label, bold: bold, left: true),
-        _pdfCell(':'),
-        _pdfCell(v1, bold: bold),
-        _pdfCell(v2, bold: bold),
-        _pdfCell(v3, bold: bold),
+        cell(n, bold: bold),
+        cell(label, bold: bold, left: true),
+        cell(':'),
+        cell(v1, bold: bold),
+        cell(v2, bold: bold),
+        cell(v3, bold: bold),
       ]);
     }
 
@@ -717,28 +745,40 @@ class PreviewDialog extends StatelessWidget {
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: PdfColors.grey200),
               children: [
-                _pdfCell(''),
-                _pdfCell('Factory Name', bold: true, left: true),
-                _pdfCell(''),
+                cell(''),
+                cell('Factory Name', bold: true, left: true),
+                cell(''),
                 for (int i = 0; i < 12; i++)
-                  _pdfCell(_factorySubHeaders[i % 4], bold: true, size: 6.5),
+                  cell(_factorySubHeaders[i % 4], bold: true, size: 6.5),
               ],
             ),
             ...factoryRows.map((r) => pw.TableRow(children: [
-              _pdfCell(r[0]),
-              _pdfCell(r[1], left: true),
-              _pdfCell(':'),
-              for (int i = 0; i < 12; i++) _pdfCell(r[2 + i]),
+              cell(r[0]),
+              cell(r[1], left: true),
+              cell(':'),
+              for (int i = 0; i < 12; i++) cell(r[2 + i]),
             ])),
             pw.TableRow(
               decoration: const pw.BoxDecoration(color: PdfColors.grey200),
               children: [
-                _pdfCell(''),
-                _pdfCell('TOTAL', bold: true, left: true),
-                _pdfCell(''),
-                for (int i = 0; i < 12; i++) _pdfCell(totals[i], bold: true),
+                cell(''),
+                cell('TOTAL', bold: true, left: true),
+                cell(''),
+                for (int i = 0; i < 12; i++) cell(totals[i], bold: true),
               ],
             ),
+          ],
+        ),
+
+        pw.SizedBox(height: 28),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text('Factory Owner / Representative',
+                style: const pw.TextStyle(fontSize: 11)),
+            pw.Text('Centre Incharge',
+                style: pw.TextStyle(
+                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
           ],
         ),
       ],
@@ -970,21 +1010,23 @@ class PreviewDialog extends StatelessWidget {
       margin: const pw.EdgeInsets.all(24),
       build: (context) => [
         pw.SizedBox(height: 8),
-        pw.Center(
-          child: pw.Text('THE COTTON CORPORATION OF INDIA LTD.',
-              style: pw.TextStyle(
-                  fontSize: 14, fontWeight: pw.FontWeight.bold)),
-        ),
-        pw.Center(
-          child: pw.Text('CENTRE ::: $centre',
-              style: pw.TextStyle(
-                  fontSize: 14, fontWeight: pw.FontWeight.bold)),
-        ),
-        pw.Center(
-          child: pw.Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
-              style: pw.TextStyle(
-                  fontSize: 11, fontWeight: pw.FontWeight.bold)),
-        ),
+        if (!isFinal) ...[
+          pw.Center(
+            child: pw.Text('THE COTTON CORPORATION OF INDIA LTD.',
+                style: pw.TextStyle(
+                    fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.Center(
+            child: pw.Text('CENTRE ::: $centre',
+                style: pw.TextStyle(
+                    fontSize: 14, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.Center(
+            child: pw.Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
+                style: pw.TextStyle(
+                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          ),
+        ],
         pw.SizedBox(height: 10),
 
         metaRow('VARIETY', f('variety'), 'LOT NO', f('lotNo')),
@@ -1013,7 +1055,7 @@ class PreviewDialog extends StatelessWidget {
                   style: pw.TextStyle(
                       fontSize: 11, fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 3),
-              pw.Text('TOTAL TARE WT :: ${_num(d['tareWeight'])}',
+              pw.Text('TOTAL TARE WT :: ${_w2(d['tareWeight'])}',
                   softWrap: false,
                   style: const pw.TextStyle(fontSize: 11)),
               pw.SizedBox(height: 3),
@@ -1036,11 +1078,19 @@ class PreviewDialog extends StatelessWidget {
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
-            pw.Text('Factory Owner / Rep',
-                style: const pw.TextStyle(fontSize: 11)),
-            pw.Text('Centre Incharge',
-                style: pw.TextStyle(
-                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
+            if (isFinal) ...[
+              pw.Text('Centre Incharge',
+                  style: pw.TextStyle(
+                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
+              pw.Text('Factory Owner / Representative',
+                  style: const pw.TextStyle(fontSize: 11)),
+            ] else ...[
+              pw.Text('Factory Owner / Representative',
+                  style: const pw.TextStyle(fontSize: 11)),
+              pw.Text('Centre Incharge',
+                  style: pw.TextStyle(
+                      fontSize: 11, fontWeight: pw.FontWeight.bold)),
+            ],
           ],
         ),
       ],
@@ -1167,6 +1217,16 @@ class PreviewDialog extends StatelessWidget {
     }
     add(['', 'TOTAL', '', ..._factoryTotals(factoryRows)]);
 
+    // Signatures: Factory Owner / Rep (left) and Centre Incharge (right)
+    add([]);
+    add([]);
+    add([
+      '',
+      'Factory Owner / Representative',
+      for (int i = 2; i < 11; i++) '',
+      'Centre Incharge',
+    ]);
+
     sheet.setColWidth(0, 6);
     sheet.setColWidth(1, 48);
     sheet.setColWidth(2, 3);
@@ -1262,7 +1322,7 @@ class PreviewDialog extends StatelessWidget {
     final centre = f('centre').toUpperCase();
     final dateStr = _formatDate(d['date']);
     final lot = f('lotNo');
-    return 'WeightList_${ExportHelper.safe(centre)}_${lot.isEmpty ? '' : 'Lot${ExportHelper.safe(lot)}_'}${_fileDate(dateStr)}.xlsx';
+    return 'WeightList${isFinal ? '_Final' : '_Office'}_${ExportHelper.safe(centre)}_${lot.isEmpty ? '' : 'Lot${ExportHelper.safe(lot)}_'}${_fileDate(dateStr)}.xlsx';
   }
 
   String _fillWeightListGroupSheet(excel_lib.Excel excel) {
@@ -1274,13 +1334,13 @@ class PreviewDialog extends StatelessWidget {
       row += 2;
     }
 
-    String fileName = 'WeightList_Group_${ExportHelper.today()}.xlsx';
+    String fileName = 'WeightList${isFinal ? '_Final' : '_Office'}_Group_${ExportHelper.today()}.xlsx';
     if (list.isNotEmpty) {
       final f = list.first;
       final centre = (f['centre'] ?? '').toString().toUpperCase();
       final lot = (f['lotNo'] ?? '').toString();
       fileName =
-      'WeightList_${ExportHelper.safe(centre)}_${lot.isEmpty ? '' : 'Lot${ExportHelper.safe(lot)}_'}${ExportHelper.today()}.xlsx';
+      'WeightList${isFinal ? '_Final' : '_Office'}_${ExportHelper.safe(centre)}_${lot.isEmpty ? '' : 'Lot${ExportHelper.safe(lot)}_'}${ExportHelper.today()}.xlsx';
     }
     return fileName;
   }
@@ -1296,11 +1356,14 @@ class PreviewDialog extends StatelessWidget {
 
     int r(int offset) => startRow + offset;
 
-    _sheetAppendMerged(sheet, r(0), ['THE COTTON CORPORATION OF INDIA LTD.']);
-    _sheetAppendMerged(sheet, r(1), ['CENTRE ::: $centre']);
-    _sheetAppendMerged(
-        sheet, r(2), ['F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING']);
-    sheet.appendRow([]);
+    if (!isFinal) {
+      _sheetAppendMerged(
+          sheet, r(0), ['THE COTTON CORPORATION OF INDIA LTD.']);
+      _sheetAppendMerged(sheet, r(1), ['CENTRE ::: $centre']);
+      _sheetAppendMerged(
+          sheet, r(2), ['F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING']);
+      sheet.appendRow([]);
+    }
 
     _sheetAppendDetailRow(
       sheet,
@@ -1395,7 +1458,7 @@ class PreviewDialog extends StatelessWidget {
     row++;
     sheet.appendRow(['', '', '', '', '', 'TOTAL GROSS WT ::', _w2(d['totalGrossWeight'])]);
     row++;
-    sheet.appendRow(['', '', '', '', '', 'TOTAL TARE WT    ::', _num(d['tareWeight'])]);
+    sheet.appendRow(['', '', '', '', '', 'TOTAL TARE WT    ::', _w2(d['tareWeight'])]);
     row++;
     sheet.appendRow(['', '', '', '', '', 'TOTAL NET WT     ::', _w2(d['totalNettWeight'])]);
     row++;
@@ -1406,7 +1469,9 @@ class PreviewDialog extends StatelessWidget {
     row++;
     sheet.appendRow([]);
     row++;
-    sheet.appendRow(['Factory Owner / Rep', '', '', '', '', 'Centre Incharge']);
+    sheet.appendRow(isFinal
+        ? ['Centre Incharge', '', '', '', '', 'Factory Owner / Representative']
+        : ['Factory Owner / Representative', '', '', '', '', 'Centre Incharge']);
     row++;
 
     return row;
@@ -1844,24 +1909,26 @@ class PreviewDialog extends StatelessWidget {
           ),
           child: Column(
             children: [
-              const Text('THE COTTON CORPORATION OF INDIA LTD.',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A))),
-              const SizedBox(height: 2),
-              Text('CENTRE ::: $centre',
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A))),
-              const SizedBox(height: 2),
-              const Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF334155))),
-              const SizedBox(height: 8),
+              if (!isFinal) ...[
+                const Text('THE COTTON CORPORATION OF INDIA LTD.',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A))),
+                const SizedBox(height: 2),
+                Text('CENTRE ::: $centre',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A))),
+                const SizedBox(height: 2),
+                const Text('F.P.BALES WEIGHT LIST AT THE TIME OF PRESSING',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF334155))),
+                const SizedBox(height: 8),
+              ],
               _wMetaRow('VARIETY', s('variety'), 'LOT NO', s('lotNo')),
               _wMetaRow('DT.OF PRESSING', _pressingDateText(data, bales.length),
                   'P.R.NO', s('prNo')),
@@ -1898,7 +1965,7 @@ class PreviewDialog extends StatelessWidget {
             children: [
               _summaryRow('TOTAL GROSS WT ::', _w2(data['totalGrossWeight']), false),
               const SizedBox(height: 4),
-              _summaryRow('TOTAL TARE WT ::', s('tareWeight'), false),
+              _summaryRow('TOTAL TARE WT ::', _w2(data['tareWeight']), false),
               const SizedBox(height: 4),
               _summaryRow('TOTAL NET WT ::', _w2(data['totalNettWeight']), true),
             ],
@@ -1915,15 +1982,28 @@ class PreviewDialog extends StatelessWidget {
                   color: Color(0xFF0F172A))),
         ),
         const SizedBox(height: 28),
-        const Row(
+        Row(
           children: [
             Expanded(
-              child: Text('Factory Owner / Rep',
+              child: isFinal
+                  ? const Text('Centre Incharge',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Color(0xFF0F172A))),
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A)))
+                  : const Text('Factory Owner / Representative',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 11, color: Color(0xFF0F172A))),
             ),
             Expanded(
-              child: Text('Centre Incharge',
+              child: isFinal
+                  ? const Text('Factory Owner / Representative',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 11, color: Color(0xFF0F172A)))
+                  : const Text('Centre Incharge',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 11,

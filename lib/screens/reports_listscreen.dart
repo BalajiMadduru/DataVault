@@ -8,7 +8,14 @@ import '../widgets/preview_dialog.dart';
 class ReportsListScreen extends StatefulWidget {
   final String reportType;
 
-  const ReportsListScreen({super.key, required this.reportType});
+  /// Weight List only: true = "Final" layout, false = "Office" layout.
+  final bool isFinal;
+
+  const ReportsListScreen({
+    super.key,
+    required this.reportType,
+    this.isFinal = false,
+  });
 
   @override
   State<ReportsListScreen> createState() => _ReportsListScreenState();
@@ -160,7 +167,9 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       case 'seed':
         return 'Seed Reports';
       case 'weightList':
-        return 'Weight List Reports';
+        return widget.isFinal
+            ? 'Weight List Reports - Final'
+            : 'Weight List Reports - Office';
       default:
         return 'Reports';
     }
@@ -370,6 +379,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
       builder: (_) => PreviewDialog(
         type: _reportTypeEnum,
         data: entry,
+        isFinal: widget.isFinal,
       ),
     );
   }
@@ -394,6 +404,7 @@ class _ReportsListScreenState extends State<ReportsListScreen> {
         // grouped path we hand the whole list via `groupData`.
         data: g.entries.isNotEmpty ? g.entries.first : null,
         groupData: g.entries,
+        isFinal: widget.isFinal,
       ),
     );
   }

@@ -254,6 +254,24 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         _formatNumber(_previousProgFarmers + dayValue);
   }
 
+  /// True if entry [e] comes strictly BEFORE the report being created/edited
+  /// (earlier date, or same date with a lower reportNo). Used so that a
+  /// report's progressives are only ever built from earlier reports.
+  bool _isBeforeCurrent(Map<String, dynamic> e) {
+    final d = DateTime.tryParse(e['date']?.toString() ?? '');
+    if (d == null) return true;
+    final day = DateTime(d.year, d.month, d.day);
+    final cur =
+    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    if (day.isAfter(cur)) return false;
+    if (day == cur) {
+      final no = int.tryParse(e['reportNo']?.toString() ?? '') ?? 0;
+      final curNo = int.tryParse(_reportNoController.text) ?? 0;
+      if (curNo > 0 && no >= curNo) return false;
+    }
+    return true;
+  }
+
   bool _sameDay(dynamic raw, DateTime d) {
     final p = DateTime.tryParse(raw?.toString() ?? '');
     return p != null && p.year == d.year && p.month == d.month && p.day == d.day;
@@ -302,6 +320,15 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
           final entryDate = DateTime.tryParse(e['date']?.toString() ?? '');
           final no = int.tryParse(e['reportNo']?.toString() ?? '') ?? 0;
+
+          // Later-dated reports must never feed this report's snapshot.
+          if (entryDate != null) {
+            final entryDay =
+            DateTime(entryDate.year, entryDate.month, entryDate.day);
+            final cur = DateTime(
+                _selectedDate.year, _selectedDate.month, _selectedDate.day);
+            if (entryDay.isAfter(cur)) continue;
+          }
 
           bool shouldReplace;
           if (latest == null) {
@@ -413,6 +440,19 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         data['progPurchaseBales']?.toString() ?? '';
     _progFarmersController.text = data['progFarmers']?.toString() ?? '';
 
+    // Seed "previous" = saved progressive - saved day value, so the fields are
+    // correct immediately (before the network fetch) and typing in a day
+    // field never produces `0 + day`. The fetch below then overwrites these
+    // with the real previous values from earlier reports.
+    double savedNum(String k) => double.tryParse(data[k]?.toString() ?? '0') ?? 0;
+    _previousProgPressedBales =
+        savedNum('progPressedBales') - _originalPressedBales;
+    _previousProgPurchaseQtls =
+        savedNum('progPurchaseQtls') - _originalPurchaseQtls;
+    _previousProgPurchaseBales =
+        savedNum('progPurchaseBales') - _originalPurchaseBales;
+    _previousProgFarmers = savedNum('progFarmers') - _originalFarmers;
+
     if (data['factories'] is List && (data['factories'] as List).isNotEmpty) {
       _purchaseFactories = (data['factories'] as List)
           .map((f) => PurchaseFactoryProgData.fromJson(
@@ -472,6 +512,8 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         centre: _selectedCentre!,
         variety: _selectedVariety!,
         excludeDocId: _docId,
+        beforeDate: _selectedDate,
+        beforeReportNo: int.tryParse(_reportNoController.text),
       );
 
       if (!mounted) return;
@@ -558,6 +600,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         type: 'purchase',
         centre: _selectedCentre!,
         variety: _selectedVariety!,
+        excludeDocId: _docId,
+        beforeDate: _selectedDate,
+        beforeReportNo: int.tryParse(_reportNoController.text),
       );
 
       if (!mounted) return;
@@ -604,7 +649,14 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     }
   }
 
-  Future<Map<String, Map<String, double>>>
+  /// Previous progressive per factory for the CURRENT centre + variety,
+  /// built only from reports BEFORE this one. For each factory the most
+  /// recent earlier report that contains it wins (even if the very latest
+  /// report doesn't include that factory).
+  ///
+  /// Returns null when the fetch FAILED (distinct from "no previous entry",
+  /// which is an empty map) so callers never silently fall back to 0.
+  Future<Map<String, Map<String, double>>?>
   _fetchPreviousFactoryProgressiveMap() async {
     final centre = (_selectedCentre ?? '').trim().toLowerCase();
     final variety = (_selectedVariety ?? '').trim().toLowerCase();
@@ -613,80 +665,79 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     try {
       final response = await ApiService.getPurchaseEntries();
-      if (response.success && response.data != null) {
-        final allEntries = (response.data!['entries'] as List? ?? [])
-            .map((e) => Map<String, dynamic>.from(e as Map))
-            .toList();
+      if (!response.success || response.data == null) return null;
 
-        print('🔍 [FACTORY PREV] Total entries: ${allEntries.length}');
-        print('🔍 [FACTORY PREV] Looking for centre="$centre" variety="$variety" excludeDocId=$_docId');
+      final allEntries = (response.data!['entries'] as List? ?? [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
 
-        for (final e in allEntries) {
-          print('🔍 [FACTORY PREV] Entry id=${e['id']} centre=${e['centre']} variety=${e['variety']} reportNo=${e['reportNo']} date=${e['date']}');
-        }
-
-        final entries = allEntries.where((e) {
-          final id = (e['id'] ?? e['_id'])?.toString();
-          if (_docId != null && id == _docId) return false;
-          return (e['centre'] ?? '').toString().trim().toLowerCase() == centre &&
-              (e['variety'] ?? '').toString().trim().toLowerCase() == variety;
-        }).toList()
-          ..sort((a, b) {
-            final da = DateTime.tryParse(a['date']?.toString() ?? '');
-            final db = DateTime.tryParse(b['date']?.toString() ?? '');
-            if (da != null && db != null && da != db) {
-              return db.compareTo(da);
-            }
-            final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
-            final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
-            return rb.compareTo(ra);
-          });
-
-        print('🔍 [FACTORY PREV] Matching entries: ${entries.length}');
-
-        for (final e in entries) {
-          final factories = e['factories'];
-          if (factories is! List) continue;
-          for (final f in factories) {
-            if (f is! Map) continue;
-            final key = (f['factoryName'] ?? '').toString().trim().toLowerCase();
-            if (key.isEmpty || result.containsKey(key)) continue;
-            result[key] = {
-              'qtls': (f['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
-              'bales': (f['progPurchaseBales'] as num?)?.toDouble() ?? 0,
-            };
-            print('🔍 [FACTORY PREV] Found factory "$key" → ${result[key]}');
+      final entries = allEntries.where((e) {
+        final id = (e['id'] ?? e['_id'])?.toString();
+        if (_docId != null && id == _docId) return false;
+        if (!_isBeforeCurrent(e)) return false;
+        return (e['centre'] ?? '').toString().trim().toLowerCase() == centre &&
+            (e['variety'] ?? '').toString().trim().toLowerCase() == variety;
+      }).toList()
+        ..sort((a, b) {
+          final da = DateTime.tryParse(a['date']?.toString() ?? '');
+          final db = DateTime.tryParse(b['date']?.toString() ?? '');
+          if (da != null && db != null && da != db) {
+            return db.compareTo(da);
           }
+          final ra = int.tryParse(a['reportNo']?.toString() ?? '') ?? 0;
+          final rb = int.tryParse(b['reportNo']?.toString() ?? '') ?? 0;
+          return rb.compareTo(ra);
+        });
+
+      for (final e in entries) {
+        final factories = e['factories'];
+        if (factories is! List) continue;
+        for (final f in factories) {
+          if (f is! Map) continue;
+          final key = (f['factoryName'] ?? '').toString().trim().toLowerCase();
+          if (key.isEmpty || result.containsKey(key)) continue;
+          result[key] = {
+            'qtls': (f['progPurchaseQtls'] as num?)?.toDouble() ?? 0,
+            'bales': (f['progPurchaseBales'] as num?)?.toDouble() ?? 0,
+          };
         }
       }
     } catch (e) {
       debugLog('Error fetching previous factory progressive: $e');
+      return null;
     }
-    print('🔍 [FACTORY PREV] Final result: $result');
     return result;
   }
 
   Future<Map<String, double>> _fetchPreviousFactoryProgressive(
       String factoryName) async {
     final map = await _fetchPreviousFactoryProgressiveMap();
-    return map[factoryName.trim().toLowerCase()] ??
+    return map?[factoryName.trim().toLowerCase()] ??
         {'qtls': 0, 'bales': 0};
   }
 
   /// Re-bases every factory row on the previous progressive of the
-  /// currently selected centre + variety:  prog = previous + today.
-  /// Call after centre/variety change (and before saving) so factory
-  /// progressives can never belong to a different variety.
-  Future<void> _recomputeFactoryProgressives() async {
-    if (_purchaseFactories.isEmpty) return;
+  /// currently selected centre + variety + factory:  prog = previous + today.
+  /// Returns false if the previous values could not be loaded (existing
+  /// values are left untouched in that case) or the request went stale.
+  Future<bool> _recomputeFactoryProgressives() async {
+    if (_purchaseFactories.isEmpty) return true;
     final seq = ++_factoryRecalcSeq;
     final requestedCentre = _selectedCentre;
     final requestedVariety = _selectedVariety;
 
     final prev = await _fetchPreviousFactoryProgressiveMap();
-    if (!mounted || seq != _factoryRecalcSeq) return;
+    if (!mounted || seq != _factoryRecalcSeq) return false;
     if (requestedCentre != _selectedCentre ||
-        requestedVariety != _selectedVariety) return;
+        requestedVariety != _selectedVariety) return false;
+
+    if (prev == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not load previous factory progressives'),
+        backgroundColor: Colors.red,
+      ));
+      return false;
+    }
 
     setState(() {
       for (final f in _purchaseFactories) {
@@ -695,6 +746,7 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
         f.progPurchaseBales = (p?['bales'] ?? 0) + f.purchaseBales;
       }
     });
+    return true;
   }
 
   Future<void> _loadDefaultCentre() async {
@@ -1117,7 +1169,11 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
 
     // Always refresh right before saving so the snapshot is never stale
     // (variety/centre may have been switched while requests were in flight).
-    await _recomputeFactoryProgressives();
+    final factoriesOk = await _recomputeFactoryProgressives();
+    if (!factoriesOk && _purchaseFactories.isNotEmpty) {
+      if (mounted) setState(() => _isSubmitting = false);
+      return;
+    }
     await _fetchOtherVarietiesProgressive();
 
     final data = _buildPurchaseData();
@@ -1260,7 +1316,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
     // Track previous progressive values for the selected factory.
     double previousProgQtls = 0;
     double previousProgBales = 0;
-    bool isLoadingPrevious = false;
+    // Start as loading when editing an existing factory so Save can't run
+    // before the previous progressive has been fetched.
+    bool isLoadingPrevious = selectedFactory != null;
     bool hasLoadedPrevious = false;
 
     // Fills the read-only progressive fields: previous + today's purchase.
@@ -1527,7 +1585,9 @@ class _PurchaseEntryDialogState extends State<PurchaseEntryDialog> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Cancel')),
               ElevatedButton(
-                onPressed: () {
+                onPressed: isLoadingPrevious
+                    ? null
+                    : () {
                   if (_factoryFormKey.currentState!.validate()) {
                     generateProgressive();
                     final factory = PurchaseFactoryProgData(
