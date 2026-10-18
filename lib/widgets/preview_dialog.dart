@@ -889,7 +889,9 @@ class PreviewDialog extends StatelessWidget {
       final count = remaining > 50 ? 50 : remaining;
       totalTableRows += (count / 5).ceil() + 2; // header + data + total
     }
-    const double fixedHeight = 340; // titles + details + totals + signatures
+    // titles + details + totals + signatures. The Final sheet has no title
+    // block and no "For The Cotton Corporation..." line, so it needs less.
+    final double fixedHeight = isFinal ? 300 : 340;
     final tableBudget = pageUsable * targetFill -
         fixedHeight -
         (blockCount > 1 ? (blockCount - 1) * blockGap : 0);
@@ -1067,14 +1069,19 @@ class PreviewDialog extends StatelessWidget {
           ),
         ),
 
-        pw.SizedBox(height: 28),
-        pw.Align(
-          alignment: pw.Alignment.centerRight,
-          child: pw.Text('For The Cotton Corporation of India Ltd.',
-              style: pw.TextStyle(
-                  fontSize: 11, fontWeight: pw.FontWeight.bold)),
-        ),
-        pw.SizedBox(height: 44),
+        if (isFinal)
+        // Final: no "For The Cotton Corporation..." line, just signing space.
+          pw.SizedBox(height: 56)
+        else ...[
+          pw.SizedBox(height: 28),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text('For The Cotton Corporation of India Ltd.',
+                style: pw.TextStyle(
+                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
+          ),
+          pw.SizedBox(height: 44),
+        ],
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -1971,17 +1978,20 @@ class PreviewDialog extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 16),
-
-        const Align(
-          alignment: Alignment.centerRight,
-          child: Text('For The Cotton Corporation of India Ltd.',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A))),
-        ),
-        const SizedBox(height: 28),
+        if (isFinal)
+          const SizedBox(height: 40)
+        else ...[
+          const SizedBox(height: 16),
+          const Align(
+            alignment: Alignment.centerRight,
+            child: Text('For The Cotton Corporation of India Ltd.',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A))),
+          ),
+          const SizedBox(height: 28),
+        ],
         Row(
           children: [
             Expanded(

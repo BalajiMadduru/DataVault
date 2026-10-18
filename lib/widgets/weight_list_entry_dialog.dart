@@ -44,6 +44,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
   final _reportNoController = TextEditingController();
   final _prNoController = TextEditingController();
   final _lotNoController = TextEditingController();
+  final _lotNoSearchController = TextEditingController(); // find-by-lot only
   final _sampleBaleNoController = TextEditingController();
   final _ubinNoController = TextEditingController();
   final _noOfBalesController = TextEditingController(text: '100');
@@ -117,6 +118,7 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     _prNoController.dispose();
     _ubinNoController.dispose();
     _lotNoController.dispose();
+    _lotNoSearchController.dispose();
     _sampleBaleNoController.dispose();
     _noOfBalesController.dispose();
     _moistureController.dispose();
@@ -454,21 +456,17 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
     if (!_lookupFormKey.currentState!.validate()) return;
     if (_selectedCentre == null) return;
 
-    final reportNo = int.tryParse(_reportNoController.text);
-    if (reportNo == null) return;
+    final lotNo = _lotNoSearchController.text.trim();
+    if (lotNo.isEmpty) return;
 
     setState(() {
       _isSearching = true;
       _lookupError = null;
     });
 
-    final normalizedDate =
-    DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-
     final response = await ApiService.findWeightListEntry(
       centre: _selectedCentre!,
-      reportNo: reportNo,
-      date: normalizedDate,
+      lotNo: lotNo,
     );
 
     if (!mounted) return;
@@ -1368,12 +1366,15 @@ class _WeightListEntryDialogState extends State<WeightListEntryDialog> {
         focusNode: _dialogFocusNode,
         selectedCentre: _selectedCentre,
         onCentreChanged: (v) => setState(() => _selectedCentre = v),
-        selectedVariety: _selectedVariety,
-        varietyOptions: _varieties,
-        onVarietyChanged: (v) => setState(() => _selectedVariety = v),
-        reportNoController: _reportNoController,
+        selectedVariety: null,
+        varietyOptions: const [],
+        onVarietyChanged: null,
+        showReportNo: false,
+        lotNoController: _lotNoSearchController,
+        lotNoLabel: 'Lot No.',
+        showDate: false,
         selectedDate: _selectedDate,
-        onDateTap: () => _selectDate(context),
+        onDateTap: () {},
         lookupError: _lookupError,
         isSearching: _isSearching,
         onFind: _findEntry,

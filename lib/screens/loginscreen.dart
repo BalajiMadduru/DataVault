@@ -8,6 +8,12 @@ import '../services/apiservice.dart';
 import '../utils/validators.dart';
 import 'dashboardscreen.dart';
 
+// ---------------------------------------------------------------------
+// Theme: black / white / gold
+// ---------------------------------------------------------------------
+const Color _kGold = Color(0xFFD4A017); // logo, borders, focus ring
+const Color _kGoldText = Color(0xFF9A7400); // gold text on white (readable)
+
 /// Metadata for a locally-remembered account.
 /// The password itself is never stored here — only in secure storage,
 /// keyed by email — this list just tracks who's been signed in on this
@@ -413,7 +419,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
+                      fillColor: const Color(0xFFFAFAFA),
                     ),
                     onFieldSubmitted: (_) {
                       if (passwordController.text.isNotEmpty) {
@@ -465,7 +471,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
+                    backgroundColor: const Color(0xFF0A0A0A),
                   ),
                   child: isSubmitting
                       ? const SizedBox(
@@ -642,7 +648,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   children: [
                     const Text(
                       "Enter your email and we'll send you a link to reset your password.",
-                      style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                      style: TextStyle(fontSize: 13, color: Color(0xFF6B6B6B)),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -690,7 +696,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0F172A),
+                    backgroundColor: const Color(0xFF0A0A0A),
                   ),
                   child: isSending
                       ? const SizedBox(
@@ -719,7 +725,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: const Color(0xFFFAFAFA),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
@@ -746,23 +752,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0F172A),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Icon(Icons.bolt_rounded,
-                            color: Color(0xFF38BDF8), size: 28),
-                      ),
+                      const _VaultLogo(),
                       const SizedBox(height: 24),
                       Text(
                         _isRegisterMode ? 'Create your account' : 'Welcome back',
                         style: const TextStyle(
                           fontSize: 26,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFF0A0A0A),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -770,7 +767,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         _isRegisterMode
                             ? 'Set up a new account for Workflo'
                             : 'Sign in to continue to Workflo',
-                        style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                        style: const TextStyle(fontSize: 14, color: Color(0xFF6B6B6B)),
                       ),
 
                       if (_savedAccounts.isNotEmpty) ...[
@@ -847,7 +844,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ? Icons.visibility_off_outlined
                                   : Icons.visibility_outlined,
                               size: 20,
-                              color: const Color(0xFF94A3B8),
+                              color: const Color(0xFF9A9A9A),
                             ),
                             onPressed: () =>
                                 setState(() => _obscurePassword = !_obscurePassword),
@@ -881,7 +878,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 height: 22,
                                 child: Checkbox(
                                   value: _keepSignedIn,
-                                  activeColor: const Color(0xFF0F172A),
+                                  activeColor: const Color(0xFF0A0A0A),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(4),
                                   ),
@@ -894,7 +891,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 'Keep me signed in',
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Color(0xFF334155),
+                                  color: Color(0xFF2B2B2B),
                                 ),
                               ),
                             ],
@@ -911,7 +908,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF38BDF8),
+                                color: _kGold,
                               ),
                             ),
                           ),
@@ -926,7 +923,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           onPressed:
                           (_isLoading || _isFillingAccount) ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0F172A),
+                            backgroundColor: const Color(0xFF0A0A0A),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -964,7 +961,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFF38BDF8),
+                              color: _kGold,
                             ),
                           ),
                         ),
@@ -987,24 +984,24 @@ class _LoginScreenState extends State<LoginScreen> {
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-      prefixIcon: Icon(icon, size: 20, color: const Color(0xFF94A3B8)),
+      hintStyle: const TextStyle(color: Color(0xFF9A9A9A), fontSize: 14),
+      prefixIcon: Icon(icon, size: 20, color: const Color(0xFF9A9A9A)),
       suffixIcon: suffix,
       filled: true,
-      fillColor: const Color(0xFFF8FAFC),
+      fillColor: const Color(0xFFFAFAFA),
       counterText: '',
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: Color(0xFFE5E5E5)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+        borderSide: const BorderSide(color: Color(0xFFE5E5E5)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFF38BDF8), width: 1.5),
+        borderSide: const BorderSide(color: _kGold, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -1025,7 +1022,7 @@ class _FieldLabel extends StatelessWidget {
       style: const TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w600,
-        color: Color(0xFF334155),
+        color: Color(0xFF2B2B2B),
       ),
     );
   }
@@ -1113,10 +1110,10 @@ class _AccountChip extends StatelessWidget {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: isSelected
-                        ? const Color(0xFF0F172A)
-                        : const Color(0xFFE2E8F0),
+                        ? const Color(0xFF0A0A0A)
+                        : const Color(0xFFE5E5E5),
                     border: isSelected
-                        ? Border.all(color: const Color(0xFF38BDF8), width: 2)
+                        ? Border.all(color: _kGold, width: 2)
                         : null,
                   ),
                   child: Text(
@@ -1124,7 +1121,7 @@ class _AccountChip extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: isSelected ? Colors.white : const Color(0xFF334155),
+                      color: isSelected ? Colors.white : const Color(0xFF2B2B2B),
                     ),
                   ),
                 ),
@@ -1144,7 +1141,7 @@ class _AccountChip extends StatelessWidget {
                         ],
                       ),
                       child: const Icon(Icons.close_rounded,
-                          size: 14, color: Color(0xFF64748B)),
+                          size: 14, color: Color(0xFF6B6B6B)),
                     ),
                   ),
                 ),
@@ -1157,7 +1154,7 @@ class _AccountChip extends StatelessWidget {
                   : account.email.split('@').first,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 11, color: Color(0xFF6B6B6B)),
             ),
           ],
         ),
@@ -1184,18 +1181,39 @@ class _AddAccountChip extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.5),
+                border: Border.all(color: const Color(0xFFD4D4D4), width: 1.5),
               ),
               child: const Icon(Icons.add_rounded,
-                  size: 22, color: Color(0xFF64748B)),
+                  size: 22, color: Color(0xFF6B6B6B)),
             ),
             const SizedBox(height: 4),
             const Text(
               'Add',
-              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 11, color: Color(0xFF6B6B6B)),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VaultLogo extends StatelessWidget {
+  const _VaultLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0A0A),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Icon(
+        Icons.storage_rounded,
+        color: _kGold,
+        size: 28,
       ),
     );
   }

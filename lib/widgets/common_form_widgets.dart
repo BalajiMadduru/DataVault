@@ -229,7 +229,13 @@ class CommonFormWidgets {
     String? selectedVariety,
     List<String> varietyOptions = const [],
     Function(String?)? onVarietyChanged,
-    required TextEditingController reportNoController,
+    TextEditingController? reportNoController,
+    bool showReportNo = true,
+    TextEditingController? lotNoController,
+    String lotNoLabel = 'Lot No.',
+    String lotNoHint = 'Enter lot number',
+    String lotNoRequiredMessage = 'Please enter lot number',
+    bool showDate = true,
     required DateTime selectedDate,
     required VoidCallback onDateTap,
     required String? lookupError,
@@ -294,45 +300,66 @@ class CommonFormWidgets {
                     const SizedBox(height: 12),
                   ],
 
-                  CommonFormWidgets.textField(
-                    controller: reportNoController,
-                    label: 'Report No.',
-                    hint: 'Enter report number',
-                    icon: Icons.numbers,
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter report number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
+                  if (showReportNo && reportNoController != null) ...[
+                    CommonFormWidgets.textField(
+                      controller: reportNoController,
+                      label: 'Report No.',
+                      hint: 'Enter report number',
+                      icon: Icons.numbers,
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter report number';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
-                  InkWell(
-                    onTap: onDateTap,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey[300]!),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Date: ${CommonFormWidgets.formatDate(selectedDate)}',
-                              style: const TextStyle(fontSize: 16),
+                  if (lotNoController != null) ...[
+                    CommonFormWidgets.textField(
+                      controller: lotNoController,
+                      label: lotNoLabel,
+                      hint: lotNoHint,
+                      icon: Icons.confirmation_number_outlined,
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return lotNoRequiredMessage;
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  if (showDate) ...[
+                    InkWell(
+                      onTap: onDateTap,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey[300]!),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, color: Color(0xFF64748B)),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Date: ${CommonFormWidgets.formatDate(selectedDate)}',
+                                style: const TextStyle(fontSize: 16),
+                              ),
                             ),
-                          ),
-                          const Icon(Icons.arrow_drop_down),
-                        ],
+                            const Icon(Icons.arrow_drop_down),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
 
                   if (lookupError != null)
                     Container(

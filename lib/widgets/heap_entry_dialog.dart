@@ -38,6 +38,7 @@ class _HeapEntryDialogState extends State<HeapEntryDialog> {
   String? _selectedCentre;
   final _reportNoController = TextEditingController();
   final _heapNoController = TextEditingController();
+  final _lotNoSearchController = TextEditingController(); // find-by-lot only
 
   // Date range
   DateTime _fromDate = DateTime.now().subtract(const Duration(days: 7));
@@ -85,6 +86,7 @@ class _HeapEntryDialogState extends State<HeapEntryDialog> {
     _dialogFocusNode.dispose();
     _reportNoController.dispose();
     _heapNoController.dispose();
+    _lotNoSearchController.dispose();
     super.dispose();
   }
 
@@ -191,8 +193,8 @@ class _HeapEntryDialogState extends State<HeapEntryDialog> {
     if (!_lookupFormKey.currentState!.validate()) return;
     if (_selectedCentre == null) return;
 
-    final reportNo = int.tryParse(_reportNoController.text);
-    if (reportNo == null) return;
+    final heapNo = _lotNoSearchController.text.trim();
+    if (heapNo.isEmpty) return;
 
     setState(() {
       _isSearching = true;
@@ -201,7 +203,7 @@ class _HeapEntryDialogState extends State<HeapEntryDialog> {
 
     final response = await ApiService.findHeapEntry(
       centre: _selectedCentre!,
-      reportNo: reportNo,
+      heapNo: heapNo,
     );
 
     if (!mounted) return;
@@ -224,6 +226,7 @@ class _HeapEntryDialogState extends State<HeapEntryDialog> {
   }
 
   void _resetLookup() {
+    _lotNoSearchController.clear();
     setState(() {
       _entryFound = false;
       _docId = null;
@@ -348,7 +351,12 @@ class _HeapEntryDialogState extends State<HeapEntryDialog> {
         selectedVariety: null,
         varietyOptions: const [],
         onVarietyChanged: null,
-        reportNoController: _reportNoController,
+        showReportNo: false,
+        lotNoController: _lotNoSearchController,
+        lotNoLabel: 'Heap No.',
+        lotNoHint: 'Enter heap number',
+        lotNoRequiredMessage: 'Please enter heap number',
+        showDate: false,
         selectedDate: DateTime.now(),
         onDateTap: () {},
         lookupError: _lookupError,

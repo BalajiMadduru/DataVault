@@ -571,8 +571,7 @@ class ApiService {
 
   static Future<ApiResponse> findWeightListEntry({
     required String centre,
-    required int reportNo,
-    required DateTime date,
+    required String lotNo,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -580,11 +579,11 @@ class ApiService {
         return ApiResponse(success: false, message: 'User not logged in');
       }
       final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedLotNo = lotNo.trim().toLowerCase();
 
       final querySnapshot = await _db
           .collection('weightLists')
           .where('userId', isEqualTo: user.uid)
-          .where('reportNo', isEqualTo: reportNo)
           .get();
 
       Map<String, dynamic>? match;
@@ -596,24 +595,19 @@ class ApiService {
         (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
 
-        final rawDate = data['date'];
-        if (rawDate is String) {
-          final parsed = DateTime.tryParse(rawDate);
-          if (parsed != null &&
-              parsed.year == date.year &&
-              parsed.month == date.month &&
-              parsed.day == date.day) {
-            match = data;
-            matchId = doc.id;
-            break;
-          }
-        }
+        final storedLotNo =
+        (data['lotNo']?.toString() ?? '').trim().toLowerCase();
+        if (storedLotNo != normalizedLotNo) continue;
+
+        match = data;
+        matchId = doc.id;
+        break;
       }
 
       if (match == null) {
         return ApiResponse(
           success: false,
-          message: 'No weight list found for that centre, report number & date',
+          message: 'No weight list found for that centre & lot number',
         );
       }
       match['id'] = matchId;
@@ -1657,7 +1651,7 @@ class ApiService {
 
   static Future<ApiResponse> findHeapEntry({
     required String centre,
-    required int reportNo,
+    required String heapNo,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -1665,11 +1659,11 @@ class ApiService {
         return ApiResponse(success: false, message: 'User not logged in');
       }
       final normalizedCentre = centre.trim().toLowerCase();
+      final normalizedHeapNo = heapNo.trim().toLowerCase();
 
       final querySnapshot = await _db
           .collection('heaps')
           .where('userId', isEqualTo: user.uid)
-          .where('reportNo', isEqualTo: reportNo)
           .get();
 
       Map<String, dynamic>? match;
@@ -1680,6 +1674,11 @@ class ApiService {
         final storedCentre =
         (data['centre'] as String? ?? '').trim().toLowerCase();
         if (storedCentre != normalizedCentre) continue;
+
+        final storedHeapNo =
+        (data['heapNo']?.toString() ?? '').trim().toLowerCase();
+        if (storedHeapNo != normalizedHeapNo) continue;
+
         match = data;
         matchId = doc.id;
         break;
@@ -1688,7 +1687,7 @@ class ApiService {
       if (match == null) {
         return ApiResponse(
           success: false,
-          message: 'No heap found for that centre & report number',
+          message: 'No heap found for that centre & heap number',
         );
       }
       match['id'] = matchId;

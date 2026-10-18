@@ -12,9 +12,22 @@ class FindEntryDialog extends StatelessWidget {
   final String? selectedVariety;
   final List<String> varietyOptions;
   final Function(String?)? onVarietyChanged;
-  final TextEditingController reportNoController;
+
+  /// Report number search field (hidden when [showReportNo] is false).
+  final TextEditingController? reportNoController;
+  final bool showReportNo;
+
+  /// Lot number search field (shown only when a controller is supplied).
+  final TextEditingController? lotNoController;
+  final String lotNoLabel;
+  final String lotNoHint;
+  final String lotNoRequiredMessage;
+
+  /// Date picker row (hidden when [showDate] is false).
+  final bool showDate;
   final DateTime selectedDate;
   final VoidCallback onDateTap;
+
   final String? lookupError;
   final bool isSearching;
   final VoidCallback onFind;
@@ -31,7 +44,13 @@ class FindEntryDialog extends StatelessWidget {
     this.selectedVariety,
     this.varietyOptions = const [],
     this.onVarietyChanged,
-    required this.reportNoController,
+    this.reportNoController,
+    this.showReportNo = true,
+    this.lotNoController,
+    this.lotNoLabel = 'Lot No.',
+    this.lotNoHint = 'Enter lot number',
+    this.lotNoRequiredMessage = 'Please enter lot number',
+    this.showDate = true,
     required this.selectedDate,
     required this.onDateTap,
     required this.lookupError,
@@ -53,6 +72,12 @@ class FindEntryDialog extends StatelessWidget {
       varietyOptions: varietyOptions,
       onVarietyChanged: onVarietyChanged,
       reportNoController: reportNoController,
+      showReportNo: showReportNo,
+      lotNoController: lotNoController,
+      lotNoLabel: lotNoLabel,
+      lotNoHint: lotNoHint,
+      lotNoRequiredMessage: lotNoRequiredMessage,
+      showDate: showDate,
       selectedDate: selectedDate,
       onDateTap: onDateTap,
       lookupError: lookupError,
